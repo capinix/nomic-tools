@@ -1,0 +1,12 @@
+# Rust build artifacts
+/target/
+
+# Cargo lock file for projects that don't use a workspace
+Cargo.lock
+
+# Compiled binary files
+*.rs.bk
+
+# IDE-specific files
+.vscode/
+.idea/
