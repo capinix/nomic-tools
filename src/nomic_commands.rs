@@ -7,6 +7,7 @@ use std::path::Path;
 use std::fs;
 
 use crate::calc;
+use crate::globals;
 use crate::commands::{parse_profile_config, change_extension, get_last_journal};
 
 pub fn temp_home(profile_path: &Path) -> Result<TempDir, Box<dyn std::error::Error>> {
@@ -245,8 +246,35 @@ pub fn run_commands(
     // Fetch balance data using the balance function from nomic_commands
     let (address, nb_values) = balance(&home_dir)?;
 
+	let balance = nb_values.get("NOM")
+		.and_then(|value| value.parse::<u64>().ok())
+		.unwrap_or(0);
+
+println!("balance: {}", balance);
+
     // Fetch delegations data using the delegations function from nomic_commands
     let (total_staked, total_liquid, total_nbtc, delegations_data) = delegations(&home_dir, validator_info)?;
+
+	let config_path = change_extension(profile_path, "conf");
+	let config_data = parse_profile_config(config_path.as_path());
+
+	let minimum_balance_config_nom = config_data.get("MINIMUM_BALANCE")
+		.and_then(|value| value.parse::<f64>().ok())
+		.unwrap_or(globals::MINIMUM_BALANCE);
+
+	let minimum_balance_ratio = config_data.get("MINIMUM_BALANCE_RATIO")
+		.and_then(|value| value.parse::<f64>().ok())
+		.unwrap_or(globals::MINIMUM_BALANCE_RATIO);
+
+	let minimum_balance_config = ( minimum_balance_config_nom as f64 * 1000000.0 ) as u64;
+
+	let minimum_balance = calc::minimum_balance(
+        total_staked,
+        minimum_balance_ratio,
+        minimum_balance_config,
+	);
+
+println!("minimum_balance: {}", minimum_balance);
 
     let daily_reward = calc::daily_reward(
         timestamp,
@@ -267,10 +295,6 @@ pub fn run_commands(
 
 //     println!("Daily Reward: {}", daily_reward);
 
-
-	let config_path = change_extension(profile_path, "conf");
-
-	let config_data = parse_profile_config(config_path.as_path());
 
 	let json_output = format_json_output(
 		timestamp,
