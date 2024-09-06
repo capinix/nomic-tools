@@ -14,12 +14,12 @@ pub fn daily_reward(
         && last_timestamp > 0
     {
 
-		println!("current_timestamp: {}", current_timestamp);
-		println!("last_timestamp: {}", last_timestamp);
-		println!("current_total_staked: {}", current_total_staked);
-		println!("last_total_staked: {}", last_total_staked);
-		println!("current_total_liquid: {}", current_total_liquid);
-		println!("last_total_liquid: {}", last_total_liquid);
+// 		println!("current_timestamp: {}", current_timestamp);
+// 		println!("last_timestamp: {}", last_timestamp);
+// 		println!("current_total_staked: {}", current_total_staked);
+// 		println!("last_total_staked: {}", last_total_staked);
+// 		println!("current_total_liquid: {}", current_total_liquid);
+// 		println!("last_total_liquid: {}", last_total_liquid);
         // Calculate the daily reward
         let reward_difference = current_total_liquid - last_total_liquid;
         let time_difference = current_timestamp - last_timestamp;

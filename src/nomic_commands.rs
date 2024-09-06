@@ -189,8 +189,7 @@ pub fn format_json_output(
     config_data: IndexMap<String, String>,
 ) -> String {
     let mut json_data: IndexMap<String, serde_json::Value> = IndexMap::new();
-    json_data.insert("timestamp".to_string(), json!(timestamp));
-//     json_data.insert("Type".to_string(), json!("nomic status"));
+    json_data.insert("timestamp".to_string(), json!(timestamp.to_string()));
     json_data.insert("profile".to_string(), json!(profile_name));
     json_data.insert("address".to_string(), json!(address));
 
@@ -218,6 +217,8 @@ pub fn run_commands(
 
     // Fetch the last journal entry as a JSON Value
     let last_journal = get_last_journal(&profile_name)?;
+
+// 	println!("last journal: {}", last_journal);
 
     // Extract values as strings and then parse them into appropriate types
     let last_timestamp = last_journal["timestamp"]
@@ -255,6 +256,14 @@ pub fn run_commands(
         last_total_staked,
         last_total_liquid,
     );
+
+// println!("timestamp: {}", timestamp);
+// println!("last_timestamp: {}", last_timestamp);
+// println!("total_staked: {}", total_staked);
+// println!("last_total_staked: {}", last_total_staked);
+// println!("total_liquid: {}", total_liquid);
+// println!("last_total_liquid: {}", last_total_liquid);
+// println!("daily_reward: {}", daily_reward);
 
 //     println!("Daily Reward: {}", daily_reward);
 
