@@ -7,7 +7,8 @@ use std::path::Path;
 use std::fs;
 
 use crate::calc;
-use crate::globals;
+use crate::globals::*;
+
 use crate::commands::{parse_profile_config, change_extension, get_last_journal};
 
 pub fn temp_home(profile_path: &Path) -> Result<TempDir, Box<dyn std::error::Error>> {
@@ -117,7 +118,11 @@ pub fn balance(home_dir: &str) -> Result<(String, IndexMap<String, String>), Box
     Ok((address, nb_values))
 }
 
-pub fn delegations(home_dir: &str, validator_info: &IndexMap<String, (String, u64, usize)>) -> Result<(u64, u64, u64, Vec<IndexMap<String, String>>), Box<dyn std::error::Error>> {
+pub fn delegations(
+	home_dir: &str, 
+	validator_info: &IndexMap<String, (String, u64, usize)>
+) -> Result<(u64, u64, u64, Vec<IndexMap<String, String>>), Box<dyn std::error::Error>> {
+
     let mut delegations_command = Command::new("nomic");
     delegations_command.arg("delegations");
 	delegations_command.env("HOME", home_dir);
@@ -189,6 +194,7 @@ pub fn format_json_output(
     delegations_data: Vec<IndexMap<String, String>>, // Ensure this matches what `delegations` returns
     config_data: IndexMap<String, String>,
 ) -> String {
+
     let mut json_data: IndexMap<String, serde_json::Value> = IndexMap::new();
     json_data.insert("timestamp".to_string(), json!(timestamp.to_string()));
     json_data.insert("profile".to_string(), json!(profile_name));
@@ -250,7 +256,7 @@ pub fn run_commands(
 		.and_then(|value| value.parse::<u64>().ok())
 		.unwrap_or(0);
 
-println!("balance: {}", balance);
+// println!("balance: {}", balance);
 
     // Fetch delegations data using the delegations function from nomic_commands
     let (total_staked, total_liquid, total_nbtc, delegations_data) = delegations(&home_dir, validator_info)?;
@@ -260,13 +266,12 @@ println!("balance: {}", balance);
 
 	let minimum_balance_config_nom = config_data.get("MINIMUM_BALANCE")
 		.and_then(|value| value.parse::<f64>().ok())
-		.unwrap_or(globals::MINIMUM_BALANCE);
+		.unwrap_or(*MINIMUM_BALANCE);
 
 	let minimum_balance_ratio = config_data.get("MINIMUM_BALANCE_RATIO")
 		.and_then(|value| value.parse::<f64>().ok())
-		.unwrap_or(globals::MINIMUM_BALANCE_RATIO);
-
-	let minimum_balance_config = ( minimum_balance_config_nom as f64 * 1000000.0 ) as u64;
+		.unwrap_or(*MINIMUM_BALANCE_RATIO);
+	let minimum_balance_config = ( minimum_balance_config_nom as f64 * 1_000_000.0 ) as u64;
 
 	let minimum_balance = calc::minimum_balance(
         total_staked,
@@ -274,7 +279,40 @@ println!("balance: {}", balance);
         minimum_balance_config,
 	);
 
-println!("minimum_balance: {}", minimum_balance);
+	let minimum_stake_config_nom = config_data.get("MINIMUM_STAKE")
+		.and_then(|value| value.parse::<f64>().ok())
+		.unwrap_or(*MINIMUM_STAKE);
+	let minimum_stake_config = ( minimum_stake_config_nom as f64 * 1_000_000.0 ) as u64;
+
+	let minimum_stake_rounding = config_data.get("MINIMUM_STAKE_ROUNDING")
+		.and_then(|value| value.parse::<f64>().ok())
+		.unwrap_or(*MINIMUM_STAKE_ROUNDING);
+
+	let validator = config_data.get("VALIDATOR")
+		.and_then(|value| value.parse::<f64>().ok())
+		.unwrap_or(*VALIDATOR);
+
+// println!("minimum_balance: {}", minimum_balance);
+	 
+	let staked_amount = delegations_data["delegations"]
+			.as_array()
+			.and_then(|delegations| {
+				delegations.iter().find_map(|delegation| {
+					if delegation.get("validator")?.as_str()? == validator {
+						delegation.get("staked")?.as_str()?.parse::<u64>().ok()
+					} else {
+						None
+					}
+				})
+			});
+
+		match staked_amount {
+			Some(amount) => println!("Staked amount for validator {} is {}", validator, amount),
+			None => println!("Validator {} not found or staked amount is missing.", validator),
+		}
+	}
+
+// println!("minimum_balance: {}", minimum_balance);
 
     let daily_reward = calc::daily_reward(
         timestamp,
@@ -284,6 +322,19 @@ println!("minimum_balance: {}", minimum_balance);
         last_total_staked,
         last_total_liquid,
     );
+
+	let should_claim, stake_quantity = calc::stake(
+		total_liquid,
+		balance,
+		*CLAIM_FEE,
+		*STAKE_FEE,
+		minimum_balance,
+		staked_amount,
+		minimum_stake,
+		adjust,
+		daily_reward,
+		minimum_stake_rounding,
+	)
 
 // println!("timestamp: {}", timestamp);
 // println!("last_timestamp: {}", last_timestamp);
