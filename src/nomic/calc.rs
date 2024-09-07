@@ -28,13 +28,13 @@ pub fn get_last_journal(address: &str) -> Result<Value, Box<dyn Error>> {
 	if !output.status.success() || output.stdout.is_empty() {
 		// Return default JSON object if command fails or returns no output
 		return Ok(json!({
-			"timestamp": "0",
+			"timestamp": 0,
 			"total": {
 				"liquid": {
-					"NBTC": "0",
-					"NOM": "0"
+					"NBTC": 0,
+					"NOM": 0
 				},
-				"staked": "0"
+				"staked": 0
 			}
 		}));
 	}
@@ -46,13 +46,13 @@ pub fn get_last_journal(address: &str) -> Result<Value, Box<dyn Error>> {
 	let json: Value = serde_json::from_str(&output_str).unwrap_or_else(|_| {
 		// Return default JSON object if parsing fails
 		json!({
-			"timestamp": "0",
+			"timestamp": 0,
 			"total": {
 				"liquid": {
-					"NBTC": "0",
-					"NOM": "0"
+					"NBTC": 0,
+					"NOM": 0
 				},
-				"staked": "0"
+				"staked": 0
 			}
 		})
 	});
@@ -71,33 +71,47 @@ fn calculate_minimum_balance(
 
 pub fn minimum_balance(journal: &Map<String, Value>) -> u64 {
 
+	// load the config key
     let config_key = match journal.get("config") {
         Some(config) => config,
         None => {
-            println!("Missing 'config' key");
+			// config key could not be loaded, return 0
+            eprintln!("Missing 'config' key");
             return 0;
         }
     };
 
-    let config_minimum_balance = match config_key.get("MINIMUM_BALANCE")
-        .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok())) {
-        Some(value) => (value * 1_000_000.0) as u64,
-        None => {
-            println!("Missing or invalid 'config:MINIMUM_BALANCE' key");
-            println!("Using global default: {}", *MINIMUM_BALANCE);
-            (*MINIMUM_BALANCE * 1_000_000.0) as u64
-        }
-    };
+	// config minimum balance
+	let config_minimum_balance = match config_key.get("MINIMUM_BALANCE").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_f64().map(|f| (f * 1_000_000.0) as u64),
+			Value::String(s) => s.parse::<f64>().ok().map(|f| (f * 1_000_000.0) as u64),
+			_ => None,
+		}
+	}) {
+		Some(value) => value,
+		None => {
+            eprintln!("missing or invalid 'config:MINIMUM_BALANCE' key");
+            eprintln!("Using global default: {}", *MINIMUM_BALANCE);
+			(*MINIMUM_BALANCE as f64 * 1_000_000.0) as u64
+		}
+	};
 
-    let config_minimum_balance_ratio = match config_key.get("MINIMUM_BALANCE_RATIO")
-        .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok())) {
-        Some(value) => value,
-        None => {
-            println!("Missing or invalid 'config:MINIMUM_BALANCE_RATIO' key");
-            println!("Using global default: {}", *MINIMUM_BALANCE_RATIO);
+	// config minimum balance ratio
+	let config_minimum_balance_ratio = match config_key.get("MINIMUM_BALANCE_RATIO").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_f64(),
+			Value::String(s) => s.parse::<f64>().ok(),
+			_ => None,
+		}
+	}) {
+		Some(value) => value,
+		None => {
+            eprintln!("Missing or invalid 'config:MINIMUM_BALANCE_RATIO' key");
+            eprintln!("Using global default: {}", *MINIMUM_BALANCE_RATIO);
             *MINIMUM_BALANCE_RATIO
-        }
-    };
+		}
+	};
 
     let total_key = match journal.get("total") {
         Some(total) => total,
@@ -107,14 +121,19 @@ pub fn minimum_balance(journal: &Map<String, Value>) -> u64 {
         }
     };
 
-    let total_staked = match total_key.get("staked")
-        .and_then(|v| v.as_str().and_then(|s| s.parse::<u64>().ok())) {
-        Some(value) => value,
-        None => {
+	let total_staked = match total_key.get("staked").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
+		Some(value) => value,
+		None => {
             println!("Missing or invalid 'total:staked' key");
             return config_minimum_balance;
-        }
-    };
+		}
+	};
 
 	calculate_minimum_balance(
 		total_staked,
@@ -150,7 +169,6 @@ fn calculate_daily_reward(
     }
 }
 
-
 pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 
 	let address = match journal.get("address") {
@@ -161,12 +179,16 @@ pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 		}
 	};
 
-	let timestamp = match journal.get("timestamp")
-		.and_then(|v| v.as_str()
-		.and_then(|s| s.parse::<u64>().ok())) {
+	let timestamp = match journal.get("timestamp").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
-			println!("Missing or invalid 'timestamp' key");
+			eprintln!("Missing or invalid 'timestamp' key");
 			return 0;
 		}
 	};
@@ -179,12 +201,16 @@ pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 		}
 	};
 
-	let total_staked = match total_key.get("staked")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let total_staked = match total_key.get("staked").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
-			println!("Missing or invalid 'total:staked' key");
+			eprintln!("Missing or invalid 'total:staked' key");
 			return 0;
 		}
 	};
@@ -197,9 +223,13 @@ pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 		}
 	};
 
-	let total_liquid = match total_liquid_key.get("NOM")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let total_liquid = match total_liquid_key.get("NOM").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
 			println!("Missing or invalid 'total:liquid:NOM' key");
@@ -215,12 +245,16 @@ pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 		}
 	};
 
-	let last_timestamp = match last_journal.get("timestamp")
-		.and_then(|v| v.as_str()
-		.and_then(|s| s.parse::<u64>().ok())) {
+	let last_timestamp = match last_journal.get("timestamp").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
-			println!("Missing or invalid last journal 'timestamp' key");
+			eprintln!("Missing or invalid 'timestamp' key");
 			return 0;
 		}
 	};
@@ -233,12 +267,16 @@ pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 		}
 	};
 
-	let last_total_staked = match last_total_key.get("staked")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let last_total_staked = match last_total_key.get("staked").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
-			println!("Missing or invalid last journal 'total:staked' key");
+			eprintln!("Missing or invalid last journal 'total:staked' key");
 			return 0;
 		}
 	};
@@ -251,9 +289,13 @@ pub fn daily_reward(journal: &Map<String, Value>) -> u64 {
 		}
 	};
 
-	let last_total_liquid = match last_total_liquid_key.get("NOM")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let last_total_liquid = match last_total_liquid_key.get("NOM").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
 			println!("Missing or invalid last journal 'total:liquid:NOM' key");
@@ -279,9 +321,9 @@ fn calculate_stake(
     minimum_balance: u64,
     staked: u64,
     minimum_stake: u64,
-    adjust: &str,
+    adjust: bool,
     daily_reward: u64,
-    rounding: f64,
+    rounding: u64,
 ) -> (String, u64) {
     
     // Define the closure
@@ -294,9 +336,8 @@ fn calculate_stake(
     };
 
     // Define stake_quantum
-    let stake_quantum = if adjust == "true" && daily_reward > 0 {
-        let rounding_unom = (rounding * 1_000_000.0) as u64;
-        (daily_reward / rounding_unom) * rounding_unom
+    let stake_quantum = if adjust && daily_reward > 0 {
+        (daily_reward / rounding) * rounding
     } else {
         minimum_stake
     };
@@ -333,7 +374,7 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
     let null_data: Value = json!({
         "minimum_balance": minimum_balance,
         "daily_reward": daily_reward,
-        "claim": "false",
+        "claim": false,
         "stake": 0
     });
 
@@ -345,9 +386,13 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
 		}
 	};
 
-	let balance = match balance_key.get("NOM")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let balance = match balance_key.get("NOM").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
 			println!("Missing or invalid 'balance:NOM' key");
@@ -371,9 +416,13 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
 		}
 	};
 
-	let total_liquid = match liquid_key.get("NOM")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let total_liquid = match liquid_key.get("NOM").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
 			println!("Missing or invalid 'total:liquid:NOM' key");
@@ -389,34 +438,61 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
 		}
 	};
 
-    let config_minimum_stake = match config_key.get("MINIMUM_STAKE")
-        .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok())) {
-        Some(value) => (value * 1_000_000.0) as u64,
-        None => {
-            println!("missing or invalid 'config:MINIMUM_STAKE' key");
-            println!("Using global default: {}", *MINIMUM_STAKE);
-			(*MINIMUM_STAKE * 1_000_000.0) as u64
-        }
-    };
+	let config_minimum_stake = match config_key.get("MINIMUM_STAKE").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_f64().map(|f| (f * 1_000_000.0) as u64),
+			Value::String(s) => s.parse::<f64>().ok().map(|f| (f * 1_000_000.0) as u64),
+			_ => None,
+		}
+	}) {
+		Some(value) => value,
+		None => {
+            eprintln!("missing or invalid 'config:MINIMUM_STAKE' key");
+            eprintln!("Using global default: {}", *MINIMUM_STAKE);
+			(*MINIMUM_STAKE as f64 * 1_000_000.0) as u64
+		}
+	};
 
-    let rounding = match config_key.get("MINIMUM_STAKE_ROUNDING")
-        .and_then(|v| v.as_str().and_then(|s| s.parse::<f64>().ok())) {
-        Some(value) => value,
-        None => {
+	let rounding = match config_key.get("MINIMUM_STAKE_ROUNDING").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_f64().map(|f| (f * 1_000_000.0) as u64),
+			Value::String(s) => s.parse::<f64>().ok().map(|f| (f * 1_000_000.0) as u64),
+			_ => None,
+		}
+	}) {
+		Some(value) => value,
+		None => {
             println!("missing or invalid 'config:MINIMUM_STAKE_ROUNDING' key");
             println!("Using global default: {}", *MINIMUM_STAKE_ROUNDING);
-			*MINIMUM_STAKE_ROUNDING
-        }
-    };
-
-    let adjust = match config_key.get("ADJUST_MINIMUM_STAKE") {
-		Some(value) => value.as_str().unwrap_or(""),
-		None => {
-			println!("Missing 'config:ADJUST_MINIMUM_STAKE' key");
-            println!("Using global default: {}", *ADJUST_MINIMUM_STAKE);
-			&*ADJUST_MINIMUM_STAKE
+			(*MINIMUM_STAKE_ROUNDING as f64 * 1_000_000.0) as u64
 		}
-    };
+	};
+
+	let default_adjust: bool = match ADJUST_MINIMUM_STAKE.to_lowercase().as_str() {
+		"y" | "yes" | "1" | "true" => true,
+		"n" | "no" | "0" | "false" => false,
+		_ => {
+			println!("Invalid global default 'ADJUST_MINIMUM_STAKE' value; defaulting to true");
+			true
+		}
+	};
+
+	let adjust = config_key.get("ADJUST_MINIMUM_STAKE").and_then(|value| {
+		value.as_str().map(|s| {
+			match s.to_lowercase().as_str() {
+				"y" | "yes" | "1" | "true" => true,
+				"n" | "no" | "0" | "false" => false,
+				_ => {
+					println!("Invalid 'config:ADJUST_MINIMUM_STAKE' value; defaulting to {}", default_adjust);
+					default_adjust
+				}
+			}
+		})
+	}).unwrap_or_else(|| {
+		println!("Missing 'config:ADJUST_MINIMUM_STAKE' key");
+		println!("Using global default: {}", default_adjust);
+		default_adjust  
+	});
 
 	let validator = match config_key.get("VALIDATOR") {
 		Some(value) => value.as_str().unwrap_or(""),
@@ -442,9 +518,13 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
 		}
 	};
 
-	let staked = match validator_key.get("staked")
-		.and_then(Value::as_str)
-		.and_then(|s| s.parse::<u64>().ok()) {
+	let staked = match validator_key.get("staked").and_then(|value| {
+		match value {
+			Value::Number(n) => n.as_u64(),
+			Value::String(s) => s.parse::<u64>().ok(),
+			_ => None,
+		}
+	}) {
 		Some(value) => value,
 		None => {
 			println!("Missing or invalid 'delegations:{}:staked' key", validator);
@@ -455,20 +535,20 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
 	let (claim, stake) = calculate_stake(
 		total_liquid,
 		balance,
-		(*CLAIM_FEE * 1_000_000.0) as u64,
-		(*STAKE_FEE * 1_000_000.0) as u64,
+		(*CLAIM_FEE as f64 * 1_000_000.0) as u64,
+		(*STAKE_FEE as f64 * 1_000_000.0) as u64,
 		minimum_balance,
 		staked,
 		config_minimum_stake,
-		&adjust,
+		adjust,
 		daily_reward,
 		rounding,
 	);
 
     json!({
-        "minimum_balance": minimum_balance,
-        "daily_reward": daily_reward,
         "claim": claim,
-        "stake": stake
+        "daily_reward": daily_reward,
+        "minimum_balance": minimum_balance,
+        "stake": stake,
     })
 }

@@ -1,8 +1,9 @@
+
+use chrono::Local;
 use crate::nomic::delegations;
 use indexmap::IndexMap;
 use serde_json::{Map, Value};
 use std::process::Command;
-use chrono::Local;
 
 fn run(home_dir: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
     // Create and configure the Command
@@ -50,26 +51,24 @@ pub fn json(
     let mut balance_map = Map::new();
     balance_map.insert(
 		"NOM".to_string(), 
-		Value::String(balance_lines[1]
-			.split_whitespace()
-			.next().unwrap_or("")
-			.trim().to_string()
-		)
+		Value::Number(serde_json::Number::from(balance_lines[1]
+				.split_whitespace().next().unwrap_or("")
+				.trim().parse::<u64>().unwrap_or(0)
+		))
 	);
     balance_map.insert(
 		"NBTC".to_string(), 
-		Value::String(balance_lines[2]
-			.split_whitespace()
-			.next().unwrap_or("")
-			.trim().to_string()
-		)
+		Value::Number(serde_json::Number::from(balance_lines[2]
+				.split_whitespace().next().unwrap_or("")
+				.trim().parse::<u64>().unwrap_or(0)
+		))
 	);
     balance_map.insert(
 		"IBC-escrowed NBTC".to_string(), 
-		Value::String(balance_lines[3]
-			.split_whitespace().next().unwrap_or("")
-			.trim().to_string()
-		)
+		Value::Number(serde_json::Number::from(balance_lines[3]
+				.split_whitespace().next().unwrap_or("")
+				.trim().parse::<u64>().unwrap_or(0)
+		))
 	);
     // Extract address from the first line
     let address = balance_lines[0].split(": ").nth(1).unwrap_or("").trim().to_string();
