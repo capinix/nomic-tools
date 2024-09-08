@@ -550,5 +550,6 @@ pub fn stake(journal: &Map<String, Value>) -> Value  {
         "daily_reward": daily_reward,
         "minimum_balance": minimum_balance,
         "stake": stake,
+        "staked": staked,
     })
 }

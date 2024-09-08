@@ -2,7 +2,7 @@ mod globals;
 mod nomic {
     pub mod balance;
     pub mod calc;
-    pub mod commands;
+    pub mod functions;
     pub mod delegations;
     pub mod validators;
 }
@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use nomic::validators;
 use crate::globals::{get_default_config_dir};
-use crate::nomic::commands::{run_profile, temp_home, restore_nonce};
+use crate::nomic::functions::{run_profile, temp_home, restore_nonce};
 
 #[derive(Parser, Debug)] // Automatically generate argument parser
 #[command(

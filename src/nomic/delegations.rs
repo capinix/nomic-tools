@@ -56,21 +56,27 @@ pub fn json(
 				let staked_part = data_parts.get(0)
 					.and_then(|s| s.split_whitespace().next())
 					.and_then(|s| s.split('=').nth(1))
-					.unwrap_or("").trim();
+					.unwrap_or("").trim()
+					.parse::<u64>().unwrap_or_default();
 
 				let nom_part = data_parts.get(1)
 					.and_then(|s| s.split_whitespace().next())
 					.and_then(|s| s.split('=').nth(1))
-					.unwrap_or("").trim();
+					.unwrap_or("").trim()
+					.parse::<u64>().unwrap_or_default();
+
 
 				let nbtc_part = data_parts.get(2)
 					.and_then(|s| s.split_whitespace().next())
-					.unwrap_or("").trim();
+					.unwrap_or("").trim()
+					.parse::<u64>().unwrap_or_default();
 
 				let voting_power = validator_info.get(validator)
 					.and_then(|info| info.get("VOTING POWER"))
 					.cloned()
-					.unwrap_or_default();
+					.unwrap_or("".to_string()).trim()
+					.parse::<u64>().unwrap_or_default();
+
 				
 				let moniker = validator_info.get(validator)
 					.and_then(|info| info.get("MONIKER"))
@@ -78,12 +84,12 @@ pub fn json(
 					.unwrap_or_default();
 
 				let mut liquid_map = Map::new();
-				liquid_map.insert("NBTC".to_string(), Value::String(nbtc_part.to_string()));
-				liquid_map.insert("NOM".to_string(), Value::String(nom_part.to_string()));
+				liquid_map.insert("NBTC".to_string(), Value::Number(nbtc_part.into()));
+				liquid_map.insert("NOM".to_string(), Value::Number(nom_part.into()));
 
 				let mut details = Map::new();
-				details.insert("staked".to_string(), Value::String(staked_part.to_string()));
-				details.insert("voting_power".to_string(), Value::String(voting_power));
+				details.insert("staked".to_string(), Value::Number(staked_part.into()));
+				details.insert("voting_power".to_string(), Value::Number(voting_power.into()));
 				details.insert("moniker".to_string(), Value::String(moniker));
 				details.insert("liquid".to_string(), Value::Object(liquid_map));
 
@@ -101,32 +107,52 @@ pub fn totals(delegations: &Value) -> Value {
     let mut total_liquid_nom = 0;
     let mut total_staked = 0;
 
-    if let Some(delegations_map) = delegations.as_object() {
-        for (_key, delegation) in delegations_map {
-            if let Some(delegation_obj) = delegation.as_object() {
-                if let Some(liquid) = delegation_obj.get("liquid") {
-                    if let Some(liquid_obj) = liquid.as_object() {
-                        if let Some(nbtc_str) = liquid_obj.get("NBTC").and_then(|v| v.as_str()) {
-                            total_liquid_nbtc += nbtc_str.parse::<u64>().unwrap_or(0);
-                        }
-                        if let Some(nom_str) = liquid_obj.get("NOM").and_then(|v| v.as_str()) {
-                            total_liquid_nom += nom_str.parse::<u64>().unwrap_or(0);
-                        }
-                    }
-                }
-                if let Some(staked_str) = delegation_obj.get("staked").and_then(|v| v.as_str()) {
-                    total_staked += staked_str.parse::<u64>().unwrap_or(0);
-                }
-            }
-        }
-    }
+	if let Some(delegations_map) = delegations.as_object() {
+		for (_key, delegation) in delegations_map {
+			if let Some(delegation_obj) = delegation.as_object() {
+				if let Some(liquid) = delegation_obj.get("liquid") {
+					if let Some(liquid_obj) = liquid.as_object() {
+						// Handle 'NBTC'
+						if let Some(nbtc_value) = liquid_obj.get("NBTC") {
+							let nbtc_amount = match nbtc_value {
+								Value::Number(n) => n.as_u64().unwrap_or(0),
+								Value::String(s) => s.parse::<u64>().unwrap_or(0),
+								_ => 0,
+							};
+							total_liquid_nbtc += nbtc_amount;
+						}
+						
+						// Handle 'NOM'
+						if let Some(nom_value) = liquid_obj.get("NOM") {
+							let nom_amount = match nom_value {
+								Value::Number(n) => n.as_u64().unwrap_or(0),
+								Value::String(s) => s.parse::<u64>().unwrap_or(0),
+								_ => 0,
+							};
+							total_liquid_nom += nom_amount;
+						}
+					}
+				}
+				
+				// Handle 'staked'
+				if let Some(staked_value) = delegation_obj.get("staked") {
+					let staked_amount = match staked_value {
+						Value::Number(n) => n.as_u64().unwrap_or(0),
+						Value::String(s) => s.parse::<u64>().unwrap_or(0),
+						_ => 0,
+					};
+					total_staked += staked_amount;
+				}
+			}
+		}
+	}
 
     json!({
 		"liquid": {
-			"NBTC": total_liquid_nbtc.to_string(),
-			"NOM": total_liquid_nom.to_string()
+			"NBTC": total_liquid_nbtc,
+			"NOM": total_liquid_nom
 		},
-		"staked": total_staked.to_string()
+		"staked": total_staked
     })
 }
 

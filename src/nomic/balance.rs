@@ -75,12 +75,11 @@ pub fn json(
 
     // Construct the output map
     let mut output_map = Map::new();
-    output_map.insert("timestamp".to_string(), Value::String(timestamp.to_string()));
+    output_map.insert("timestamp".to_string(), Value::Number(timestamp.into()));
     output_map.insert("address".to_string(), Value::String(address));
     output_map.insert("balance".to_string(), Value::Object(balance_map));
     output_map.insert("delegations".to_string(), delegations_value);
 
     // Return the result as a Map
     Ok(output_map)
-
 }

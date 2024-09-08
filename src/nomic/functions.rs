@@ -84,7 +84,32 @@ pub fn run_profile(
     journal.insert("profile".to_string(), Value::String(profile_name.to_string()));
 
 	let profile_conf = change_extension(profile_privkey, "conf");
-    let config_data = parse_profile_conf(profile_conf.as_path())?;
+    let mut config_data = parse_profile_conf(profile_conf.as_path())?;
+
+let validator = match config_data.get("VALIDATOR") {
+    Some(value) => value.to_string(),
+    None => {
+        eprintln!("Missing 'config:VALIDATOR' key");
+        return Ok(()); // Adjust this return based on your function's actual return type
+    }
+};
+
+	let voting_power = validator_info.get(&validator)
+		.and_then(|info| info.get("VOTING POWER"))
+		.cloned()
+		.unwrap_or("".to_string()).trim()
+		.parse::<u64>().unwrap_or_default();
+
+	let moniker = validator_info.get(&validator)
+		.and_then(|info| info.get("MONIKER"))
+		.cloned()
+		.unwrap_or_default();
+
+	config_data.insert("moniker".to_string(), moniker);
+	config_data.insert("voting_power".to_string(), voting_power.to_string());
+
+// 	let voting_power = validator_get(
+
     journal.insert("config".to_string(), json!(config_data));
 
     // Serialize journal to a string before parsing
