@@ -1,0 +1,58 @@
+    // Second pass: Adjust widths for numeric columns and pad if necessary
+    for (row_idx, row) in rows.iter().enumerate() {
+        if max_width_row != 0 && (row_idx + 1) == max_width_row {
+            continue;
+        }
+        if header_row != 0 && (row_idx + 1) == header_row {
+            continue;
+        }
+			for (i, &is_numeric) in numeric_columns.iter().enumerate() {
+				if is_numeric {
+					let max_integer = max_integer_places[i];
+					let max_decimal = max_decimal_places[i];
+					// Calculate the width needed for numeric columns
+					let total_width = if max_decimal > 0 {
+						max_integer + 1 + max_decimal // Integer part + decimal point + decimal part
+					} else {
+						max_integer // Only integer part
+					};
+					max_widths[i] = max_widths[i].max(total_width);
+				}
+			}
+
+        }
+    }
+
+    // First pass: Determine max widths and numeric columns
+    for (row_idx, row) in rows.iter().enumerate() {
+        if max_width_row != 0 && (row_idx + 1) == max_width_row {
+            continue;
+        }
+
+        let fields: Vec<&str> = row.split(ifs).collect();
+        for (j, field) in fields.iter().enumerate() {
+            if j >= num_cols {
+                break;
+            }
+            let col_width = field.trim().len();
+            max_widths[j] = max_widths[j].max(col_width);
+
+			// Skip the header row if specified
+			if header_row != 0 && (row_idx + 1) == header_row {
+				continue;
+			}
+
+            if let Ok(_value) = field.trim().parse::<f64>() {
+                let parts: Vec<&str> = field.split('.').collect();
+                let integer_part = parts[0];
+                let decimal_part = if parts.len() > 1 { parts[1] } else { "" };
+                let integer_places = integer_part.len();
+                let decimal_places = decimal_part.len();
+                max_integer_places[j] = max_integer_places[j].max(integer_places);
+                max_decimal_places[j] = max_decimal_places[j].max(decimal_places);
+            } else {
+                numeric_columns[j] = false;
+            }
+        }
+    }
+

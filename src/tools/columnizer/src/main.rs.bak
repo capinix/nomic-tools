@@ -1,0 +1,146 @@
+mod columnizer;
+use clap::Arg;
+use clap::Command;
+use clap::ArgAction;
+use columnizer::ColumnFormatter;
+use std::io::Read;
+use std::io;
+
+fn main() {
+	let matches = Command::new("columnizer")
+		.version("1.0")
+		.about("Formats text into columns with customizable options.")
+		.long_about(
+			"The `columnizer` tool takes input text and formats it into a neatly aligned columnar view.\n\
+			You can specify the number of header rows, a divider line, and separators for fields in both the input and output.")
+		.arg(
+			Arg::new("input")
+				.help("Input text to be formatted. If not provided, reads from stdin.")
+				.index(1)
+				.value_parser(clap::value_parser!(String))
+				.long_help(
+					"If you provide an input text directly, it will be formatted.\n\
+					Otherwise, the tool will read input from standard input (stdin)."
+				),
+		)
+		.arg(
+			Arg::new("ifs")
+				.short('i')
+				.long("ifs")
+				.value_parser(clap::value_parser!(String))
+				.default_value(" ")
+				.help("Input field separator.")
+				.long_help(
+					"Specify the character or string used to separate fields in the input text.\n\
+					The default separator is a space."
+				),
+		)
+		.arg(
+			Arg::new("ofs")
+				.short('o')
+				.long("ofs")
+				.value_parser(clap::value_parser!(String))
+				.default_value(" ")
+				.help("Output field separator.")
+				.long_help(
+					"Specify the character or string used to separate fields in the output text.\n\
+					The default separator is a space."
+				),
+		)
+        .arg(
+            Arg::new("header_row")
+                .short('r')
+                .long("header-row")
+                .value_parser(clap::value_parser!(usize))
+                .default_value("0")
+                .help("The row number of the header or 0 for no header.")
+                .long_help(
+                    "Specify the row number that should be treated as the header.\n\
+                    If you don't want a header, set this to 0.\n\
+                    The header row will not be formatted with column alignment."
+                ),
+        )
+        .arg(
+            Arg::new("max_width_row")
+                .short('w')
+                .long("max-width-row")
+                .value_parser(clap::value_parser!(usize))
+                .default_value("0")
+                .help("The row number that contains the maximum width for each column.")
+                .long_help(
+                    "Specify the row number where each column's maximum width is defined.\n\
+                    This row will be used to determine the column widths for formatting."
+                ),
+        )
+		.arg(
+			Arg::new("divider_char")
+				.short('d')
+				.long("divider-char")
+				.value_parser(clap::value_parser!(char))
+				.default_value(" ")
+				.help("Character used for the divider line between columns.")
+				.long_help(
+					"Set the character that will be used to draw the divider line between columns.\n\
+					The default character is a dash ('-')."
+				),
+		)
+		.arg(
+			Arg::new("pad_decimals")
+				.short('p')
+				.long("pad-decimals")
+				.action(ArgAction::SetTrue) // This indicates that the flag does not require a value
+				.help("Whether to pad decimals in numeric columns.")
+				.long_help(
+					"Set this flag to true if you want to pad the decimals for numeric columns.\n\
+					By default, this is set to false."
+				),
+		)
+		.arg(
+			Arg::new("max_decimals")
+				.short('m')
+				.long("max-decimals")
+				.value_parser(clap::value_parser!(usize))
+				.default_value("2")
+				.help("Maximum number of decimal places to display for numeric columns.")
+				.long_help(
+					"Specify the maximum number of decimal places to display for numeric columns.\n\
+					The default value is 2."
+				),
+		)
+		.get_matches();
+
+
+	let header_row = matches.get_one::<usize>("header_row").cloned().unwrap_or(0);
+	let ifs = matches.get_one::<String>("ifs").cloned().unwrap_or_else(|| " ".to_string());
+	let ofs = matches.get_one::<String>("ofs").cloned().unwrap_or_else(|| " ".to_string());
+	let max_width_row = matches.get_one::<usize>("max_width_row").cloned().unwrap_or(0);
+	let divider_char = matches.get_one::<char>("divider_char").cloned().unwrap_or(' ');
+	// Update argument parsing to handle --pad-decimals
+    let pad_decimals = matches.contains_id("pad_decimals");
+	let max_decimals = matches.get_one::<usize>("max_decimals").cloned().unwrap_or(2);
+
+	let input = if let Some(input_text) = matches.get_one::<String>("input") {
+		input_text.to_string()
+	} else {
+		let mut buf = String::new();
+		io::stdin().read_to_string(&mut buf).expect("Failed to read from stdin");
+		buf
+	};
+
+	// Check if the user provided the 'divider_char' argument and if it's not whitespace
+	let use_divider = matches.contains_id("divider_char") && !divider_char.is_whitespace();
+
+	let formatter = ColumnFormatter::new(&input)
+		.header_row(header_row)
+		.ifs(&ifs)
+		.ofs(&ofs)
+		.max_width_row(max_width_row)
+		.divider(use_divider)
+		.divider_char(divider_char)
+		.pad_decimals(pad_decimals)
+		.max_decimals(max_decimals);
+
+	let formatted_output = formatter.format();
+
+	println!("{}", formatted_output);
+}

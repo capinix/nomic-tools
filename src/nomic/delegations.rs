@@ -4,6 +4,9 @@ use serde_json::Map;
 use serde_json::Value;
 use std::process::Command;
 
+
+
+
 fn run(home_dir: Option<&str>) -> Result<String, Box<dyn std::error::Error>> {
 	// Create and configure the Command
 	let mut cmd = Command::new("nomic");

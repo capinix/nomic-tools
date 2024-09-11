@@ -1,0 +1,221 @@
+
+pub fn format_columns(
+	input:                   &str,  // The text to be formatted                                                  
+	ifs:                     &str,  // Input Field Separator                                                                       
+	ofs:                     &str,  // Output Field Separator                                                                       
+	header_row:              usize, // Which row is the header or 0 for no header           
+	max_width_row:           usize, // A row containing max widths of each column or 0 not to bother
+	format_string_row:       usize, // A row containing rust format string  of each column or 0 not to bother
+	add_divider:             bool,  // Whether to include a divider line before the data                   
+	divider_char:            char,  // Divider Character                                                                             
+	pad_decimal_digits:      bool,  // Do we align the decimals padding with 0 at the end if necessary
+	max_decimal_digits:      usize, // Limit the number of decimal places                                          
+	decimal_separator:       char,  // character seperating decimals, defauts to "."                                             
+	add_thousand_separator:  bool,  // Add thousands seperator if set                                                        
+	thousand_separator:      char   // character seperating thousands, defauts to ","                                             
+) -> String {
+
+	println!( "input\n-----\n{}",         input                  );
+	println!( "ifs{}",                    ifs                    );
+	println!( "ofs{}",                    ofs                    );
+	println!( "header_row{}",             header_row             );
+	println!( "max_width_row{}",          max_width_row          );
+	println!( "add_divider{}",            add_divider            );
+	println!( "divider_char{}",           divider_char           );
+	println!( "pad_decimal_digits}",      pad_decimal_digits     );
+	println!( "max_decimal_digits}",      max_decimal_didits     );
+	println!( "decimal_char{}",           decimal_char           );
+	println!( "add_thousand_separator{}", add_thousand_separator );
+	println!( "thousand_separator{}",     thousand_separator     );
+
+
+
+
+
+
+    let rows: Vec<String> = input.lines().map(|s| s.to_string()).collect();
+    let num_rows = rows.len();
+
+
+    if num_rows == 0 { return String::new(); }
+
+    // Determine the number of columns based on the first row
+    let num_cols = rows.first().unwrap_or(&String::new()).split(ifs).count();
+
+    // Initialize max widths
+    let mut max_widths: Vec<usize> = if max_width_row != 0 {
+        // Extract max widths from max_width_row
+        if let Some(max_width_row_str) = rows.get(max_width_row - 1) {
+            max_width_row_str.split(ifs)
+                .enumerate()
+                .map(|(_i, field)| {
+                    // Parse width from max_width_row, default to 0 if parsing fails
+                    field.trim().parse().unwrap_or(0)
+                })
+                .collect()
+        } else {
+            vec![0; num_cols] // Default if max_width_row is out of range
+        }
+    } else {
+        vec![0; num_cols] // Default if no max_width_row
+    };
+
+    // Initialize numeric columns
+    let mut numeric_columns: Vec<bool> = vec![true; num_cols];
+    let mut max_decimal_places: Vec<usize> = vec![0; num_cols];
+    let mut max_integer_places: Vec<usize> = vec![0; num_cols];
+
+    // Calculate max widths and identify numeric columns
+    for (row_index, row) in rows.iter().enumerate() {
+        // Skip max_width_row if specified
+        if max_width_row != 0 && (row_index + 1) == max_width_row {
+            continue;
+        }
+
+        let fields: Vec<&str> = row.split(ifs).collect();
+        for (j, field) in fields.iter().enumerate() {
+            if j >= max_widths.len() {
+                break;
+            }
+
+            let col_width = field.trim().len();
+            max_widths[j] = max_widths[j].max(col_width);
+
+            // Skip header_row if specified
+            if header_row != 0 && (row_index + 1) == header_row {
+                continue;
+            }
+            // Determine if the column is numeric and update decimal places
+            if let Ok(_value) = field.trim().parse::<f64>() {
+				let parts: Vec<&str> = field.split('.').collect();
+				let integer_part = parts[0];
+				let decimal_part = if parts.len() > 1 { parts[1] } else { "" };
+                let integer_places = integer_part.len();
+                let decimal_places = decimal_part.len();
+                max_integer_places[j] = max_integer_places[j].max(integer_places);
+                max_decimal_places[j] = max_decimal_places[j].max(decimal_places);
+				max_widths[j] = max_integer_places[j] + max_decimal_places[j];
+				if max_integer_places[j] > 0 { max_widths[j] += 1; }
+            } else {
+                numeric_columns[j] = false; // Mark column as non-numeric if any field is non-numeric
+            }
+        }
+    }
+
+	println!("max_widths: {:?}", max_widths);
+	println!("max_integer_places: {:?}", max_integer_places);
+	println!("max_decimal_places: {:?}", max_decimal_places);
+	println!("numeric_columns: {:?}", numeric_columns);
+
+    let mut output = String::new();
+    // Create the divider line if needed
+    let mut divider_line = String::new();
+    if divider {
+        divider_line = max_widths
+            .iter()
+            .map(|&w| divider_char.to_string().repeat(w)) // Create a divider of appropriate width
+            .collect::<Vec<String>>()
+            .join(ofs); // Join with output separator
+    }
+
+    // Add the headers if header_row is specified
+    if header_row != 0 {
+        if let Some(header_row_str) = rows.get(header_row - 1) {
+            let fields: Vec<&str> = header_row_str.split(ifs).collect();
+            let formatted_fields: Vec<String> = fields
+                .iter()
+                .enumerate()
+                .map(|(i, &field)| {
+                    // Truncate fields that exceed the maximum width
+                    let width = max_widths[i];
+                    let truncated_field = if field.len() > width {
+                        field[..width].to_string() // Convert to String
+                    } else {
+                        field.to_string()
+                    };
+
+                    if numeric_columns[i] {
+                        format!("{:>width$}", truncated_field, width = width)
+                    } else {
+                        format!("{:<width$}", truncated_field, width = width)
+                    }
+                })
+                .collect();
+            output.push_str(&formatted_fields.join(ofs));
+            output.push('\n');
+        }
+    }
+
+    // Add the header divider line if needed
+    if header_row > 0 && divider {
+        output.push_str(&divider_line);
+        output.push('\n');
+    }
+
+    // Add the rest of the rows, skipping header_row and max_width_row
+    for (i, row) in rows.iter().enumerate() {
+        // Skip max_width_row if specified
+        if max_width_row != 0 && (i + 1) == max_width_row {
+            continue;
+        }
+
+        // Skip header_row if specified
+        if header_row != 0 && (i + 1) == header_row {
+            continue;
+        }
+
+        let fields: Vec<&str> = row.split(ifs).collect();
+        let formatted_fields: Vec<String> = fields
+            .iter()
+            .enumerate()
+            .map(|(j, &field)| {
+                let width = max_widths[j];
+
+                if numeric_columns[j] {
+                    // Handle numeric formatting and decimal padding
+                    let value = field.trim();
+                    let padded_number = if max_decimals == 0 || !pad_decimals {
+                        // Include the full value and trim if no decimal padding
+                        format!("{:>width$}", value, width = width)
+                    } else {
+                        let parts: Vec<&str> = value.split('.').collect();
+                        let integer_part = parts[0];
+                        let decimal_part = if parts.len() > 1 { parts[1] } else { "" };
+
+                        // Calculate how many zeros to add for padding
+//                         let pad_qty = max_decimals.saturating_sub(decimal_part.len());
+//                         let adjusted_width = width.saturating_sub(pad_qty);
+
+                        // Pad the fractional part
+                        let padded_fractional_part = if decimal_part.len() < max_decimals {
+                            format!("{:0<1$}", decimal_part, max_decimals)
+                        } else {
+                            decimal_part.to_string()
+                        };
+
+                        // Combine integer and padded fractional parts
+                        let temp = if padded_fractional_part.is_empty() {
+                            integer_part.to_string()
+                        } else {
+                            format!("{}.{}", integer_part, padded_fractional_part)
+                        };
+                        format!("{:>width$}", temp, width = width)
+                    };
+                    padded_number
+                } else {
+                    // Column is not numeric, format normally
+                    let truncated_field = if field.len() > width {
+                        field[..width].to_string() // Convert to String
+                    } else {
+                        field.to_string()
+                    };
+                    format!("{:<width$}", truncated_field, width = width)
+                }
+            })
+            .collect();
+        output.push_str(&formatted_fields.join(ofs));
+        output.push('\n');
+    }
+
+    output
+}

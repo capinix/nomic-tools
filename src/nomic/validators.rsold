@@ -1,0 +1,266 @@
+use std::process::Command;
+use indexmap::IndexMap;
+use num_format::{Locale, ToFormattedString};
+use crate::globals::NOMIC;
+use std::error::Error;
+
+pub fn run() -> Result<String, Box<dyn std::error::Error>> {
+	// Create and configure the Command
+	let mut cmd = Command::new(NOMIC);
+	cmd.arg("validators");
+
+	// Execute the command
+	let output = cmd.output()?;
+
+	// Check if the command was successful
+	if !output.status.success() {
+		return Err(format!("nomic validators command failed with output: {:?}", output).into());
+	}
+
+	// Convert the command output to a string
+	let output_str = String::from_utf8_lossy(&output.stdout).to_string();
+
+	Ok(output_str)
+}
+
+/// Function to clean a field by removing non-graphic characters and whitespace
+fn clean_field(field: &str) -> String {
+	field.chars()
+		 .filter(|&c| c.is_ascii_graphic() || c.is_whitespace())
+		 .collect::<String>()
+		 .trim()
+		 .to_string()
+}
+
+pub fn json() -> Result<IndexMap<String, IndexMap<String, String>>, Box<dyn std::error::Error>> {
+	let output_str = run()?;
+	let lines: Vec<&str> = output_str.lines().collect();
+
+	let mut array = IndexMap::new();
+	let mut rank = 1; // Start rank from 1
+
+	for chunk in lines.chunks(4) {
+		if chunk.len() == 4 {
+			let address = chunk[0].trim().trim_start_matches('-').trim().to_string();
+			let voting_power = chunk[1].split(':').nth(1).unwrap_or("").trim().to_string();
+			let moniker_temp = chunk[2].split(':').nth(1).unwrap_or("").trim().to_string();
+			let moniker = clean_field(&moniker_temp);
+			let details = chunk[3].split(':').nth(1).unwrap_or("").trim().to_string();
+
+			// Construct the JSON structure for each validator
+			let mut record = IndexMap::new();
+			record.insert("VOTING POWER".to_string(), voting_power);
+			record.insert("MONIKER".to_string(), moniker);
+			record.insert("RANK".to_string(), rank.to_string());
+			record.insert("DETAILS".to_string(), details.to_string());
+
+			array.insert(address, record);
+
+			rank += 1;
+		}
+	}
+
+	Ok(array)
+}
+
+#[derive(Debug)]
+pub struct Validator {
+    rank: u32,
+    address: String,
+    voting_power: u64,
+    moniker: String,
+    details: String,
+}
+
+impl Validator {
+    // Constructor method
+    pub fn new(rank: u32, address: String, voting_power: u64, moniker: String, details: String) -> Self {
+        Self {
+            rank,
+            address,
+            voting_power,
+            moniker,
+            details,
+        }
+    }
+
+    pub fn f_rank(&self) -> String {
+        self.rank.to_formatted_string(&Locale::en)
+    }
+
+    pub fn f_voting_power(&self) -> String {
+        (self.voting_power / 1_000_000).to_formatted_string(&Locale::en)
+    }
+
+    pub fn f_details(&self) -> String {
+        let max_length = 36;
+        if self.details.chars().count() <= max_length {
+            self.details.clone()
+        } else {
+            self.details.chars().take(max_length).collect()
+        }
+    }
+
+}
+
+pub struct ValidatorCollection {
+    validators: Vec<Validator>,
+    max_field_widths: [usize; 5],
+}
+
+impl ValidatorCollection {
+
+    pub fn new() -> Self {
+        // Calculate initial widths based on header names
+        let header_names = ["Rank", "Address", "Voting Power", "Moniker", "Details"];
+        let max_field_widths = [
+            header_names[0].len(), // "Rank"
+            header_names[1].len(), // "Address"
+            header_names[2].len(), // "Voting Power"
+            header_names[3].len(), // "Moniker"
+            header_names[4].len(), // "Details"
+        ];
+
+        Self {
+            validators: Vec::new(),
+            max_field_widths,
+        }
+    }
+
+	pub fn raw(&self) -> Result<String, Box<dyn std::error::Error>> {
+		// Create and configure the Command
+		let mut cmd = Command::new(NOMIC);
+		cmd.arg("validators");
+
+		// Execute the command
+		let output = cmd.output()?;
+
+		// Check if the command was successful
+		if !output.status.success() {
+			return Err(format!("nomic validators command failed with output: {:?}", output).into());
+		}
+
+		// Convert the command output to a string
+		let output_str = String::from_utf8_lossy(&output.stdout).to_string();
+
+		Ok(output_str)
+	}
+
+    pub fn init(&mut self) -> Result<(), Box<dyn Error>> {
+
+		let input = self.raw()?;
+
+        let lines: Vec<&str> = input.lines().collect();
+        let mut rank = 1; // Start rank from 1
+
+        for chunk in lines.chunks(4) {
+            if chunk.len() == 4 {
+                let address = chunk[0].trim().trim_start_matches('-').trim().to_string();
+                let voting_power_str = chunk[1].split(':').nth(1).unwrap_or("").trim().to_string();
+                let voting_power = voting_power_str.parse::<u64>().unwrap_or(0);
+                let moniker = chunk[2].split(':').nth(1).unwrap_or("").trim().to_string();
+                let details = chunk[3].split(':').nth(1).unwrap_or("").trim().to_string();
+
+                let validator = Validator::new(rank, address, voting_power, moniker, details);
+                self.insert(validator);
+
+                rank += 1;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn insert(&mut self, validator: Validator) {
+        let widths = [
+            validator.f_rank().len(),
+            validator.address.len(),
+            validator.f_voting_power().len(),
+            validator.moniker.len(),
+            validator.f_details().len(),
+        ];
+
+        for (i, &width) in widths.iter().enumerate() {
+            if width > self.max_field_widths[i] {
+                self.max_field_widths[i] = width;
+            }
+        }
+
+        self.validators.push(validator);
+    }
+
+    pub fn get_max_field_widths(&self) -> [usize; 5] {
+        self.max_field_widths
+    }
+
+    pub fn table(&self) -> String {
+        let widths = self.get_max_field_widths();
+
+        // Header row
+        let mut output = format!(
+            "{:>width0$} {:<width1$} {:>width2$} {:<width3$} {:<width4$}\n",
+            "Rank",
+            "Address",
+            "Voting Power",
+            "Moniker",
+            "Details",
+            width0 = widths[0],
+            width1 = widths[1],
+            width2 = widths[2],
+            width3 = widths[3],
+            width4 = widths[4]
+        );
+
+        // Separator row
+        output.push_str(&format!(
+            "{:-<width0$} {:-<width1$} {:-<width2$} {:-<width3$} {:-<width4$}\n",
+            "",
+            "",
+            "",
+            "",
+            "",
+            width0 = widths[0],
+            width1 = widths[1],
+            width2 = widths[2],
+            width3 = widths[3],
+            width4 = widths[4]
+        ));
+
+        // Data rows
+        for validator in &self.validators {
+            output.push_str(&format!(
+                "{:>width0$} {:<width1$} {:>width2$} {:<width3$} {:<width4$}\n",
+                validator.f_rank(),
+                validator.address,
+                validator.f_voting_power(),
+                validator.moniker,
+                validator.f_details(),
+                width0 = widths[0],
+                width1 = widths[1],
+                width2 = widths[2],
+                width3 = widths[3],
+                width4 = widths[4]
+            ));
+        }
+
+        output
+    }
+
+
+    // Method to return data in JSON format
+    pub fn json(&self) -> Result<String, serde_json::Error> {
+        let mut array = IndexMap::new();
+
+        for validator in &self.validators {
+            let mut record = IndexMap::new();
+            record.insert("VOTING POWER".to_string(), validator.voting_power.to_string());
+            record.insert("MONIKER".to_string(), validator.moniker.clone());
+            record.insert("RANK".to_string(), validator.rank.to_string());
+            record.insert("DETAILS".to_string(), validator.details.to_string());
+
+            array.insert(validator.address.clone(), record);
+        }
+
+        serde_json::to_string(&array)
+    }
+}
