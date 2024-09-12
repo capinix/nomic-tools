@@ -3,6 +3,12 @@ name = "columnizer"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
 [dependencies]
 clap = "4"  # For command-line argument parsing
-num-format = "0.4"
+
+[[bin]]
+name = "columnizer"
+path = "src/main.rs"

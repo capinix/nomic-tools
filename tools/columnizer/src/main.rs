@@ -1,6 +1,5 @@
-mod format_columns;
+mod columnizer;
 use clap::{Arg, ArgAction, Command};
-use format_columns::format_columns;
 use std::io::{self, Read};
 
 fn main() {
@@ -16,7 +15,6 @@ fn main() {
             Arg::new("input")
                 .help("Input text to be formatted. If not provided, reads from stdin.")
                 .index(1)
-                .required(false)
                 .value_parser(clap::value_parser!(String))
                 .long_help(
                     "Provide input text directly to be formatted. \
@@ -25,11 +23,11 @@ fn main() {
         )
         .arg(
             Arg::new("ifs")
-                .short('i')
-                .long("ifs")
+                .short('I')
+                .long("IFS")
                 .value_parser(clap::value_parser!(String))
                 .default_value(" ")
-                .help("Input field separator.")
+                .help("Separator for fields in the input text.")
                 .long_help(
                     "Specify the character or string used to separate fields in the input text. \
                     The default separator is a space.",
@@ -37,11 +35,11 @@ fn main() {
         )
         .arg(
             Arg::new("ofs")
-                .short('o')
-                .long("ofs")
+                .short('O')
+                .long("OFS")
                 .value_parser(clap::value_parser!(String))
                 .default_value(" ")
-                .help("Output field separator.")
+                .help("Separator for fields in the output text.")
                 .long_help(
                     "Specify the character or string used to separate fields in the output text. \
                     The default separator is a space.",
@@ -53,7 +51,7 @@ fn main() {
                 .long("header-row")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("0")
-                .help("The row number of the header or 0 for no header.")
+                .help("Row number of the header or 0 for no header.")
                 .long_help(
                     "Specify the row number that should be treated as the header. \
                     If you don't want a header, set this to 0. \
@@ -66,7 +64,7 @@ fn main() {
                 .long("max-width-row")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("0")
-                .help("The row number that contains the maximum width for each column.")
+                .help("Row number containing maximum width for each column.")
                 .long_help(
                     "Specify the row number where each column's maximum width is defined. \
                     This row will be used to determine the column widths for formatting.",
@@ -78,7 +76,7 @@ fn main() {
                 .long("format-string-row")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("0")
-                .help("The row number that contains a Rust format string for each column.")
+                .help("Row number containing a Rust format string for each column.")
                 .long_help(
                     "Specify the row number where each column's format string is defined. \
                     This row will be used to determine the columns' format string for formatting.",
@@ -89,8 +87,10 @@ fn main() {
                 .short('d')
                 .long("add-divider")
                 .action(ArgAction::SetTrue)
-                .help("Whether to add a divider line after a possible header before any lines.")
-                .long_help("If set, adds a divider line after the header row and before any other lines."),
+                .help("Add a divider line after the header row.")
+                .long_help(
+                    "If set, adds a divider line after the header row and before any other lines.",
+                ),
         )
         .arg(
             Arg::new("divider_char")
@@ -98,7 +98,7 @@ fn main() {
                 .long("divider-char")
                 .value_parser(clap::value_parser!(char))
                 .default_value("-")
-                .help("Character used for the divider line between columns.")
+                .help("Character used for the divider line.")
                 .long_help(
                     "Set the character that will be used to draw the divider line between columns. \
                     The default character is a dash ('-').",
@@ -109,10 +109,10 @@ fn main() {
                 .long("max-text-width")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("40")
-                .help("Text fields will be trimmed to a max of this length")
+                .help("Maximum length of text fields.")
                 .long_help(
                     "Specify the maximum length of text fields. \
-                    Text fields will be trimmed to fit this",
+                    Text fields will be trimmed to fit this length.",
                 ),
         )
         .arg(
@@ -120,7 +120,7 @@ fn main() {
                 .short('p')
                 .long("pad-decimal-digits")
                 .action(ArgAction::SetTrue)
-                .help("Whether to pad decimals in numeric columns.")
+                .help("Pad decimal digits in numeric columns.")
                 .long_help(
                     "Set this flag to true if you want to pad the decimals for numeric columns. \
                     By default, this is set to false.",
@@ -132,7 +132,7 @@ fn main() {
                 .long("max-decimal-digits")
                 .value_parser(clap::value_parser!(usize))
                 .default_value("2")
-                .help("Maximum number of decimal places to display for numeric columns.")
+                .help("Maximum number of decimal places for numeric columns.")
                 .long_help(
                     "Specify the maximum number of decimal places to display for numeric columns. \
                     The default value is 2.",
@@ -144,7 +144,7 @@ fn main() {
                 .long("decimal-separator")
                 .value_parser(clap::value_parser!(char))
                 .default_value(".")
-                .help("Decimal separator (e.g., '.' for English or ',' for French).")
+                .help("Character used as a decimal separator.")
                 .long_help(
                     "Specify the character used as a decimal separator. \
                     The default value is '.'.",
@@ -155,8 +155,10 @@ fn main() {
                 .short('t')
                 .long("add-thousand-separator")
                 .action(ArgAction::SetTrue)
-                .help("If set, adds a thousands separator to numbers.")
-                .long_help("If set, adds a thousands separator to numbers."),
+                .help("Add a thousands separator to numbers.")
+                .long_help(
+                    "If set, adds a thousands separator to numbers.",
+                ),
         )
         .arg(
             Arg::new("thousand_separator")
@@ -164,7 +166,7 @@ fn main() {
                 .long("thousand-separator")
                 .value_parser(clap::value_parser!(char))
                 .default_value(",")
-                .help("Thousands separator (e.g., ',' for English or '.' for French).")
+                .help("Character used as a thousands separator.")
                 .long_help(
                     "Specify the character used as a thousands separator. \
                     The default value is ','.",
@@ -182,7 +184,7 @@ fn main() {
     let divider_char = *matches.get_one::<char>("divider_char").expect("default value is set");
     let max_text_width = *matches.get_one::<usize>("max_text_width").expect("default value is set");
     let pad_decimal_digits = *matches.get_one::<bool>("pad_decimal_digits").expect("default value is set");
-    let max_decimal_digits = *matches.get_one::<usize>("max_decimal_digits").expect("default value is set"); // Corrected
+    let max_decimal_digits = *matches.get_one::<usize>("max_decimal_digits").expect("default value is set");
     let decimal_separator = *matches.get_one::<char>("decimal_separator").expect("default value is set");
     let add_thousand_separator = *matches.get_one::<bool>("add_thousand_separator").expect("default value is set");
     let thousand_separator = *matches.get_one::<char>("thousand_separator").expect("default value is set");
@@ -196,7 +198,7 @@ fn main() {
         buf
     };
 
-    let formatted_output = format_columns(
+    let formatted_output = columnizer::run(
         &input,
         &ifs,
         &ofs,

@@ -2,7 +2,7 @@ mod cli;
 mod globals;
 mod nomic { pub mod validators; }
 mod subcommand;
-mod tools { pub mod columnizer; }
+// mod tools { pub mod columnizer; }
 
 use subcommand::dispatch;
 

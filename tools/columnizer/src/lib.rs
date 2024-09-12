@@ -1,8 +1,9 @@
-use format_columns::format_columns;
+pub mod columnizer;
 
-pub struct ColumnFormatter<'a> {
+#[allow(dead_code)]
+pub struct Builder<'a> {
 	input: &'a str,			       // The text to be formatted
-	ifs: &'a str,			       // Input Field Separator
+	ifs: &'a str,		       // Input Field Separator
 	ofs: &'a str,			       // Output Field Separator
 	header_row: usize,  	       // Whiich row is the header or 0 for no header
 	max_width_row: usize, 		   // A row containing max widths of each column or 0 not to bother
@@ -17,9 +18,10 @@ pub struct ColumnFormatter<'a> {
 	thousand_separator: char,      // seperator for thousands, 0,000, 0.000
 }
 
-impl<'a> ColumnFormatter<'a> {
+#[allow(dead_code)]
+impl<'a> Builder<'a> {
 	pub fn new(input: &'a str) -> Self {
-		ColumnFormatter {
+		Builder {
 			input,
 			ifs:                    " "   , // Default Input Field Separator
 			ofs:                    " "   , // Default Output Field Separator
@@ -37,86 +39,23 @@ impl<'a> ColumnFormatter<'a> {
 		}
 	}
 
-	#[allow(dead_code)]
-	pub fn ifs(mut self, separator: &'a str) -> Self {
-		self.ifs = separator;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn ofs(mut self, separator: &'a str) -> Self {
-		self.ofs = separator;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn header_row(mut self, row: usize) -> Self {
-		self.header_row = row;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn max_width_row(mut self, row: usize) -> Self {
-		self.max_width_row = row;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn format_string_row(mut self, row: usize) -> Self {
-		self.format_string_row = row;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn add_divider(mut self, add_divider: bool) -> Self {
-		self.divider = add_divider;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn divider_char(mut self, divider_char: char) -> Self {
-		self.divider_char = divider_char;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn max_text_width(mut self, max_text_width: char) -> Self {
-		self.max_text_width = max_text_width;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn pad_decimal_digits(mut self, pad_decimal_digits: bool) -> Self {
-		self.pad_decimal_digits = pad_decimal_digits;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn max_decimal_digits(mut self, max_decimal_digits: usize) -> Self {
-		self.max_decimal_digits = max_decimal_digits;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn decimal_separator(mut self, decimal_separator: char) -> Self {
-		self.decimal_separator = decimal_separator;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn add_thousand_separator(mut self, add_thousand_separator: bool) -> Self {
-		self.add_thousand_separator = add_thousand_separator;
-		self
-	}
-
-	#[allow(dead_code)]
-	pub fn thousand_separator(mut self, thousand_separator: separator) -> Self {
-		self.thousand_separator = thousand_separator;
-		self
-	}
+	pub fn ifs(mut self, ifs: &'a str) -> Self { self.ifs = ifs; self }
+	pub fn ofs(mut self, ofs: &'a str) -> Self { self.ofs = ofs; self }
+	pub fn header_row(mut self, row: usize) -> Self { self.header_row = row; self }
+	pub fn max_width_row(mut self, row: usize) -> Self { self.max_width_row = row; self }
+	pub fn format_string_row(mut self, row: usize) -> Self { self.format_string_row = row; self }
+	pub fn add_divider(mut self, add: bool) -> Self { self.add_divider = add; self }
+	pub fn divider_char(mut self, divider_char: char) -> Self { self.divider_char = divider_char; self }
+	pub fn max_text_width(mut self, max_text_width: usize) -> Self { self.max_text_width = max_text_width; self }
+	pub fn pad_decimal_digits(mut self, pad_decimal_digits: bool) -> Self { self.pad_decimal_digits = pad_decimal_digits; self }
+	pub fn max_decimal_digits(mut self, max_decimal_digits: usize) -> Self { self.max_decimal_digits = max_decimal_digits; self }
+	pub fn decimal_separator(mut self, decimal_separator: char) -> Self { self.decimal_separator = decimal_separator; self }
+	pub fn add_thousand_separator(mut self, add_thousand_separator: bool) -> Self { self.add_thousand_separator = add_thousand_separator; self }
+	pub fn thousand_separator(mut self, thousand_separator: char) -> Self { self.thousand_separator = thousand_separator; self }
 
 	pub fn format(self) -> String {
-		format_columns(
+//		println!("input:\n------\n\n{}", self.input);
+		columnizer::run (
 			self.input, 
 			self.ifs, 
 			self.ofs,

@@ -1,15 +1,21 @@
+use std::num::ParseFloatError;
 
 /// Truncates a string to a maximum number of characters and appends an ellipsis if needed.
 ///
+/// This function ensures that the resulting string does not exceed the specified maximum width.
+/// If the original string is longer than `max_text_width`, it is truncated and an ellipsis ("...") is appended.
+///
 /// # Arguments
 ///
-/// * `text` - The string to be truncated.
-/// * `max_text_width` - The maximum number of characters allowed.
+/// * `text` - The string to be truncated. This is the text that will be shortened if necessary.
+/// * `max_text_width` - The maximum number of characters allowed in the output string. 
+/// If `max_text_width` is less than or equal to 3, the function will truncate to that length without appending an ellipsis.
 ///
 /// # Returns
 ///
-/// A truncated string with an ellipsis if the original string is longer than `max_text_width`.
-
+/// A `String` that contains the truncated version of `text`, appended with "..."
+/// if the original string was longer than `max_text_width`. 
+/// If `text` is shorter than or equal to `max_text_width`, it is returned unchanged.
 fn truncate_string(text: &str, max_text_width: usize) -> String {
 	if max_text_width <= 3 {
 	    return text.chars().take(max_text_width).collect::<String>();
@@ -23,26 +29,25 @@ fn truncate_string(text: &str, max_text_width: usize) -> String {
 }
 
 /// Formats a numeric cell value and indicates whether it is numeric. 
-/// Adds padding, thousands separators, and custom decimal separators as specified.
+/// This function adds padding, thousands separators, and custom decimal separators as specified, 
+/// and returns the formatted value along with a boolean indicating if it was successfully parsed as a number.
 ///
 /// # Arguments
 ///
-/// * `input` - The cell value to format.
-/// * `max_text_width` - The maximum width allowed for the formatted value.
-/// * `pad_decimal_digits` - A boolean indicating whether to pad decimal digits.
-/// * `max_decimal_digits` - The maximum number of decimal digits (only used if `pad_decimal_digits` is true).
-/// * `decimal_separator` - The character used as the decimal separator.
-/// * `add_thousand_separator` - A boolean indicating whether to add a thousand separator.
-/// * `thousand_separator` - The character used as the thousand separator.
+/// * `input` - The cell value to format, which is expected to be a string representation of a number.
+/// * `max_text_width` - The maximum width allowed for the formatted value. This determines if the value should be truncated.
+/// * `pad_decimal_digits` - A boolean indicating whether to pad decimal digits to ensure a consistent number of decimal places.
+/// * `max_decimal_digits` - The maximum number of decimal digits to display, used only if `pad_decimal_digits` is true.
+/// * `decimal_separator` - The character to use as the decimal separator (e.g., '.' or ',').
+/// * `add_thousand_separator` - A boolean indicating whether to include a thousand separator in the integer part of the number.
+/// * `thousand_separator` - The character to use as the thousand separator (e.g., ',' or ' ').
 ///
 /// # Returns
 ///
 /// A tuple containing:
-/// * A boolean indicating if the cell value is numeric.
-/// * The formatted or truncated cell value as a string.
-
-use std::num::ParseFloatError;
-
+/// * A boolean indicating whether the cell value was successfully parsed as a numeric value.
+/// * The formatted value as a `String`. If parsing fails, the original `input` string is returned 
+///   truncated to `max_text_width`, or as-is if `max_text_width` is zero.
 fn format_content(
 	input: &str,
 	max_text_width: usize,
@@ -116,24 +121,25 @@ fn format_content(
 	}
 }
 
-use std::collections::HashSet;
-
 /// Processes the input data to create vectors for rows and determine numeric columns,
 /// formatting each numeric cell based on the given parameters.
 ///
+/// This function parses the input text into rows and columns, extracts special rows (header, max width, and format strings),
+/// and formats each cell according to its type (numeric or text) using the provided formatting options.
+///
 /// # Arguments
 ///
-/// * `input` - The input text to be processed.
-/// * `ifs` - The input field separator used to split columns.
-/// * `header_row` - The row number of the header or 0 if there is no header.
-/// * `max_width_row` - The row number that contains the maximum width for each column or 0 if not applicable.
-/// * `format_string_row` - The row number that contains format strings for each column or 0 if not applicable.
-/// * `max_text_width` - The maximum width allowed for text cells.
-/// * `pad_decimal_digits` - A boolean indicating whether to pad decimal digits.
-/// * `max_decimal_digits` - The maximum number of decimal digits (used only if `pad_decimal_digits` is true).
-/// * `decimal_separator` - The character used as the decimal separator.
-/// * `add_thousand_separator` - A boolean indicating whether to add a thousand separator.
-/// * `thousand_separator` - The character used as the thousand separator.
+/// * `input` - The input text to be processed, which should be formatted as rows of columns separated by `ifs`.
+/// * `ifs` - The input field separator used to split columns in the input text.
+/// * `header_row` - The row number of the header (1-based index) or 0 if there is no header.
+/// * `max_width_row` - The row number (1-based index) that contains the maximum width for each column or 0 if not applicable.
+/// * `format_string_row` - The row number (1-based index) that contains format strings for each column or 0 if not applicable.
+/// * `max_text_width` - The maximum width allowed for text cells before truncating.
+/// * `pad_decimal_digits` - A boolean indicating whether to pad decimal digits to a consistent length.
+/// * `max_decimal_digits` - The maximum number of decimal digits to display, used only if `pad_decimal_digits` is true.
+/// * `decimal_separator` - The character used as the decimal separator (e.g., '.' or ',').
+/// * `add_thousand_separator` - A boolean indicating whether to include a thousand separator in numeric values.
+/// * `thousand_separator` - The character to use as the thousand separator (e.g., ',' or ' ').
 ///
 /// # Returns
 ///
@@ -142,8 +148,7 @@ use std::collections::HashSet;
 /// * A vector representing the header row.
 /// * A vector representing the maximum width row.
 /// * A vector representing the format string row.
-/// * A HashSet containing the indices of numeric columns.
-
+/// * A vector of booleans indicating which columns are numeric.
 fn process_data(
     input: &str,
 	ifs: &str,
@@ -161,14 +166,14 @@ fn process_data(
     Vec<String>,      // Header row
     Vec<usize>,       // Max width row
     Vec<String>,      // Format string row
-    HashSet<usize>    // Numeric columns
+    Vec<bool>         // Numeric columns
 ) {
     let mut rows: Vec<Vec<String>> = Vec::new();
-    let mut numeric_columns = HashSet::new();
     let mut num_columns = 0;
+	let trimmed: &str = input.trim_start().trim_end();
 
     // Split input into lines
-    let lines: Vec<&str> = input.lines().collect();
+    let lines: Vec<&str> = trimmed.lines().collect();
 
     // Process each line into columns using the custom field separator
     for line in lines {
@@ -176,6 +181,7 @@ fn process_data(
         num_columns = num_columns.max(columns.len());
         rows.push(columns);
     }
+    let mut numeric_columns = vec![true; num_columns];
 
     // Extract special rows if they exist
     let header_row_data = if header_row > 0 && header_row <= rows.len() {
@@ -238,8 +244,8 @@ fn process_data(
                 thousand_separator
             );
 
-            if is_numeric {
-                numeric_columns.insert(col_index);
+            if !is_numeric {
+                numeric_columns[col_index] = false;
             }
             
             *col_value = formatted_value;
@@ -261,10 +267,10 @@ fn process_data(
 /// # Returns
 ///
 /// A vector of usize values where each value represents the maximum width of the corresponding column.
-
 fn calculate_max_column_widths(
     header_data: &[String],
     max_width_data: &[usize],
+    numeric_columns: &Vec<bool>,
     data: &[Vec<String>]
 ) -> Vec<usize> {
     // Determine the number of columns (assuming all rows have the same number of columns)
@@ -284,7 +290,7 @@ fn calculate_max_column_widths(
     for row in data {
         for (i, cell) in row.iter().enumerate() {
             // Apply truncation based on max_width_data if available
-            let truncated_cell = if i < max_width_data.len() && max_width_data[i] > 0 {
+            let truncated_cell = if i < max_width_data.len() && max_width_data[i] > 0 && ! numeric_columns[i] {
                 truncate_string(cell, max_width_data[i])
             } else {
                 cell.clone()
@@ -307,11 +313,11 @@ fn generate_output(
     header_data: &[String],
     format_string_data: &[String],
     column_widths: &[usize],
-    numeric_columns: &HashSet<usize>,
+    numeric_columns: &Vec<bool>,
     data: &[Vec<String>]
 ) -> String {
 
-	println!("numeric_columns: {:?}", numeric_columns);
+// 	println!("numeric_columns: {:?}", numeric_columns);
 
     let mut output = String::new();
 
@@ -345,7 +351,7 @@ fn generate_output(
 	if header_row > &0 {
 		let row: Vec<String> = header_data.iter().enumerate().map(|(i, cell)| {
 			let width = *column_widths.get(i).unwrap_or(&0);
-			let is_numeric = numeric_columns.contains(&i);  // Use HashSet's contains method
+			let is_numeric = numeric_columns[i];  // Use HashSet's contains method
 			let format_str = format_string_data.get(i).unwrap_or(&default_format_str);  // Safely access format string
 			format_cell(cell, width, is_numeric, format_str)
 		}).collect();
@@ -368,7 +374,7 @@ fn generate_output(
     for row in data {
         let formatted_row: Vec<String> = row.iter().enumerate().map(|(i, cell)| {
             let width = *column_widths.get(i).unwrap_or(&0);
-			let is_numeric = numeric_columns.contains(&i);  // Use HashSet's contains method
+			let is_numeric = numeric_columns[i];  // Use HashSet's contains method
 			let format_str = format_string_data.get(i).unwrap_or(&default_format_str);  // Safely access format string
             format_cell(cell, width, is_numeric, format_str)
         }).collect();
@@ -376,7 +382,7 @@ fn generate_output(
         output.push('\n');
     }
 
-    output
+    output.trim_end().to_string()
 }
 
 /// Formats a block of text into aligned columns based on various formatting parameters.
@@ -402,7 +408,7 @@ fn generate_output(
 ///
 /// A formatted string with the input data aligned into columns according to the specified parameters.
 
-pub fn format_columns(
+pub fn run(
 	input:                   &str,  // The text to be formatted                                                  
 	ifs:                     &str,  // Input Field Separator                                                                       
 	ofs:                     &str,  // Output Field Separator                                                                       
@@ -434,9 +440,12 @@ pub fn format_columns(
 		thousand_separator
 	);
 
+// 	println!("numeric_columns: {:?}", numeric_columns);
+
     let column_widths = calculate_max_column_widths(
 		&header_data,
 		&max_width_data,
+		&numeric_columns,
 		&data);
 
     let output = generate_output(
@@ -453,6 +462,12 @@ pub fn format_columns(
 
     output
 }
+
+
+
+
+
+// unit tests
 
 #[cfg(test)]
 mod tests {

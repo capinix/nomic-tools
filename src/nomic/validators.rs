@@ -1,5 +1,5 @@
 use crate::globals::NOMIC;
-use crate::tools::columnizer::ColumnFormatter;
+use columnizer;
 use indexmap::IndexMap;
 use num_format::Locale;
 use num_format::ToFormattedString;
@@ -12,7 +12,7 @@ use std::process::Command;
 const DETAILS_MAX_WIDTH: usize = 36;
 const HEADER_NAMES: [&'static str; 5] = ["Rank", "Address", "Voting Power", "Moniker", "Details"];
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Validator {
 	rank: u32,
 	address: String,
@@ -149,110 +149,91 @@ impl ValidatorCollection {
         self.validators.iter().find(|v| v.address == address)
     }
 
-	pub fn table2(&self) {
+	pub fn search_by_moniker(&self, search: &str) -> Option<Vec<Validator>> {
+		let search_lower = search.to_lowercase();
 
-		// source about 5k bytes
-        let mut output = String::with_capacity(6144);
+		// Collect validators that match the search criteria
+		let matching_validators: Vec<Validator> = self
+			.validators
+			.iter()
+			.filter(|validator| validator.moniker.to_lowercase().contains(&search_lower))
+			.cloned()  // Clone each `Validator` from the iterator (because `self.validators` is a reference)
+			.collect();
 
-        // Construct the header
-		output.push_str(HEADER_NAMES.join("\x1C"));
+		if matching_validators.is_empty() {
+			None // No results found
+		} else {
+			Some(matching_validators) // Return results
+		}
+	}
 
-        // Data rows
-        for validator in &self.validators {
-            output.push_str(&self.table_detail(widths, &validator));
-        }
+	pub fn search_by_moniker_table(&self, search: &str) -> String {
+		if let Some(validators) = self.search_by_moniker(search) {
+			self.table_template(&validators)
+		} else {
+			println!("Validator not found");  // Return a String when the validator is not found
+		}
+	}
 
 
 	}
 
-    pub fn table_header(&self, widths: [usize; 5]) -> String {
+	fn table_template (&self, data: &Vec<Validator>) {
 
-		let mut output = String::with_capacity(2);
+		// Source about 5k bytes
+		let mut output = String::with_capacity(6144);
 
-		// Header row
-		output.push_str(&format!(
-			"{:>width0$} {:<width1$} {:>width2$} {:<width3$} {:<width4$}\n",
-			"Rank",
-			"Address",
-			"Voting Power",
-			"Moniker",
-			"Details",
-			width0 = widths[0],
-			width1 = widths[1],
-			width2 = widths[2],
-			width3 = widths[3],
-			width4 = widths[4]
-		));
+		// Construct the header
+		output.push_str(&HEADER_NAMES.join("\x1C"));
+		output.push('\n');
+ 
+ 		// Maximum Column Widths
+ 		output.push_str(&format!("{}\x1C{}\x1C{}\x1C{}\x1C{}", 0, 80, 0, 0, 20));
+ 		output.push('\n');
 
-		// Separator row
-		output.push_str(&format!(
-			"{:-<width0$} {:-<width1$} {:-<width2$} {:-<width3$} {:-<width4$}\n",
-			"",
-			"",
-			"",
-			"",
-			"",
-			width0 = widths[0],
-			width1 = widths[1],
-			width2 = widths[2],
-			width3 = widths[3],
-			width4 = widths[4]
-		));
+		// Data rows
+		for validator in data {
+			// Manually format the Validator fields with '\x1C' as the separator
+			let formatted_validator = format!(
+				"{}\x1C{}\x1C{}\x1C{}\x1C{}",
+				validator.rank,
+				validator.address,
+				validator.voting_power / 1_000_000,
+				validator.moniker,
+				validator.details
+			);
 
-		output
+			// Add the formatted validator to output
+			output.push_str(&formatted_validator);
+			output.push('\n');
+		}
+		
+		let formatted_output = columnizer::Builder::new(&output)
+			.ifs("\x1C")
+			.ofs("  ")
+			.header_row(1)
+			.max_width_row(2)
+			.max_text_width(50)
+			.add_divider(true)
+			.add_thousand_separator(true)
+			.format();
+
+		println!("{}", formatted_output);
+
 	}
 
-    /// Constructs a table with given column widths and buffer size.
-    pub fn table_detail(&self, widths: [usize; 5], validator: &Validator) -> String {
-		format!(
-			"{:>width0$} {:<width1$} {:>width2$} {:<width3$} {:<width4$}\n",
-			validator.f_rank(),
-			validator.address,
-			validator.f_voting_power(),
-			validator.moniker,
-			validator.f_details(),
-			width0 = widths[0],
-			width1 = widths[1],
-			width2 = widths[2],
-			width3 = widths[3],
-			width4 = widths[4]
-		)
-	}
+ 	pub fn table (&self) { self.table_template(&self.validators); }
 
-    pub fn table(&self) -> String {
 
-        // Get maximum field widths for columns to align them properly
-        let widths = self.get_max_field_widths();
-
-        let mut output = String::with_capacity(1024);
-
-        // Construct the header
-		output.push_str(&self.table_header(widths));
-
-        // Data rows
-        for validator in &self.validators {
-            output.push_str(format());
-        }
-        output
-    }
-
-	/// Returns a formatted table for a specific validator by address.
 	pub fn table_validator(&self, address: &str) {
 		if let Some(validator) = self.get_validator(address) {
-			// Calculate field widths for the individual validator
-			let widths = [
-				std::cmp::max(validator.f_rank().len(), HEADER_NAMES[0].len()),
-				std::cmp::max(validator.address.len(), HEADER_NAMES[1].len()),
-				std::cmp::max(validator.f_voting_power().len(), HEADER_NAMES[2].len()),
-				std::cmp::max(validator.moniker.len(), HEADER_NAMES[3].len()),
-				std::cmp::max(validator.f_details().len(), HEADER_NAMES[4].len()),
-			];
+			// Create a new vector and push the validator into it
+			let mut data = Vec::new();
+			data.push(validator.clone());
+			
+			// Pass the reference of the vector to `table_template`
+			self.table_template(&data);
 
-			// Construct the formatted output
-			let mut output = String::with_capacity(128); // Adjust capacity for a single row + header
-			output.push_str(&self.table_header(widths)); // Use the same header format
-			output.push_str(&self.table_detail(widths, &validator)); // Add the validator row
-			println!("{}", output);
 		} else {
 			println!("Validator not found");  // Return a String when the validator is not found
 		}
@@ -336,7 +317,7 @@ impl ValidatorCollection {
 			}
 
 			// Format the columns with the output string using the special separator
-			let formatted = ColumnFormatter::new(&output).ifs("\x1C").format();
+			let formatted = columnizer::Builder::new(&output).ifs("\x1C").format();
 
 			// Print the fmrmatted output
 			println!("{}", formatted);
@@ -417,7 +398,7 @@ pub fn handle_validators_submenu(format: &str, validator_address: Option<&str>) 
             "json" => println!("{}", validator_collection.json()),
             "json-pretty" => println!("{}", validator_collection.json_pretty()),
             "raw" => println!("{}", validator_collection.raw()?),
-            "table" => println!("{}", validator_collection.table()),
+            "table" => validator_collection.table(),
             "tuple" => validator_collection.tuple(),
             _ => {
                 eprintln!("Unknown format: {}", format);
