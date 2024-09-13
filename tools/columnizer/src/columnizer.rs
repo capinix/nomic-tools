@@ -24,6 +24,14 @@ fn truncate_string(text: &str, max_text_width: usize) -> String {
         return text.chars().take(max_text_width).collect::<String>();
     }
 
+    // Calculate the width of the entire text
+    let text_width = text.width();
+
+    if text_width <= max_text_width {
+        // If the width is less than or equal to the maximum, return the trimmed text as is
+        return text.trim().to_string();
+    }
+
     let mut width = 0;
     let mut chars = text.chars().peekable();
     let mut truncated = String::new();
