@@ -6,7 +6,6 @@ fn format_arg() -> Arg {
         .short('f')
         .long("format")
         .value_name("FORMAT")
-        .default_value("json-pretty")
         .value_parser(["json", "json-pretty", "raw", "table", "tuple"])
         .help("Specify the output format")
 }
@@ -14,6 +13,10 @@ fn format_arg() -> Arg {
 pub fn cli() -> Command {
     Command::new("validators")
         .about("Manage validators")
+		.arg(
+			format_arg()
+			.default_value("json-pretty")
+		)
 		.arg(format_arg())
         .subcommand(
             Command::new("top")
