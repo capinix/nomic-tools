@@ -19,39 +19,41 @@ use unicode_width::UnicodeWidthChar;
 /// if the original string was longer than `max_text_width`. 
 /// If `text` is shorter than or equal to `max_text_width`, it is returned unchanged.
 fn truncate_string(text: &str, max_text_width: usize) -> String {
-    if max_text_width <= 3 {
-        // Ensure that truncation length is not negative and avoid slicing invalid indices
-        return text.chars().take(max_text_width).collect::<String>();
-    }
+
+	let trimmed_text = text.trim();
 
     // Calculate the width of the entire text
-    let text_width = text.width();
+    let text_width = trimmed_text.width();
 
     if text_width <= max_text_width {
         // If the width is less than or equal to the maximum, return the trimmed text as is
-        return text.trim().to_string();
+        return trimmed_text.to_string();
     }
 
+
     let mut width = 0;
-    let mut chars = text.chars().peekable();
+    let mut chars = trimmed_text.chars();
     let mut truncated = String::new();
 
     while let Some(c) = chars.next() {
-        width += c.width().unwrap_or(0);
-        if width > max_text_width - 3 {
+        let char_width = c.width().unwrap_or(0);
+        if width + char_width > max_text_width - 3 {
             break;
         }
+        width += char_width;
         truncated.push(c);
     }
+    truncated = truncated.trim().to_string();
 
-    if width > max_text_width {
-        // Add ellipsis and trim the resulting string
+    if max_text_width > 3 {
         truncated = format!("{}...", truncated.trim());
     } else {
-        truncated = truncated.trim().to_string();
+        // For max_text_width <= 3, return the truncated string up to the width without ellipsis
+        truncated = truncated;
     }
 
-    truncated
+    truncated.trim().to_string()
+
 }
 
 /// Formats a numeric cell value and indicates whether it is numeric. 
@@ -203,7 +205,7 @@ fn process_data(
 
     // Process each line into columns using the custom field separator
     for line in lines {
-        let columns: Vec<String> = line.split(ifs).map(|s| s.to_string()).collect();
+        let columns: Vec<String> = line.split(ifs).map(|s| s.trim().to_string()).collect();
         num_columns = num_columns.max(columns.len());
         rows.push(columns);
     }

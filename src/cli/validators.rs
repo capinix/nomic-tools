@@ -1,28 +1,24 @@
 use clap::{Arg, Command};
 
+
+fn format_arg() -> Arg {
+    Arg::new("format")
+        .short('f')
+        .long("format")
+        .value_name("FORMAT")
+        .default_value("json-pretty")
+        .value_parser(["json", "json-pretty", "raw", "table", "tuple"])
+        .help("Specify the output format")
+}
+
 pub fn cli() -> Command {
     Command::new("validators")
         .about("Manage validators")
-        .arg(
-            Arg::new("format")
-                .short('f')
-                .long("format")
-                .value_name("FORMAT")
-                .default_value("json-pretty")
-                .value_parser(["raw", "table", "json", "json-pretty"])
-                .help("Specify the output format")
-        )
+		.arg(format_arg())
         .subcommand(
             Command::new("top")
                 .about("Show the top N validators")
-				.arg(
-					Arg::new("format")
-						.short('f')
-						.long("format")
-						.value_name("FORMAT")
-						.value_parser(["raw", "table", "json", "json-pretty"])
-						.help("Specify the output format")
-				)
+				.arg(format_arg())
                 .arg(
                     Arg::new("number")
                         .value_name("N")
@@ -34,14 +30,7 @@ pub fn cli() -> Command {
         .subcommand(
             Command::new("bottom")
                 .about("Show the bottom N validators")
-				.arg(
-					Arg::new("format")
-						.short('f')
-						.long("format")
-						.value_name("FORMAT")
-						.value_parser(["raw", "table", "json", "json-pretty"])
-						.help("Specify the output format")
-				)
+				.arg(format_arg())
                 .arg(
                     Arg::new("number")
                         .value_name("N")
@@ -53,14 +42,7 @@ pub fn cli() -> Command {
         .subcommand(
             Command::new("skip")
                 .about("Skip the first N validators")
-				.arg(
-					Arg::new("format")
-						.short('f')
-						.long("format")
-						.value_name("FORMAT")
-						.value_parser(["raw", "table", "json", "json-pretty"])
-						.help("Specify the output format")
-				)
+				.arg(format_arg())
                 .arg(
                     Arg::new("number")
                         .value_name("N")
@@ -72,14 +54,7 @@ pub fn cli() -> Command {
         .subcommand(
             Command::new("random")
                 .about("Show a specified number of random validators outside a specified top percentage")
-				.arg(
-					Arg::new("format")
-						.short('f')
-						.long("format")
-						.value_name("FORMAT")
-						.value_parser(["raw", "table", "json", "json-pretty"])
-						.help("Specify the output format")
-				)
+				.arg(format_arg())
                 .arg(
                     Arg::new("count")
 						.short('c')
@@ -102,14 +77,7 @@ pub fn cli() -> Command {
         .subcommand(
             Command::new("moniker")
                 .about("Search for validators by moniker")
-				.arg(
-					Arg::new("format")
-						.short('f')
-						.long("format")
-						.value_name("FORMAT")
-						.value_parser(["raw", "table", "json", "json-pretty"])
-						.help("Specify the output format")
-				)
+				.arg(format_arg())
                 .arg(
                     Arg::new("moniker")
                         .value_name("MONIKER")
@@ -121,14 +89,7 @@ pub fn cli() -> Command {
         .subcommand(
             Command::new("address")
                 .about("Search for a validator by address")
-				.arg(
-					Arg::new("format")
-						.short('f')
-						.long("format")
-						.value_name("FORMAT")
-						.value_parser(["raw", "table", "json", "json-pretty"])
-						.help("Specify the output format")
-				)
+				.arg(format_arg())
                 .arg(
                     Arg::new("address")
                         .value_name("ADDRESS")
