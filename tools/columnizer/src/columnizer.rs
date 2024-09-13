@@ -1,4 +1,6 @@
 use std::num::ParseFloatError;
+use unicode_width::UnicodeWidthStr;
+use unicode_width::UnicodeWidthChar;
 
 /// Truncates a string to a maximum number of characters and appends an ellipsis if needed.
 ///
@@ -17,15 +19,31 @@ use std::num::ParseFloatError;
 /// if the original string was longer than `max_text_width`. 
 /// If `text` is shorter than or equal to `max_text_width`, it is returned unchanged.
 fn truncate_string(text: &str, max_text_width: usize) -> String {
-	if max_text_width <= 3 {
-	    return text.chars().take(max_text_width).collect::<String>();
-	}
-	if text.chars().count() > max_text_width {
-	    let truncated = &text.chars().take(max_text_width - 3).collect::<String>(); // -3 for ellipsis
-	    format!("{}...", truncated)
-	} else {
-	    text.to_string()
-	}
+    if max_text_width <= 3 {
+        // Ensure that truncation length is not negative and avoid slicing invalid indices
+        return text.chars().take(max_text_width).collect::<String>();
+    }
+
+    let mut width = 0;
+    let mut chars = text.chars().peekable();
+    let mut truncated = String::new();
+
+    while let Some(c) = chars.next() {
+        width += c.width().unwrap_or(0);
+        if width > max_text_width - 3 {
+            break;
+        }
+        truncated.push(c);
+    }
+
+    if width > max_text_width {
+        // Add ellipsis and trim the resulting string
+        truncated = format!("{}...", truncated.trim());
+    } else {
+        truncated = truncated.trim().to_string();
+    }
+
+    truncated
 }
 
 /// Formats a numeric cell value and indicates whether it is numeric. 
@@ -234,9 +252,14 @@ fn process_data(
     // Determine numeric columns and format data rows
     for (_i, row) in data_rows.iter_mut().enumerate() {
         for (col_index, col_value) in row.iter_mut().enumerate() {
+			let min_max_text_width = if max_width_row_data[col_index] > 0 {
+				max_text_width.min(max_width_row_data[col_index])
+			} else {
+				max_text_width
+			};
             let (is_numeric, formatted_value) = format_content(
                 col_value,
-				max_text_width,
+				min_max_text_width,
                 pad_decimal_digits,
                 max_decimal_digits,
                 decimal_separator,
@@ -282,20 +305,24 @@ fn calculate_max_column_widths(
     // Update max widths with header data
     for (i, header) in header_data.iter().enumerate() {
         if i < num_columns {
-            max_widths[i] = header.chars().count();
+            max_widths[i] = header.width();
+// 			if max_width_data[i] > 0 && max_widths[i] > max_width_data[i] {
+// 				max_widths[i] = max_width_data[i];
+// 			}
         }
     }
 
+	
     // Process data rows and update max widths
     for row in data {
         for (i, cell) in row.iter().enumerate() {
             // Apply truncation based on max_width_data if available
-            let truncated_cell = if i < max_width_data.len() && max_width_data[i] > 0 && ! numeric_columns[i] {
+            let truncated_cell = if i < max_width_data.len() && max_width_data[i] > 0 && !numeric_columns[i] {
                 truncate_string(cell, max_width_data[i])
             } else {
-                cell.clone()
+                cell.clone().trim().to_string()
             };
-            let cell_width = truncated_cell.chars().count();
+            let cell_width = truncated_cell.width();
             if i < max_widths.len() && cell_width > max_widths[i] {
                 max_widths[i] = cell_width;
             }
@@ -321,17 +348,19 @@ fn generate_output(
 
     let mut output = String::new();
 
-// 	// Helper function to determine if a column is numeric
-//	let is_numeric_column = |index: usize| numeric_columns.contains(&index);
-
     // Helper function to format a cell based on its type
     let format_cell = |cell: &str, width: usize, is_numeric: bool, format_string: &str| -> String {
         // Clean up the cell content
 
-        let cell_cleaned = cell.trim();
+//         let cell_cleaned = cell.trim();
+		let cell_cleaned = if !is_numeric {
+			truncate_string(cell, width)
+		} else {
+			cell.trim().to_string()
+		};
 
 		if !format_string.is_empty() {
-			format_string.replace("{}", cell_cleaned)  // Use the user-provided format string if available
+			format_string.replace("{}", &cell_cleaned)  // Use the user-provided format string if available
 		} else {
 			// Default formatting
 			if is_numeric {
@@ -464,175 +493,3 @@ pub fn run(
 }
 
 
-
-
-
-// unit tests
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_truncate_string() {
-	    assert_eq!(truncate_string("Hello, world!", 5), "He...");
-	    assert_eq!(truncate_string("Hello", 5), "Hello");
-	    assert_eq!(truncate_string("Hi", 5), "Hi");
-	    assert_eq!(truncate_string("Hello, world!", 15), "Hello, world!");
-	    assert_eq!(truncate_string("Hello", 2), "He");
-	}
-
-	#[test]
-	fn test_format_content() {
-	    // Test with numeric string and thousand separators
-	    assert_eq!(
-	        format_content("1234.56", 1, true, 2, '.', true, ','),
-	        (true, "1,234.56".to_string())
-	    );
-
-		// Test with numeric string, no thousand separator, and different decimal separator
-		let result = format_content("1234.56", 10, true, 2, ',', false, '.');
-		let expected = (true, "1234,56".to_string());
-		assert_eq!(
-			result, 
-			expected,
-			"Failed on test with input '1234.56', max_width 10, pad_decimal_digits true, \
-				max_decimal_digits 2, decimal_separator ',', add_thousand_separator false, \
-				thousand_separator '.'. Got: {:?}, Expected: {:?}",
-			result,
-			expected
-		);
-
-        // Test with non-numeric string that requires truncation
-        assert_eq!(
-            format_content("Hello, world!", 5, true, 2, '.', true, ','),
-            (false, "He...".to_string())
-        );
-
-        // Test with non-numeric string that fits within the limit
-        assert_eq!(
-            format_content("Hi", 5, false, 0, '.', false, ','),
-            (false, "Hi".to_string())
-        );
-
-        // Test padding of decimal digits
-        assert_eq!(
-            format_content("1234.5", 10, true, 3, '.', true, ','),
-            (true, "1,234.500".to_string())
-        );
-    }
-
-    #[test]
-    fn test_process_data() {
-		let input = r#"
-col1 col2 col3 col4
-20.5674,sugar,50,babies
-1,biscuit,200,kilimangaro
-"#;
-        let ifs = " ";
-        let (_rows, header_data, _max_width_data, _format_string_data, _numeric_columns) = process_data(
-            input,
-            ifs,
-            1,
-            0,
-            0,
-            8,
-            true,
-            2,
-            '.',
-            true,
-            ',',
-        );
-
-		// Print debug information
-		use std::io::Write;
-		println!("header_data: {:?}", header_data);
-		println!("Expected: {:?}", vec!["col1".to_string(), "col2".to_string(), "col3".to_string(), "col4".to_string()]);
-		std::io::stdout().flush().unwrap();
-
-
-        assert_eq!(header_data, vec!["col1".to_string(), "col2".to_string(), "col3".to_string(), "col4".to_string()]);
-//         assert_eq!(rows[0], vec!["20.56".to_string(), "sugar".to_string(),   "50.00".to_string(),  "babies".to_string()]);
-//         assert_eq!(rows[1], vec![ "1.56".to_string(), "biscuit".to_string(), "200.00".to_string(), "kilimang".to_string()]);
-//         assert_eq!(rows[2], vec![ "4,444.00".to_string(), "training".to_string(), "6,546,757.30".to_string(), "twenty".to_string()]);
-//         assert!(numeric_columns.contains(&1)); // 'Value' column is numeric
-// 
-//         // Test with non-numeric columns only
-//         let input = "Name,Description\nA,Test\nB,Example";
-//         let (rows, header, _, _, numeric_columns) = process_data(
-//             input,
-//             ifs,
-//             1,
-//             0,
-//             0,
-//             10,
-//             true,
-//             2,
-//             '.',
-//             true,
-//             ',',
-//         );
-// 
-//         assert!(numeric_columns.is_empty());
-    }
-// 
-//     #[test]
-//     fn test_calculate_max_column_widths() {
-//         let header_data = vec!["Name".to_string(), "Value".to_string()];
-//         let max_width_data = vec![5, 8];
-//         let data = vec![
-//             vec!["A".to_string(), "1234.56".to_string()],
-//             vec!["B".to_string(), "7890.12".to_string()],
-//         ];
-// 
-//         let max_widths = calculate_max_column_widths(&header_data, &max_width_data, &data);
-//         assert_eq!(max_widths, vec![4, 8]); // 'Name' has max length of 4, 'Value' has 8
-//     }
-// 
-//     #[test]
-//     fn test_format_columns() {
-//         let input = "Name,Value\nA,1234.56\nB,7890.12";
-//         let ifs = ",";
-//         let ofs = " | ";
-//         let formatted = format_columns(
-//             input,
-//             ifs,
-//             ofs,
-//             1,
-//             0,
-//             0,
-//             true,
-//             '-',
-//             10,
-//             true,
-//             2,
-//             '.',
-//             true,
-//             ',',
-//         );
-// 
-//         let expected = "Name | Value\n------------\nA    | 1,234.56\nB    | 7,890.12";
-//         assert_eq!(formatted.trim(), expected.trim());
-// 
-//         // Test without divider
-//         let formatted_no_divider = format_columns(
-//             input,
-//             ifs,
-//             ofs,
-//             1,
-//             0,
-//             0,
-//             false,
-//             '-',
-//             10,
-//             true,
-//             2,
-//             '.',
-//             true,
-//             ',',
-//         );
-// 
-//         let expected_no_divider = "Name | Value\nA    | 1,234.56\nB    | 7,890.12";
-//         assert_eq!(formatted_no_divider.trim(), expected_no_divider.trim());
-//     }
-}

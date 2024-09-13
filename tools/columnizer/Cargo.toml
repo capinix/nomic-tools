@@ -8,6 +8,7 @@ path = "src/lib.rs"
 
 [dependencies]
 clap = "4"  # For command-line argument parsing
+unicode-width = "0.1.13"
 
 [[bin]]
 name = "columnizer"

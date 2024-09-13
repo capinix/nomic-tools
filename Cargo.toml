@@ -11,12 +11,13 @@ members = [
 [dependencies]
 chrono = "0.4"
 clap = { version = "4.3", features = ["derive"] }
+columnizer = { path = "tools/columnizer" }
 ctrlc = "3"
 indexmap = { version = "1.9", features = ["serde"] }
 lazy_static = "1.4"
 num-format = "0.4"
+rand = "0.8"
 regex = "1.6"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tempfile = "3.3"
-columnizer = { path = "tools/columnizer" }
