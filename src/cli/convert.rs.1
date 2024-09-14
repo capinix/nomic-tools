@@ -1,0 +1,222 @@
+use clap::{Command, Arg};
+
+pub fn cli() -> Command {
+    Command::new("convert")
+        .about("Convert between different formats")
+        .subcommand(
+            Command::new("binary")
+                .about("Convert binary to/from other formats")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert binary to other formats")
+                        .subcommand(
+                            Command::new("decimal")
+                                .about("Convert binary to decimal")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                        .subcommand(
+                            Command::new("hex")
+                                .about("Convert binary to hex")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+                .subcommand(
+                    Command::new("from")
+                        .about("Convert from other formats to binary")
+                        .subcommand(
+                            Command::new("decimal")
+                                .about("Convert decimal to binary")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                        .subcommand(
+                            Command::new("hex")
+                                .about("Convert hex to binary")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+        .subcommand(
+            Command::new("decimal")
+                .about("Convert decimal to/from other formats")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert decimal to other formats")
+                        .subcommand(
+                            Command::new("binary")
+                                .about("Convert decimal to binary")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                        .subcommand(
+                            Command::new("nonce")
+                                .about("Convert decimal to nonce (alias for decimal to binary)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+                .subcommand(
+                    Command::new("from")
+                        .about("Convert from other formats to decimal")
+                        .subcommand(
+                            Command::new("binary")
+                                .about("Convert binary to decimal")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                        .subcommand(
+                            Command::new("nonce")
+                                .about("Convert nonce to decimal (alias for binary to decimal)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+        .subcommand(
+            Command::new("hex")
+                .about("Convert hex to/from other formats")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert hex to other formats")
+                        .subcommand(
+                            Command::new("binary")
+                                .about("Convert hex to binary")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+                .subcommand(
+                    Command::new("from")
+                        .about("Convert from binary to hex")
+                        .subcommand(
+                            Command::new("binary")
+                                .about("Convert binary to hex")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+        .subcommand(
+            Command::new("keplr")
+                .about("Convert keplr to/from orga")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert keplr to orga")
+                        .subcommand(
+                            Command::new("orga")
+                                .about("Convert keplr to orga (alias for hex to binary)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+                .subcommand(
+                    Command::new("from")
+                        .about("Convert from orga to keplr")
+                        .subcommand(
+                            Command::new("orga")
+                                .about("Convert orga to keplr (alias for binary to hex)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+        .subcommand(
+            Command::new("orga")
+                .about("Convert orga to/from keplr")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert orga to keplr")
+                        .subcommand(
+                            Command::new("keplr")
+                                .about("Convert orga to keplr (alias for binary to hex)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+                .subcommand(
+                    Command::new("from")
+                        .about("Convert from keplr to orga")
+                        .subcommand(
+                            Command::new("keplr")
+                                .about("Convert keplr to orga (alias for hex to binary)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+        .subcommand(
+            Command::new("nonce")
+                .about("Convert nonce to/from decimal")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert nonce to other formats")
+                        .subcommand(
+                            Command::new("decimal")
+                                .about("Convert nonce to decimal (alias for binary to decimal)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+                .subcommand(
+                    Command::new("from")
+                        .about("Convert from decimal to nonce")
+                        .subcommand(
+                            Command::new("decimal")
+                                .about("Convert decimal to nonce (alias for decimal to binary)")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Input file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+}

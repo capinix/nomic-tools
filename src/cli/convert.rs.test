@@ -1,0 +1,24 @@
+// src/cli/convert.rs
+use clap::{Command, Arg};
+
+pub fn cli() -> Command {
+    Command::new("convert")
+        .about("Convert between different formats")
+        .subcommand(
+            Command::new("binary")
+                .about("Binary conversion commands")
+                .subcommand(
+                    Command::new("to")
+                        .about("Convert binary to other formats")
+                        .subcommand(
+                            Command::new("decimal")
+                                .about("Convert binary to decimal")
+                                .arg(
+                                    Arg::new("file")
+                                        .help("Output file")
+                                        .required(true)
+                                )
+                        )
+                )
+        )
+}

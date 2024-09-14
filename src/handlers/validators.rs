@@ -1,3 +1,57 @@
+/// Contains handler functions for the `validators` subcommands.
+///
+/// This module provides implementations for managing validators, including filtering, sorting,
+/// and searching operations. It processes the CLI commands related to validators, delegating to
+/// appropriate functions in the `nomic::validators` module.
+///
+/// # Subcommands
+///
+/// - **address:** Search for validators by address
+///   - Requires `address` argument
+///   - Optional `format` argument to specify output format (default: `json-pretty`)
+///
+/// - **moniker:** Search for validators by moniker
+///   - Requires `moniker` argument
+///   - Optional `format` argument to specify output format (default: `json-pretty`)
+///
+/// - **top:** Show the top N validators
+///   - Requires `number` argument (N)
+///   - Optional `format` argument to specify output format (default: `json-pretty`)
+///
+/// - **bottom:** Show the bottom N validators
+///   - Requires `number` argument (N)
+///   - Optional `format` argument to specify output format (default: `json-pretty`)
+///
+/// - **skip:** Skip the first N validators
+///   - Requires `number` argument (N)
+///   - Optional `format` argument to specify output format (default: `json-pretty`)
+///
+/// - **random:** Show a specified number of random validators outside a specified top percentage
+///   - Requires `count` and `percent` arguments
+///   - Optional `format` argument to specify output format (default: `json-pretty`)
+///
+/// # Functionality
+///
+/// The `options()` function handles the execution of the `validators` subcommands. It initializes
+/// the `ValidatorCollection`, determines the output format, and dispatches to specific handler
+/// functions based on the subcommand provided. If no subcommand is given, it defaults to printing
+/// the entire collection.
+///
+/// # Error Handling
+///
+/// - **Initialization Errors:** Prints error messages if the `ValidatorCollection` fails to initialize.
+/// - **Command Errors:** Provides error messages for missing or invalid arguments, or unrecognized commands.
+///
+/// # Example
+///
+/// ```
+/// // Example usage in main.rs
+/// // ...
+/// let matches = build_cli().get_matches();
+/// if let Err(e) = validators::options(matches.subcommand_matches("validators").unwrap()) {
+///     eprintln!("Error executing validators command: {:?}", e);
+/// }
+/// ```
 use clap::ArgMatches;
 use crate::nomic::validators::ValidatorCollection;
 use std::error::Error;
@@ -188,4 +242,3 @@ fn handle_random_subcommand(
     }
     Ok(())
 }
-
