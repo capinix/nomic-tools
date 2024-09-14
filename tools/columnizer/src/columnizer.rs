@@ -446,7 +446,6 @@ fn generate_output(
 /// # Returns
 ///
 /// A formatted string with the input data aligned into columns according to the specified parameters.
-
 pub fn run(
 	input:                   &str,  // The text to be formatted                                                  
 	ifs:                     &str,  // Input Field Separator                                                                       

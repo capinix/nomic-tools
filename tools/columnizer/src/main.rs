@@ -1,3 +1,30 @@
+/// Main entry point for the `columnizer` tool.
+///
+/// This tool formats input text into columns with customizable options. You can specify various arguments
+/// to control the formatting, including field separators, header rows, divider lines, and text width.
+///
+/// # Arguments
+///
+/// * `input` - Optional. The input text to be formatted. If not provided, the tool reads from standard input (stdin).
+/// * `--IFS` - Separator for fields in the input text (default is a space).
+/// * `--OFS` - Separator for fields in the output text (default is a space).
+/// * `--header-row` - Row number to be treated as the header or 0 for no header (default is 0).
+/// * `--max-width-row` - Row number containing the maximum width for each column (default is 0).
+/// * `--format-string-row` - Row number containing the format string for each column (default is 0).
+/// * `--add-divider` - Add a divider line after the header row (boolean flag).
+/// * `--divider-char` - Character used for the divider line (default is '-').
+/// * `--max-text-width` - Maximum length of text fields (default is 40).
+/// * `--pad-decimal-digits` - Pad decimal digits in numeric columns (boolean flag).
+/// * `--max-decimal-digits` - Maximum number of decimal places for numeric columns (default is 2).
+/// * `--decimal-separator` - Character used as a decimal separator (default is '.').
+/// * `--add-thousand-separator` - Add a thousands separator to numbers (boolean flag).
+/// * `--thousand-separator` - Character used as a thousands separator (default is ',').
+///
+/// # Example
+///
+/// ```
+/// $ columnizer --header-row 1 --add-divider --divider-char '=' --max-text-width 20 --pad-decimal-digits
+/// ```
 mod columnizer;
 use clap::{Arg, ArgAction, Command};
 use std::io::{self, Read};

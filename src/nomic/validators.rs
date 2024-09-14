@@ -1,4 +1,4 @@
-use columnizer;
+use columnizer::builder::Builder;
 use crate::globals::NOMIC;
 use indexmap::IndexMap;
 use rand::prelude::IteratorRandom;
@@ -594,7 +594,7 @@ impl ValidatorCollection {
 			output.push('\n');
 		}
 
-		let formatted_output = columnizer::Builder::new(&output)
+		let formatted_output = Builder::new(&output)
 			.ifs("\x1C")
 			.ofs("  ")
 			.header_row(1)
