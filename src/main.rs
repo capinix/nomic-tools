@@ -30,11 +30,14 @@
 
 mod cli;
 mod handlers;
-mod globals;
 mod nomic;
 
 use cli::build_cli;
 use handlers::convert;
+use handlers::import;
+use handlers::key;
+use handlers::nonce;
+use handlers::profiles;
 use handlers::validators;
 use std::error::Error;
 
@@ -54,6 +57,24 @@ fn main() -> Result<(), Box<dyn Error>> {
 			Some(("convert", sub_m)) => {
 				if let Err(e) = convert::options(sub_m) {
 					eprintln!("Error executing convert: {:?}", e);
+					return Err(e.into());
+				}
+			},
+			Some(("key", sub_m)) => {
+				if let Err(e) = key::options(sub_m) {
+					eprintln!("Error executing key: {:?}", e);
+					return Err(e.into());
+				}
+			},
+			Some(("nonce", sub_m)) => {
+				if let Err(e) = nonce::options(sub_m) {
+					eprintln!("Error executing nonce: {:?}", e);
+					return Err(e.into());
+				}
+			},
+			Some(("profiles", sub_m)) => {
+				if let Err(e) = profiles::options(sub_m) {
+					eprintln!("Error executing profiles: {:?}", e);
 					return Err(e.into());
 				}
 			},

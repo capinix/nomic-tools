@@ -1,11 +1,6 @@
 use lazy_static::lazy_static;
 use std::env;
-// Global constant for the default config directory
-// static DEFAULT_CONFIG_DIR: &str = "auto/conf.d";
-// pub fn get_default_config_dir() -> String {
-//     let home_dir = env::var("HOME").unwrap_or_else(|_| String::from("/home/user")); // Provide a fallback
-//     format!("{}/{}", home_dir, DEFAULT_CONFIG_DIR)
-// }
+use std::path::PathBuf;
 
 lazy_static! {
     // Default values are provided as fallbacks
@@ -41,10 +36,23 @@ lazy_static! {
         .ok()
         .and_then(|val| val.parse::<f64>().ok())
         .unwrap_or(0.01);
+
+    pub static ref PROFILES_DIR: PathBuf = {
+        // Check for environment variable
+        if let Ok(env_dir) = env::var("PROFILES_DIR") {
+            PathBuf::from(env_dir)
+        } else {
+            // Default to $HOME/.nomic-tools if not set
+            let home_dir = env::var("HOME").expect("Failed to get HOME environment variable");
+            PathBuf::from(home_dir).join(".nomic-tools")
+        }
+    };
+
+    pub static ref NOMIC: String = {
+        env::var("NOMIC").unwrap_or_else(|_| String::from("/usr/local/bin/nomic"))
+    };
+
 }
-
-
-pub const NOMIC: &str = "/usr/local/bin/nomic";
 
 
 

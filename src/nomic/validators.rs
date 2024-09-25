@@ -1,9 +1,9 @@
 use columnizer::builder::Builder;
-use crate::globals::NOMIC;
+use crate::nomic::globals::NOMIC;
 use indexmap::IndexMap;
 use rand::prelude::IteratorRandom;
 use rand::thread_rng;
-use serde_json;  // {Value, to_string, to_string_pretty} fully addressed in code for clarity
+use serde_json;
 use serde::Serialize;
 use std::error::Error;
 use std::iter::FromIterator;
@@ -52,129 +52,129 @@ pub struct ValidatorCollection(Vec<Validator>);
 
 impl ValidatorCollection {
 
-    /// Creates a new, empty `ValidatorCollection`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// assert!(collection.is_empty());
-    /// ```
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
+	/// Creates a new, empty `ValidatorCollection`.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// assert!(collection.is_empty());
+	/// ```
+	pub fn new() -> Self {
+		Self(Vec::new())
+	}
 
-    /// Creates a `ValidatorCollection` from a `Vec<Validator>`.
-    ///
-    /// # Arguments
-    ///
-    /// * `validators` - A vector of `Validator` instances.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let validators = vec![Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string())];
-    /// let collection = ValidatorCollection::from_vec(validators);
-    /// assert_eq!(collection.len(), 1);
-    /// ```
-    pub fn from_vec(validators: Vec<Validator>) -> Self {
-        Self(validators)
-    }
+	/// Creates a `ValidatorCollection` from a `Vec<Validator>`.
+	///
+	/// # Arguments
+	///
+	/// * `validators` - A vector of `Validator` instances.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let validators = vec![Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string())];
+	/// let collection = ValidatorCollection::from_vec(validators);
+	/// assert_eq!(collection.len(), 1);
+	/// ```
+	pub fn from_vec(validators: Vec<Validator>) -> Self {
+		Self(validators)
+	}
 
-    /// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
-    ///
-    /// # Arguments
-    ///
-    /// * `iter` - An iterator over `Validator` instances.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let validators = vec![Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string())];
-    /// let collection = ValidatorCollection::from_iter(validators.into_iter());
-    /// assert_eq!(collection.len(), 1);
-    /// ```
-    pub fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = Validator>,
-    {
-        Self(iter.into_iter().collect())
-    }
+	/// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
+	///
+	/// # Arguments
+	///
+	/// * `iter` - An iterator over `Validator` instances.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let validators = vec![Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string())];
+	/// let collection = ValidatorCollection::from_iter(validators.into_iter());
+	/// assert_eq!(collection.len(), 1);
+	/// ```
+	pub fn from_iter<I>(iter: I) -> Self
+	where
+		I: IntoIterator<Item = Validator>,
+	{
+		Self(iter.into_iter().collect())
+	}
 
-    /// Adds a `Validator` to the collection.
-    ///
-    /// # Arguments
-    ///
-    /// * `validator` - A `Validator` instance to add.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// assert_eq!(collection.len(), 1);
-    /// ```
-    pub fn insert(&mut self, validator: Validator) {
-        self.0.push(validator);
-    }
+	/// Adds a `Validator` to the collection.
+	///
+	/// # Arguments
+	///
+	/// * `validator` - A `Validator` instance to add.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let mut collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// assert_eq!(collection.len(), 1);
+	/// ```
+	pub fn insert(&mut self, validator: Validator) {
+		self.0.push(validator);
+	}
 
-    /// Returns the number of validators in the collection.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// assert_eq!(collection.len(), 1);
-    /// ```
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
+	/// Returns the number of validators in the collection.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let mut collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// assert_eq!(collection.len(), 1);
+	/// ```
+	pub fn len(&self) -> usize {
+		self.0.len()
+	}
 
-    /// Checks if the collection is empty.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// assert!(collection.is_empty());
-    /// ```
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
+	/// Checks if the collection is empty.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// assert!(collection.is_empty());
+	/// ```
+	pub fn is_empty(&self) -> bool {
+		self.0.is_empty()
+	}
 
-    /// Returns a mutable reference to the vector of validators.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let validators = collection.validators_mut();
-    /// assert_eq!(validators.len(), 1);
-    /// ```
-    pub fn validators_mut(&mut self) -> &mut Vec<Validator> {
-        &mut self.0
-    }
+	/// Returns a mutable reference to the vector of validators.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let mut collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let validators = collection.validators_mut();
+	/// assert_eq!(validators.len(), 1);
+	/// ```
+	pub fn validators_mut(&mut self) -> &mut Vec<Validator> {
+		&mut self.0
+	}
 
-    /// Fetches the output of the `nomic validators` command.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails or its output cannot be processed.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let output = ValidatorCollection::nomic_validators().unwrap();
-    /// assert!(output.contains("validators"));
-    /// ```
+	/// Fetches the output of the `nomic validators` command.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the command fails or its output cannot be processed.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let output = ValidatorCollection::nomic_validators().unwrap();
+	/// assert!(output.contains("validators"));
+	/// ```
 	fn nomic_validators() -> Result<String, Box<dyn Error>> {
 		// Create and configure the Command
-		let mut cmd = Command::new(NOMIC);
+		let mut cmd = Command::new(&*NOMIC);
 		cmd.arg("validators");
 
 		// Execute the command
@@ -182,7 +182,7 @@ impl ValidatorCollection {
 
 		// Check if the command was successful
 		if !output.status.success() {
-			return Err(format!("Command `{}` failed with output: {:?}", NOMIC, output).into());
+			return Err(format!("Command `{}` failed with output: {:?}", &*NOMIC, output).into());
 		}
 
 		// Convert the command output to a string
@@ -191,23 +191,23 @@ impl ValidatorCollection {
 		Ok(output_str)
 	}
 
-    /// Parses the output of the `nomic validators` command into the `ValidatorCollection`.
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - A string containing the command output.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the parsing fails.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let output = "some output from command".to_string();
-    /// let mut collection = ValidatorCollection::new();
-    /// collection.parse_nomic_validators(output).unwrap();
-    /// ```
+	/// Parses the output of the `nomic validators` command into the `ValidatorCollection`.
+	///
+	/// # Arguments
+	///
+	/// * `input` - A string containing the command output.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the parsing fails.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let output = "some output from command".to_string();
+	/// let mut collection = ValidatorCollection::new();
+	/// collection.parse_nomic_validators(output).unwrap();
+	/// ```
 	pub fn parse_nomic_validators(&mut self, input: String) -> Result<(), Box<dyn Error>> {
 		let lines: Vec<&str> = input.lines().collect();
 		let mut rank = 1; // Start rank from 1
@@ -229,66 +229,66 @@ impl ValidatorCollection {
 		Ok(())
 	}
 
-    /// Creates a `ValidatorCollection` from a given command output string.
-    ///
-    /// # Arguments
-    ///
-    /// * `command_output` - A string containing the command output.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the parsing fails.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let output = "some output from command".to_string();
-    /// let collection = ValidatorCollection::load_from_string(output).unwrap();
-    /// assert_eq!(collection.len(), 1);
-    /// ```
+	/// Creates a `ValidatorCollection` from a given command output string.
+	///
+	/// # Arguments
+	///
+	/// * `command_output` - A string containing the command output.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the parsing fails.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let output = "some output from command".to_string();
+	/// let collection = ValidatorCollection::load_from_string(output).unwrap();
+	/// assert_eq!(collection.len(), 1);
+	/// ```
 	pub fn load_from_string(command_output: String) -> Result<Self, Box<dyn Error>> {
 		let mut collection = Self::new();
 		collection.parse_nomic_validators(command_output)?;
 		Ok(collection)
 	}
 
-    /// Creates a `ValidatorCollection` and populates it from the output of the `nomic validators` command.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails or the parsing fails.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::load_from_command().unwrap();
-    /// assert_eq!(collection.len(), 1);
-    /// ```
+	/// Creates a `ValidatorCollection` and populates it from the output of the `nomic validators` command.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the command fails or the parsing fails.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::load_from_command().unwrap();
+	/// assert_eq!(collection.len(), 1);
+	/// ```
 	pub fn load_from_command() -> Result<Self, Box<dyn Error>> {
 		let output = Self::nomic_validators()?;
 		Self::load_from_string(output)
 	}
 
-    /// Alias for `load_from_command`.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the command fails or the parsing fails.
+	/// Alias for `load_from_command`.
+	///
+	/// # Errors
+	///
+	/// Returns an error if the command fails or the parsing fails.
 	pub fn init() -> Result<Self, Box<dyn Error>> {
 		Self::load_from_command()
 	}
 
-    /// Estimates the byte size of the `ValidatorCollection`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let mut collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let size = collection.bytes();
-    /// assert!(size > 0);
-    /// ```
+	/// Estimates the byte size of the `ValidatorCollection`.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let mut collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let size = collection.bytes();
+	/// assert!(size > 0);
+	/// ```
 	pub fn bytes(&self) -> usize {
 		// Calculate the total size of all validators in bytes
 		let validators_bytes = self.0.iter().map(|v| v.bytes()).sum::<usize>();
@@ -299,48 +299,48 @@ impl ValidatorCollection {
 		validators_bytes + formatting_overhead
 	}
 
-    /// Finds a validator by address.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address of the validator to find.
-    ///
-    /// # Returns
-    ///
-    /// An `Option` containing the `Validator` if found, otherwise `None`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let found_validator = collection.get_validator("address").unwrap();
-    /// assert_eq!(found_validator.address, "address");
-    /// ```
-    pub fn get_validator(&self, address: &str) -> Option<&Validator> {
-        self.0.iter().find(|v| v.address == address)
-    }
+	/// Finds a validator by address.
+	///
+	/// # Arguments
+	///
+	/// * `address` - The address of the validator to find.
+	///
+	/// # Returns
+	///
+	/// An `Option` containing the `Validator` if found, otherwise `None`.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let found_validator = collection.get_validator("address").unwrap();
+	/// assert_eq!(found_validator.address, "address");
+	/// ```
+	pub fn get_validator(&self, address: &str) -> Option<&Validator> {
+		self.0.iter().find(|v| v.address == address)
+	}
 
-    /// Searches for validators by address and returns a new `ValidatorCollection` with matching validators.
-    ///
-    /// # Arguments
-    ///
-    /// * `address` - The address to search for.
-    ///
-    /// # Returns
-    ///
-    /// A new `ValidatorCollection` containing validators that match the address.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let filtered = collection.search_by_address("address");
-    /// assert_eq!(filtered.len(), 1);
-    /// ```
+	/// Searches for validators by address and returns a new `ValidatorCollection` with matching validators.
+	///
+	/// # Arguments
+	///
+	/// * `address` - The address to search for.
+	///
+	/// # Returns
+	///
+	/// A new `ValidatorCollection` containing validators that match the address.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let filtered = collection.search_by_address("address");
+	/// assert_eq!(filtered.len(), 1);
+	/// ```
 	pub fn search_by_address(&self, search: &str) -> ValidatorCollection {
 		self.0.iter()
 			.filter(|validator| validator.address == search)
@@ -348,25 +348,25 @@ impl ValidatorCollection {
 			.collect()
 	}
 
-    /// Searches for validators by a substring of the moniker and returns a new `ValidatorCollection` with matching validators.
-    ///
-    /// # Arguments
-    ///
-    /// * `moniker` - The substring to search for in the moniker.
-    ///
-    /// # Returns
-    ///
-    /// A new `ValidatorCollection` containing validators with monikers that match the substring.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let filtered = collection.search_by_moniker("moniker");
-    /// assert_eq!(filtered.len(), 1);
-    /// ```
+	/// Searches for validators by a substring of the moniker and returns a new `ValidatorCollection` with matching validators.
+	///
+	/// # Arguments
+	///
+	/// * `moniker` - The substring to search for in the moniker.
+	///
+	/// # Returns
+	///
+	/// A new `ValidatorCollection` containing validators with monikers that match the substring.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let filtered = collection.search_by_moniker("moniker");
+	/// assert_eq!(filtered.len(), 1);
+	/// ```
 	pub fn search_by_moniker(&self, search: &str) -> ValidatorCollection {
 		// Convert search term to lowercase for case-insensitive matching
 		let search_lower = search.to_lowercase();
@@ -377,64 +377,64 @@ impl ValidatorCollection {
 			.collect()
 	}
 
-    /// Returns the top `n` validators by voting power.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The number of top validators to return.
-    ///
-    /// # Returns
-    ///
-    /// A new `ValidatorCollection` containing the top `n` validators by voting power.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
-    /// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
-    /// collection.insert(validator1);
-    /// collection.insert(validator2);
-    /// let top_validators = collection.top(1);
-    /// assert_eq!(top_validators.len(), 1);
-    /// assert_eq!(top_validators.0[0].address, "address2");
-    /// ```
-    pub fn top(&self, n: usize) -> ValidatorCollection {
-        // Clone the current ValidatorCollection to work on a separate copy
-        let mut top_validators = self.clone();
-        
-        // Sort the validators by voting power in descending order
-        top_validators.0.sort_by_key(|v| std::cmp::Reverse(v.voting_power));
-        
-        // Truncate to keep only the top `n` validators
-        top_validators.0.truncate(n);
+	/// Returns the top `n` validators by voting power.
+	///
+	/// # Arguments
+	///
+	/// * `n` - The number of top validators to return.
+	///
+	/// # Returns
+	///
+	/// A new `ValidatorCollection` containing the top `n` validators by voting power.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
+	/// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
+	/// collection.insert(validator1);
+	/// collection.insert(validator2);
+	/// let top_validators = collection.top(1);
+	/// assert_eq!(top_validators.len(), 1);
+	/// assert_eq!(top_validators.0[0].address, "address2");
+	/// ```
+	pub fn top(&self, n: usize) -> ValidatorCollection {
+		// Clone the current ValidatorCollection to work on a separate copy
+		let mut top_validators = self.clone();
+		
+		// Sort the validators by voting power in descending order
+		top_validators.0.sort_by_key(|v| std::cmp::Reverse(v.voting_power));
+		
+		// Truncate to keep only the top `n` validators
+		top_validators.0.truncate(n);
 
-        // Return the modified ValidatorCollection
-        top_validators
-    }
+		// Return the modified ValidatorCollection
+		top_validators
+	}
 
-    /// Returns the bottom `n` validators by voting power.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The number of bottom validators to return.
-    ///
-    /// # Returns
-    ///
-    /// A new `ValidatorCollection` containing the bottom `n` validators by voting power.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
-    /// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
-    /// collection.insert(validator1);
-    /// collection.insert(validator2);
-    /// let bottom_validators = collection.bottom(1);
-    /// assert_eq!(bottom_validators.len(), 1);
-    /// assert_eq!(bottom_validators.0[0].address, "address1");
-    /// ```
+	/// Returns the bottom `n` validators by voting power.
+	///
+	/// # Arguments
+	///
+	/// * `n` - The number of bottom validators to return.
+	///
+	/// # Returns
+	///
+	/// A new `ValidatorCollection` containing the bottom `n` validators by voting power.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
+	/// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
+	/// collection.insert(validator1);
+	/// collection.insert(validator2);
+	/// let bottom_validators = collection.bottom(1);
+	/// assert_eq!(bottom_validators.len(), 1);
+	/// assert_eq!(bottom_validators.0[0].address, "address1");
+	/// ```
 	pub fn bottom(&self, n: usize) -> ValidatorCollection {
 		// Clone the current ValidatorCollection to work on a separate copy
 		let mut bottom_validators = self.clone();
@@ -449,28 +449,28 @@ impl ValidatorCollection {
 		bottom_validators
 	}
 
-    /// Returns a `ValidatorCollection` with the top `n` validators removed.
-    ///
-    /// # Arguments
-    ///
-    /// * `n` - The number of top validators to skip.
-    ///
-    /// # Returns
-    ///
-    /// A new `ValidatorCollection` with the top `n` validators removed.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
-    /// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
-    /// collection.insert(validator1);
-    /// collection.insert(validator2);
-    /// let reduced_collection = collection.skip(1);
-    /// assert_eq!(reduced_collection.len(), 1);
-    /// assert_eq!(reduced_collection.0[0].address, "address1");
-    /// ```
+	/// Returns a `ValidatorCollection` with the top `n` validators removed.
+	///
+	/// # Arguments
+	///
+	/// * `n` - The number of top validators to skip.
+	///
+	/// # Returns
+	///
+	/// A new `ValidatorCollection` with the top `n` validators removed.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
+	/// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
+	/// collection.insert(validator1);
+	/// collection.insert(validator2);
+	/// let reduced_collection = collection.skip(1);
+	/// assert_eq!(reduced_collection.len(), 1);
+	/// assert_eq!(reduced_collection.0[0].address, "address1");
+	/// ```
 	pub fn skip(&self, n: usize) -> ValidatorCollection {
 		// Clone the current ValidatorCollection to work on a separate copy
 		let mut filtered_validators = self.clone();
@@ -485,27 +485,27 @@ impl ValidatorCollection {
 		filtered_validators
 	}
 
-    /// Returns a random subset of validators, excluding the top `y` percent by voting power.
-    ///
-    /// # Arguments
-    ///
-    /// * `y` - The percentage of top validators to exclude from the random selection.
-    ///
-    /// # Returns
-    ///
-    /// A new `ValidatorCollection` containing a random subset of validators.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
-    /// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
-    /// collection.insert(validator1);
-    /// collection.insert(validator2);
-    /// let random_validators = collection.random(50);
-    /// assert_eq!(random_validators.len(), 1);
-    /// ```
+	/// Returns a random subset of validators, excluding the top `y` percent by voting power.
+	///
+	/// # Arguments
+	///
+	/// * `y` - The percentage of top validators to exclude from the random selection.
+	///
+	/// # Returns
+	///
+	/// A new `ValidatorCollection` containing a random subset of validators.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator1 = Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string());
+	/// let validator2 = Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string());
+	/// collection.insert(validator1);
+	/// collection.insert(validator2);
+	/// let random_validators = collection.random(50);
+	/// assert_eq!(random_validators.len(), 1);
+	/// ```
 	pub fn random(&self, count: usize, percent: u8) -> ValidatorCollection {
 		let mut validators = self.clone();
 
@@ -533,38 +533,38 @@ impl ValidatorCollection {
 		ValidatorCollection(selected) // Construct the ValidatorCollection from the selected validators
 	}
 
-    /// Returns a raw string representation of the validators.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let raw_string = collection.raw();
-    /// assert!(raw_string.contains("address"));
-    /// ```
+	/// Returns a raw string representation of the validators.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let raw_string = collection.raw();
+	/// assert!(raw_string.contains("address"));
+	/// ```
 	pub fn raw(&self) -> String {
 		let mut output = String::with_capacity(self.bytes());
 
 		for validator in &self.0 {
 			// Append formatted data to the output string
 			output.push_str(&format!("- {}\n", validator.address));
-			output.push_str(&format!("      VOTING POWER: {}\n", validator.voting_power));
-			output.push_str(&format!("      MONIKER: {}\n", validator.moniker));
-			output.push_str(&format!("      DETAILS: {}\n", validator.details));
+			output.push_str(&format!("	  VOTING POWER: {}\n", validator.voting_power));
+			output.push_str(&format!("	  MONIKER: {}\n", validator.moniker));
+			output.push_str(&format!("	  DETAILS: {}\n", validator.details));
 		}
 
  		output
 	}
 
-    /// Returns a formatted table representation of the validators.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let table = collection.table();
-    /// assert!(table.contains("Rank"));
-    /// ```
+	/// Returns a formatted table representation of the validators.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let table = collection.table();
+	/// assert!(table.contains("Rank"));
+	/// ```
 	pub fn table(&self) -> String {
 		// Estimate the size and preallocate string
 		let mut output = String::with_capacity(self.bytes());
@@ -602,22 +602,21 @@ impl ValidatorCollection {
 			.max_text_width(80)
 			.pad_decimal_digits(true)
 			.max_decimal_digits(0)
-			.add_divider(true)
 			.add_thousand_separator(true)
 			.format();
 
 		formatted_output
 	}
 
-    /// Returns an `IndexMap` representation of the validators.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let index_map = collection.index_map();
-    /// assert!(index_map.contains_key(&1));
-    /// ```
+	/// Returns an `IndexMap` representation of the validators.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let index_map = collection.index_map();
+	/// assert!(index_map.contains_key(&1));
+	/// ```
 	pub fn index_map(&self) -> IndexMap<String, IndexMap<String, serde_json::Value>> {
 		// Pre-allocate space for the outer map
 		let mut array = IndexMap::with_capacity(self.0.len());
@@ -636,15 +635,15 @@ impl ValidatorCollection {
 		array
 	}
 
-    /// Serializes the `ValidatorCollection` into a JSON string.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let json_string = collection.to_json();
-    /// assert!(json_string.contains("address"));
-    /// ```
+	/// Serializes the `ValidatorCollection` into a JSON string.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let json_string = collection.to_json();
+	/// assert!(json_string.contains("address"));
+	/// ```
 	pub fn json(&self) -> String {
 		match serde_json::to_string(&self.index_map()) {
 			Ok(json_str) => json_str,
@@ -655,20 +654,20 @@ impl ValidatorCollection {
 		}
 	}
 
-    /// Serializes the `ValidatorCollection` into a prettified JSON string.
-    ///
-    /// This method converts the `ValidatorCollection` into a prettified JSON string representation using the `index_map()` method.
+	/// Serializes the `ValidatorCollection` into a prettified JSON string.
+	///
+	/// This method converts the `ValidatorCollection` into a prettified JSON string representation using the `index_map()` method.
 	/// If serialization fails, it prints an error message and returns an empty string.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let json_pretty_string = collection.json_pretty();
-    /// assert!(json_pretty_string.contains("address"));
-    /// ```
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let json_pretty_string = collection.json_pretty();
+	/// assert!(json_pretty_string.contains("address"));
+	/// ```
 	pub fn json_pretty(&self) -> String {
 		match serde_json::to_string_pretty(&self.index_map()) {
 			Ok(json_str) => json_str,
@@ -679,20 +678,20 @@ impl ValidatorCollection {
 		}
 	}
 
-    /// Returns a string representation of the validators in a tuple format.
-    ///
-    /// This method creates a plain text string where each line represents a validator with
+	/// Returns a string representation of the validators in a tuple format.
+	///
+	/// This method creates a plain text string where each line represents a validator with
 	///  its rank, address, voting power, and moniker.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let tuple_string = collection.tuple();
-    /// assert!(tuple_string.contains("address"));
-    /// ```
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let tuple_string = collection.tuple();
+	/// assert!(tuple_string.contains("address"));
+	/// ```
 	pub fn tuple(&self) -> String {
 		let mut output = String::new();
 		for validator in &self.0 {
@@ -703,20 +702,20 @@ impl ValidatorCollection {
 		output.trim_end().to_string()
 	}
 
-    /// Prints the `ValidatorCollection` in the specified format.
-    ///
-    /// # Arguments
-    ///
-    /// * `format` - The format to use for printing. Possible values are `"table"`, `"json"`, `"json-pretty"`, `"tuple"`, and `"raw"`.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// collection.print("table");
-    /// ```
+	/// Prints the `ValidatorCollection` in the specified format.
+	///
+	/// # Arguments
+	///
+	/// * `format` - The format to use for printing. Possible values are `"table"`, `"json"`, `"json-pretty"`, `"tuple"`, and `"raw"`.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// collection.print("table");
+	/// ```
 	pub fn print(&self, format: &str) {
 		let output = match format {
 			"table" => self.table(),
@@ -731,87 +730,87 @@ impl ValidatorCollection {
 }
 
 impl Clone for ValidatorCollection {
-    /// Creates a deep copy of the `ValidatorCollection`.
-    ///
-    /// This method duplicates the `ValidatorCollection`, including all of its contained `Validator` instances.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// let cloned_collection = collection.clone();
-    /// assert_eq!(collection.index_map(), cloned_collection.index_map());
-    /// ```
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
+	/// Creates a deep copy of the `ValidatorCollection`.
+	///
+	/// This method duplicates the `ValidatorCollection`, including all of its contained `Validator` instances.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// let cloned_collection = collection.clone();
+	/// assert_eq!(collection.index_map(), cloned_collection.index_map());
+	/// ```
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
 }
 
 impl FromIterator<Validator> for ValidatorCollection {
-    /// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
-    ///
-    /// This method allows constructing a `ValidatorCollection` from any iterator that yields `Validator` items.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let validators = vec![
-    ///     Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string()),
-    ///     Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string()),
-    /// ];
-    /// let collection: ValidatorCollection = validators.into_iter().collect();
-    /// assert_eq!(collection.index_map().len(), 2);
-    /// ```
-    fn from_iter<T: IntoIterator<Item = Validator>>(iter: T) -> Self {
-        Self::from_iter(iter)
-    }
+	/// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
+	///
+	/// This method allows constructing a `ValidatorCollection` from any iterator that yields `Validator` items.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let validators = vec![
+	///	 Validator::new(1, "address1".to_string(), 100, "moniker1".to_string(), "details1".to_string()),
+	///	 Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string()),
+	/// ];
+	/// let collection: ValidatorCollection = validators.into_iter().collect();
+	/// assert_eq!(collection.index_map().len(), 2);
+	/// ```
+	fn from_iter<T: IntoIterator<Item = Validator>>(iter: T) -> Self {
+		Self::from_iter(iter)
+	}
 }
 
 
 impl<'a> IntoIterator for &'a ValidatorCollection {
-    /// Returns an iterator over references to the `Validator` instances in the `ValidatorCollection`.
-    ///
-    /// This method provides access to the `Validator` instances by reference, allowing for iteration without ownership.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// for validator in &collection {
-    ///     println!("{}", validator.address);
-    /// }
-    /// ```
-    type Item = &'a Validator;
-    type IntoIter = std::slice::Iter<'a, Validator>;
+	/// Returns an iterator over references to the `Validator` instances in the `ValidatorCollection`.
+	///
+	/// This method provides access to the `Validator` instances by reference, allowing for iteration without ownership.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// for validator in &collection {
+	///	 println!("{}", validator.address);
+	/// }
+	/// ```
+	type Item = &'a Validator;
+	type IntoIter = std::slice::Iter<'a, Validator>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
-    }
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.iter()
+	}
 }
 
 impl IntoIterator for ValidatorCollection {
-    /// Returns an iterator over the `Validator` instances in the `ValidatorCollection`.
-    ///
-    /// This method provides ownership of the `Validator` instances, allowing for iteration with ownership.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
-    /// for validator in collection {
-    ///     println!("{}", validator.address);
-    /// }
-    /// ```
-    type Item = Validator;
-    type IntoIter = std::vec::IntoIter<Validator>;
+	/// Returns an iterator over the `Validator` instances in the `ValidatorCollection`.
+	///
+	/// This method provides ownership of the `Validator` instances, allowing for iteration with ownership.
+	///
+	/// # Example
+	///
+	/// ```
+	/// let collection = ValidatorCollection::new();
+	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
+	/// collection.insert(validator);
+	/// for validator in collection {
+	///	 println!("{}", validator.address);
+	/// }
+	/// ```
+	type Item = Validator;
+	type IntoIter = std::vec::IntoIter<Validator>;
 
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
+	fn into_iter(self) -> Self::IntoIter {
+		self.0.into_iter()
+	}
 }

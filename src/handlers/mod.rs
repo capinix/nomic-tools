@@ -26,6 +26,10 @@
 ///
 /// By following these steps, you can integrate new command handlers into the application, enabling new functionalities and commands to be processed.
 pub mod convert;
+pub mod import;
+pub mod key;
+pub mod nonce;
+pub mod profiles;
 pub mod validators;
 // Uncomment and add additional handlers as needed
 // pub mod balance;

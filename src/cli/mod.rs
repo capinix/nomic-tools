@@ -36,6 +36,9 @@
 use clap::Command;
 
 mod convert;
+mod key;
+mod nonce;
+mod profiles;
 mod validators;
 
 pub fn build_cli() -> Command {
@@ -44,5 +47,8 @@ pub fn build_cli() -> Command {
 		.author("Your Name <your.email@example.com>")
 		.about("Tools for working with Nomic")
 		.subcommand(convert::cli())	   // Conversions subcommands
+		.subcommand(key::cli())
+		.subcommand(nonce::cli())
+		.subcommand(profiles::cli())
 		.subcommand(validators::cli()) // Validators subcommand
 }
