@@ -1,14 +1,11 @@
-use fmt::table::TableBuilder;
+use clap::{Parser, Subcommand};
 use crate::nomic::globals::NOMIC;
+use fmt::table::TableBuilder;
 use indexmap::IndexMap;
-use rand::prelude::IteratorRandom;
-use rand::thread_rng;
+use rand::{ prelude::IteratorRandom, thread_rng };
 use serde_json;
 use serde::Serialize;
-use std::error::Error;
-use std::iter::FromIterator;
-use std::mem::size_of;
-use std::process::Command;
+use std::{ error::Error, iter::FromIterator, mem::size_of, process::Command };
 
 const HEADER: [&str; 5] = ["Rank", "Address", "Voting Power", "Moniker", "Details"];
 
@@ -813,4 +810,152 @@ impl IntoIterator for ValidatorCollection {
 	fn into_iter(self) -> Self::IntoIter {
 		self.0.into_iter()
 	}
+}
+
+/// Defines the CLI structure for the `validators` command.
+#[derive(Parser)]
+#[command(name = "validators", about = "Manage validators")]
+pub struct ValidatorsCli {
+    /// Specify the output format
+    #[arg(short, long, default_value = "json-pretty", value_parser = ["json", "json-pretty", "raw", "table", "tuple"])]
+    pub format: String,
+
+    /// Subcommands for the validators command
+    #[command(subcommand)]
+    pub command: ValidatorsCommand,
+}
+
+/// Subcommands for the `validators` command
+#[derive(Subcommand)]
+pub enum ValidatorsCommand {
+    /// Show the top N validators
+    Top {
+        /// Number of top validators to show
+        #[arg(value_parser = clap::value_parser!(usize), required = true)]
+        number: usize,
+    },
+    /// Show the bottom N validators
+    Bottom {
+        /// Number of bottom validators to show
+        #[arg(value_parser = clap::value_parser!(usize), required = true)]
+        number: usize,
+    },
+    /// Skip the first N validators
+    Skip {
+        /// Number of validators to skip
+        #[arg(value_parser = clap::value_parser!(usize), required = true)]
+        number: usize,
+    },
+    /// Show a specified number of random validators outside a specified top percentage
+    Random {
+        /// Number of random validators to show
+        #[arg(short, long, value_parser = clap::value_parser!(usize), required = true)]
+        count: usize,
+        
+        /// Percentage of validators to consider for randomness
+        #[arg(short, long, value_parser = clap::value_parser!(u8), required = true)]
+        percent: u8,
+    },
+    /// Search for validators by moniker
+    Moniker {
+        /// Search for validators by moniker
+        #[arg(value_parser = clap::value_parser!(String), required = true)]
+        moniker: String,
+    },
+    /// Search for a validator by address
+    Address {
+        /// Search for a validator by its address
+        #[arg(value_parser = clap::value_parser!(String), required = true)]
+        address: String,
+    },
+}
+
+pub fn options(validators_cli: &ValidatorsCli) -> Result<(), Box<dyn Error>> {
+    // Initialize validator collection and handle the Result
+    let validator_collection = match ValidatorCollection::init() {
+        Ok(collection) => collection,
+        Err(e) => {
+            println!("Error initializing validator collection: {}", e);
+            return Err(e.into());
+        }
+    };
+
+    // Determine the output format
+    let default_format = "json-pretty"; // Default output format
+
+    // Handle subcommands
+    match &validators_cli.command {
+        // Match each of the subcommands you defined in ValidatorsCli
+        ValidatorsCommand::Address { address, format } => {
+            handle_address_subcommand(address, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+        },
+        ValidatorsCommand::Moniker { moniker, format } => {
+            handle_moniker_subcommand(moniker, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+        },
+        ValidatorsCommand::Top { number, format } => {
+            handle_top_subcommand(*number, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+        },
+        ValidatorsCommand::Bottom { number, format } => {
+            handle_bottom_subcommand(*number, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+        },
+        ValidatorsCommand::Skip { number, format } => {
+            handle_skip_subcommand(*number, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+        },
+        ValidatorsCommand::Random { count, percent, format } => {
+            handle_random_subcommand(*count, *percent, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+        },
+    }
+    Ok(())
+}
+
+fn handle_address_subcommand(address: &str, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
+    if !address.is_empty() {
+        let filtered_collection = validator_collection.search_by_address(address);
+        if filtered_collection.is_empty() {
+            eprintln!("No validators found with the address: {}", address);
+        } else {
+            filtered_collection.print(format);
+        }
+    } else {
+        eprintln!("Validator address is empty.");
+    }
+    Ok(())
+}
+
+fn handle_moniker_subcommand(moniker: &str, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
+    if !moniker.is_empty() {
+        let result = validator_collection.search_by_moniker(moniker);
+        if result.is_empty() {
+            eprintln!("No validators found with moniker '{}'", moniker);
+        } else {
+            result.print(format);
+        }
+    } else {
+        eprintln!("Moniker is empty.");
+    }
+    Ok(())
+}
+
+fn handle_top_subcommand(n: usize, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
+    let filtered_collection = validator_collection.top(n);
+    filtered_collection.print(format);
+    Ok(())
+}
+
+fn handle_bottom_subcommand(n: usize, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
+    let filtered_collection = validator_collection.bottom(n);
+    filtered_collection.print(format);
+    Ok(())
+}
+
+fn handle_skip_subcommand(n: usize, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
+    let filtered_collection = validator_collection.skip(n);
+    filtered_collection.print(format);
+    Ok(())
+}
+
+fn handle_random_subcommand(count: usize, percent: u8, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
+    let filtered_collection = validator_collection.random(count, percent);
+    filtered_collection.print(format);
+    Ok(())
 }

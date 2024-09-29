@@ -1,5 +1,6 @@
 use clap::{Args, Parser, Subcommand};
 use fmt;
+use crate::nomic::validators;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -11,17 +12,24 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Run the fmt CLI as a subcommand
-    Fmt(fmt::cli::Cli), // FmtCli is used here
-    // Add other subcommands as needed
+    Fmt(fmt::cli::Cli),
+    Validators(validators::ValidatorsCli),
 }
 
 pub fn run_cli(cli: &Cli) {
     match &cli.command {
         Commands::Fmt(fmt_cli) => {
-            // Call the fmt CLI runner
-            fmt::cli::run_cli(&fmt_cli); // Forward the fmt_cli command to the fmt library
+            fmt::cli::run_cli(&fmt_cli);
         },
-        // Handle other subcommands as needed
+        Commands::Validators(validators_cli) => {
+            // Call the validators options handler
+            // Here you can convert `validators_cli` to `ArgMatches`
+            // and pass it to the `options` function
+            let matches = validators_cli.to_arg_matches(); // You'll need to implement this conversion
+            if let Err(e) = validators::options(&matches) {
+                eprintln!("Error executing validators command: {:?}", e);
+            }
+        },
+
     }
 }
