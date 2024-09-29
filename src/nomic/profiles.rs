@@ -1,4 +1,5 @@
-use columnizer::builder::Builder as TableBuilder;
+
+use fmt::table::TableBuilder;
 use cosmrs::crypto::secp256k1::SigningKey;
 use crate::nomic::globals::PROFILES_DIR;
 use crate::nomic::key::{get_key, set_key};

@@ -10,7 +10,7 @@ edition = "2021"
 
 [dependencies]
 clap = "4.5.18"
-columnizer = { path = "../columnizer" }
+fmt = { git = "https://github.com/flengure/fmt.git", branch = "main" }
 cosmrs = "0.20.0"
 hex = "0.4.3"
 indexmap = { version = "2.5.0", features = ["serde"] }
