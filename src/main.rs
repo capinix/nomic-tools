@@ -1,5 +1,6 @@
 mod cli;
 mod nomic;
+mod functions;
 
 use clap::Parser;
 
