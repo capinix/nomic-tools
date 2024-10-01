@@ -13,18 +13,18 @@ fn get_nonce_file(file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
 
 /// Retrieves the nonce value from a binary file.
 ///
-/// This function attempts to get the nonce file's path and read its contents as a `u64`.
-/// If the file does not exist, it will return an error.
+/// This function attempts to retrieve the path of the nonce file and read its contents as a `u64` value.
+/// If the file does not exist or cannot be read, it will return an error.
 ///
 /// # Parameters
 ///
-/// * `file`: An optional path to a specific nonce file.
-/// * `home`: An optional base path (home directory will be used if not provided).
+/// - `file`: An optional path to a specific nonce file.
+/// - `home`: An optional base path (home directory will be used if not provided).
 ///
 /// # Returns
 ///
-/// * `Ok(u64)` if the nonce is successfully retrieved from the file.
-/// * `Err(anyhow::Error)` if an error occurs while retrieving the nonce file or reading its contents.
+/// - `Ok(u64)` if the nonce is successfully retrieved from the file.
+/// - `Err(anyhow::Error)` if an error occurs while retrieving the nonce file or reading its contents.
 pub fn get_nonce(
 	file: Option<&Path>,
 	home: Option<&Path>
@@ -54,6 +54,21 @@ pub fn get_nonce(
 	Ok(nonce) // Return the decimal value
 }
 
+/// Sets the nonce value in a binary file.
+///
+/// This function converts the provided `u64` value to a byte array in big-endian order and writes it to
+/// the specified nonce file. If the file does not exist, it will be created.
+///
+/// # Parameters
+///
+/// - `value`: The decimal value to set as the nonce.
+/// - `file`: An optional path to a specific nonce file.
+/// - `home`: An optional base path (home directory will be used if not provided).
+///
+/// # Returns
+///
+/// - `Ok(())` if the nonce is successfully written to the file.
+/// - `Err(anyhow::Error)` if an error occurs while retrieving the nonce file path or writing its contents.
 pub fn set_nonce(
 	value: u64, 
 	file: Option<&Path>,
@@ -123,6 +138,19 @@ pub enum CliCommand {
 	},
 }
 
+/// Runs the CLI commands based on user input.
+///
+/// This function checks for mutual exclusivity between the `file` and `home` options, 
+/// executes the specified subcommand, and handles any errors that arise during the process.
+///
+/// # Parameters
+///
+/// - `cli`: The CLI structure containing the command and arguments provided by the user.
+///
+/// # Returns
+///
+/// - `Ok(())` if the command executes successfully.
+/// - `Err(Box<dyn Error>)` if an error occurs during command execution.
 pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 
 	// Check for mutual exclusivity of home and file
