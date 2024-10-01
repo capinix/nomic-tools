@@ -29,39 +29,39 @@ use std::{
 /// Enum to represent output formats
 #[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
-    Json,
-    JsonPretty,
-    Raw,
-    Table,
-    Tuple,
+	Json,
+	JsonPretty,
+	Raw,
+	Table,
+	Tuple,
 }
 
 impl FromStr for OutputFormat {
-    type Err = String;
+	type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "json" => Ok(OutputFormat::Json),
-            "json-pretty" => Ok(OutputFormat::JsonPretty),
-            "raw" => Ok(OutputFormat::Raw),
-            "table" => Ok(OutputFormat::Table),
-            "tuple" => Ok(OutputFormat::Tuple),
-            _ => Err(format!("Invalid output format: {}", s)),
-        }
-    }
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s.to_lowercase().as_str() {
+			"json" => Ok(OutputFormat::Json),
+			"json-pretty" => Ok(OutputFormat::JsonPretty),
+			"raw" => Ok(OutputFormat::Raw),
+			"table" => Ok(OutputFormat::Table),
+			"tuple" => Ok(OutputFormat::Tuple),
+			_ => Err(format!("Invalid output format: {}", s)),
+		}
+	}
 }
 
 impl std::fmt::Display for OutputFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let output = match self {
-            OutputFormat::Json => "json",
-            OutputFormat::JsonPretty => "json-pretty",
-            OutputFormat::Raw => "raw",
-            OutputFormat::Table => "table",
-            OutputFormat::Tuple => "tuple",
-        };
-        write!(f, "{}", output)
-    }
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let output = match self {
+			OutputFormat::Json => "json",
+			OutputFormat::JsonPretty => "json-pretty",
+			OutputFormat::Raw => "raw",
+			OutputFormat::Table => "table",
+			OutputFormat::Tuple => "tuple",
+		};
+		write!(f, "{}", output)
+	}
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -608,12 +608,12 @@ impl ValidatorCollection {
 		for validator in &self.0 {
 			// Append formatted data to the output string
 			output.push_str(&format!("- {}\n", validator.address));
-			output.push_str(&format!("    VOTING POWER: {}\n", validator.voting_power));
-			output.push_str(&format!("    MONIKER: {}\n", validator.moniker));
+			output.push_str(&format!("	VOTING POWER: {}\n", validator.voting_power));
+			output.push_str(&format!("	MONIKER: {}\n", validator.moniker));
 			
 			// Include details if specified
 			if include_details.unwrap_or(true) {
-				output.push_str(&format!("    DETAILS: {}\n", validator.details));
+				output.push_str(&format!("	DETAILS: {}\n", validator.details));
 			}
 		}
 
@@ -841,37 +841,37 @@ impl ValidatorCollection {
 	/// # Note
 	///
 	/// Ensure that the desired format is valid, as unsupported formats will result in no output.
-    pub fn print(&self,
-        format: Option<OutputFormat>,
-        include_details: Option<bool>,
-        column_widths: Option<Vec<usize>>
-    ) {
+	pub fn print(&self,
+		format: Option<OutputFormat>,
+		include_details: Option<bool>,
+		column_widths: Option<Vec<usize>>
+	) {
 
 		// Use the default format if None is provided
 		let format = format.unwrap_or(OutputFormat::JsonPretty);
 
-        match format {
-            OutputFormat::Table => self.table(include_details, column_widths).printstd(),
-            OutputFormat::Json => {
-                // Convert the JSON value to a string
-                match serde_json::to_string(&self.json(include_details)) {
-                    Ok(json_str) => println!("{}", json_str),
-                    Err(e) => eprintln!("Error serializing JSON: {}", e),
-                }
-            },
-            OutputFormat::JsonPretty => {
-                // Serialize the JSON value to a pretty string
-                match serde_json::to_string_pretty(&self.json(include_details)) {
-                    Ok(pretty_json) => println!("{}", pretty_json),
-                    Err(e) => eprintln!("Error serializing JSON: {}", e),
-                }
-            },
-            OutputFormat::Tuple => {
-                println!("{:?}", self.tuple(include_details));
-            },
-            OutputFormat::Raw => println!("{}", self.raw(include_details)),
-        }
-    }
+		match format {
+			OutputFormat::Table => self.table(include_details, column_widths).printstd(),
+			OutputFormat::Json => {
+				// Convert the JSON value to a string
+				match serde_json::to_string(&self.json(include_details)) {
+					Ok(json_str) => println!("{}", json_str),
+					Err(e) => eprintln!("Error serializing JSON: {}", e),
+				}
+			},
+			OutputFormat::JsonPretty => {
+				// Serialize the JSON value to a pretty string
+				match serde_json::to_string_pretty(&self.json(include_details)) {
+					Ok(pretty_json) => println!("{}", pretty_json),
+					Err(e) => eprintln!("Error serializing JSON: {}", e),
+				}
+			},
+			OutputFormat::Tuple => {
+				println!("{:?}", self.tuple(include_details));
+			},
+			OutputFormat::Raw => println!("{}", self.raw(include_details)),
+		}
+	}
 
 }
 
@@ -965,31 +965,31 @@ impl IntoIterator for ValidatorCollection {
 #[derive(Parser)]
 #[command(name = "validators", about = "Manage validators")]
 pub struct Cli {
-    /// Specify the output format
-    #[arg(long, short)]
-    pub format: Option<OutputFormat>,
+	/// Specify the output format
+	#[arg(long, short)]
+	pub format: Option<OutputFormat>,
 
-    /// Wether to include the details field
-    #[arg(short, long)]
-    pub include_details: Option<bool>,
+	/// Wether to include the details field
+	#[arg(short, long)]
+	pub include_details: Option<bool>,
 
-    /// Column widths for table view
-    #[arg(short, long)]
-    pub column_widths: Option<Vec<usize>>,
+	/// Column widths for table view
+	#[arg(short, long)]
+	pub column_widths: Option<Vec<usize>>,
 
-    /// Subcommands for the validators command
-    #[command(subcommand)]
-    pub command: Option<ValidatorsCommand>,
+	/// Subcommands for the validators command
+	#[command(subcommand)]
+	pub command: Option<ValidatorsCommand>,
 }
 
 /// Subcommands for the `validators` command
 #[derive(Subcommand)]
 pub enum ValidatorsCommand {
-    /// Show the top N validators
-    Top {
-        /// Number of top validators to show
-        #[arg(value_parser = clap::value_parser!(usize), required = true)]
-        number: usize,
+	/// Show the top N validators
+	Top {
+		/// Number of top validators to show
+		#[arg(value_parser = clap::value_parser!(usize), required = true)]
+		number: usize,
 
 		/// Specify the output format
 		#[arg(default_value = "json-pretty", long, short)]
@@ -1003,12 +1003,12 @@ pub enum ValidatorsCommand {
 		#[arg(short, long)]
 		column_widths: Option<Vec<usize>>,
 
-    },
-    /// Show the bottom N validators
-    Bottom {
-        /// Number of bottom validators to show
-        #[arg(value_parser = clap::value_parser!(usize), required = true)]
-        number: usize,
+	},
+	/// Show the bottom N validators
+	Bottom {
+		/// Number of bottom validators to show
+		#[arg(value_parser = clap::value_parser!(usize), required = true)]
+		number: usize,
 
 		/// Specify the output format
 		#[arg(long, short)]
@@ -1021,12 +1021,12 @@ pub enum ValidatorsCommand {
 		/// Column widths for table view
 		#[arg(short, long)]
 		column_widths: Option<Vec<usize>>,
-    },
-    /// Skip the first N validators
-    Skip {
-        /// Number of validators to skip
-        #[arg(value_parser = clap::value_parser!(usize), required = true)]
-        number: usize,
+	},
+	/// Skip the first N validators
+	Skip {
+		/// Number of validators to skip
+		#[arg(value_parser = clap::value_parser!(usize), required = true)]
+		number: usize,
 
 		/// Specify the output format
 		#[arg(long, short)]
@@ -1039,16 +1039,16 @@ pub enum ValidatorsCommand {
 		/// Column widths for table view
 		#[arg(short, long)]
 		column_widths: Option<Vec<usize>>,
-    },
-    /// Show a specified number of random validators outside a specified top percentage
-    Random {
-        /// Number of random validators to show
-        #[arg(short, long, value_parser = clap::value_parser!(usize), required = true)]
-        count: usize,
-        
-        /// Percentage of validators to consider for randomness
-        #[arg(short, long, value_parser = clap::value_parser!(u8), required = true)]
-        percent: u8,
+	},
+	/// Show a specified number of random validators outside a specified top percentage
+	Random {
+		/// Number of random validators to show
+		#[arg(short, long, value_parser = clap::value_parser!(usize), required = true)]
+		count: usize,
+		
+		/// Percentage of validators to consider for randomness
+		#[arg(short, long, value_parser = clap::value_parser!(u8), required = true)]
+		percent: u8,
 
 		/// Specify the output format
 		#[arg(long, short)]
@@ -1061,30 +1061,12 @@ pub enum ValidatorsCommand {
 		/// Column widths for table view
 		#[arg(short, long)]
 		column_widths: Option<Vec<usize>>,
-    },
-    /// Search for validators by moniker
-    Moniker {
-        /// Search for validators by moniker
-        #[arg(value_parser = clap::value_parser!(String), required = true)]
-        moniker: String,
-
-		/// Specify the output format
-		#[arg(long, short)]
-		format: Option<OutputFormat>,
-
-		/// Wether to include the details field
-		#[arg(default_value = "true", short, long)]
-		include_details: Option<bool>,
-
-		/// Column widths for table view
-		#[arg(short, long)]
-		column_widths: Option<Vec<usize>>,
-    },
-    /// Search for a validator by address
-    Address {
-        /// Search for a validator by its address
-        #[arg(value_parser = clap::value_parser!(String), required = true)]
-        address: String,
+	},
+	/// Search for validators by moniker
+	Moniker {
+		/// Search for validators by moniker
+		#[arg(value_parser = clap::value_parser!(String), required = true)]
+		moniker: String,
 
 		/// Specify the output format
 		#[arg(long, short)]
@@ -1097,130 +1079,148 @@ pub enum ValidatorsCommand {
 		/// Column widths for table view
 		#[arg(short, long)]
 		column_widths: Option<Vec<usize>>,
-    },
+	},
+	/// Search for a validator by address
+	Address {
+		/// Search for a validator by its address
+		#[arg(value_parser = clap::value_parser!(String), required = true)]
+		address: String,
+
+		/// Specify the output format
+		#[arg(long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(default_value = "true", short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
+	},
 }
 
 pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 
-    let collection = match ValidatorCollection::init() {
-        Ok(collection) => collection,
-        Err(e) => {
-            println!("Error initializing validator collection: {}", e);
-            return Err(e.into());
-        }
-    };
+	let collection = match ValidatorCollection::init() {
+		Ok(collection) => collection,
+		Err(e) => {
+			println!("Error initializing validator collection: {}", e);
+			return Err(e.into());
+		}
+	};
 
-    // Handle subcommands
-    match &cli.command {
+	// Handle subcommands
+	match &cli.command {
 
-        // handle address subcommand
-        Some(ValidatorsCommand::Address { address, format, include_details, column_widths }) => {
+		// handle address subcommand
+		Some(ValidatorsCommand::Address { address, format, include_details, column_widths }) => {
 
-            let format          = format.clone().or(cli.format.clone());
+			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
-            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+			let column_widths   = column_widths.clone().or(cli.column_widths.clone());
 
-            if !address.is_empty() {
-                let filtered = collection.search_by_address(address);
-                if filtered.is_empty() {
-                    eprintln!("No validators found with the address: {}", address);
-                } else {
-                    filtered.print(format, include_details, column_widths.clone());
-                }
-            } else {
-                eprintln!("Validator address is empty.");
-            }
-            Ok(())
-        },
+			if !address.is_empty() {
+				let filtered = collection.search_by_address(address);
+				if filtered.is_empty() {
+					eprintln!("No validators found with the address: {}", address);
+				} else {
+					filtered.print(format, include_details, column_widths.clone());
+				}
+			} else {
+				eprintln!("Validator address is empty.");
+			}
+			Ok(())
+		},
 
-        // handle moniker subcommand
-        Some(ValidatorsCommand::Moniker { moniker, format, include_details, column_widths }) => {
+		// handle moniker subcommand
+		Some(ValidatorsCommand::Moniker { moniker, format, include_details, column_widths }) => {
 
-            let format          = format.clone().or(cli.format.clone());
+			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
-            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+			let column_widths   = column_widths.clone().or(cli.column_widths.clone());
 
-            if !moniker.is_empty() {
-                let filtered = collection.search_by_moniker(moniker);
-                if filtered.is_empty() {
-                    eprintln!("No validators found with the moniker: {}", moniker);
-                } else {
-                    filtered.print(format, include_details, column_widths.clone());
-                }
-            } else {
-                eprintln!("Validator moniker is empty.");
-            }
-            Ok(())
-        },
+			if !moniker.is_empty() {
+				let filtered = collection.search_by_moniker(moniker);
+				if filtered.is_empty() {
+					eprintln!("No validators found with the moniker: {}", moniker);
+				} else {
+					filtered.print(format, include_details, column_widths.clone());
+				}
+			} else {
+				eprintln!("Validator moniker is empty.");
+			}
+			Ok(())
+		},
 
-        // handle top subcommand
-        Some(ValidatorsCommand::Top { number, format, include_details, column_widths }) => {
+		// handle top subcommand
+		Some(ValidatorsCommand::Top { number, format, include_details, column_widths }) => {
 
-            let format          = format.clone().or(cli.format.clone());
+			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
-            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+			let column_widths   = column_widths.clone().or(cli.column_widths.clone());
 
-            let filtered = collection.top(*number);
-            if filtered.is_empty() {
-                eprintln!("No validators found in the top {}", number);
-            } else {
+			let filtered = collection.top(*number);
+			if filtered.is_empty() {
+				eprintln!("No validators found in the top {}", number);
+			} else {
 				filtered.print(format, include_details, column_widths.clone());
-            }
-            Ok(())
-        },
+			}
+			Ok(())
+		},
 
-        // handle bottom subcommand
-        Some(ValidatorsCommand::Bottom { number, format, include_details, column_widths }) => {
+		// handle bottom subcommand
+		Some(ValidatorsCommand::Bottom { number, format, include_details, column_widths }) => {
 
-            let format          = format.clone().or(cli.format.clone());
+			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
-            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+			let column_widths   = column_widths.clone().or(cli.column_widths.clone());
 
-            let filtered = collection.bottom(*number);
-            if filtered.is_empty() {
-                eprintln!("No validators found in the bottom {}", number);
-            } else {
+			let filtered = collection.bottom(*number);
+			if filtered.is_empty() {
+				eprintln!("No validators found in the bottom {}", number);
+			} else {
 				filtered.print(format, include_details, column_widths.clone());
-            }
-            Ok(())
-        },
+			}
+			Ok(())
+		},
 
-        // handle skip subcommand
-        Some(ValidatorsCommand::Skip { number, format, include_details, column_widths }) => {
+		// handle skip subcommand
+		Some(ValidatorsCommand::Skip { number, format, include_details, column_widths }) => {
 
-            let format          = format.clone().or(cli.format.clone());
+			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
-            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+			let column_widths   = column_widths.clone().or(cli.column_widths.clone());
 
-            let filtered = collection.skip(*number);
-            if filtered.is_empty() {
-                eprintln!("No validators found after skipping {}", number);
-            } else {
+			let filtered = collection.skip(*number);
+			if filtered.is_empty() {
+				eprintln!("No validators found after skipping {}", number);
+			} else {
 				filtered.print(format, include_details, column_widths.clone());
-            }
-            Ok(())
-        },
+			}
+			Ok(())
+		},
 
-        // handle random subcommand
-        Some(ValidatorsCommand::Random { count, percent, format, include_details, column_widths }) => {
+		// handle random subcommand
+		Some(ValidatorsCommand::Random { count, percent, format, include_details, column_widths }) => {
 
-            let format          = format.clone().or(cli.format.clone());
+			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
-            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+			let column_widths   = column_widths.clone().or(cli.column_widths.clone());
 
-            let filtered = collection.random(*count, *percent);
-            if filtered.is_empty() {
-                eprintln!("No random validators found");
-            } else {
+			let filtered = collection.random(*count, *percent);
+			if filtered.is_empty() {
+				eprintln!("No random validators found");
+			} else {
 				filtered.print(format, include_details, column_widths.clone());
-            }
-            Ok(())
-        },
+			}
+			Ok(())
+		},
 
-        // Default case when no subcommand is provided
-        None => {
-            collection.print(cli.format.clone(), cli.include_details, cli.column_widths.clone());
-            Ok(())
-        },
-    }
+		// Default case when no subcommand is provided
+		None => {
+			collection.print(cli.format.clone(), cli.include_details, cli.column_widths.clone());
+			Ok(())
+		},
+	}
 }
