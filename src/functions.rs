@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use dirs::home_dir;
-use anyhow::{Result, Context};
+use anyhow::{anyhow, Result, Context};
 
 /// Retrieves a full file path based on the provided options.
 ///
@@ -51,4 +51,23 @@ pub fn get_file(
             Ok(base_path.join(p))
         }
     }
+}
+
+/// Resolves file and home options with mutual exclusivity.
+/// Prioritizes subcommand-level options over the top-level options.
+pub fn resolve_file_home(
+    cmd_file: Option<PathBuf>, cmd_home: Option<PathBuf>, 
+    global_file: Option<PathBuf>, global_home: Option<PathBuf>
+) -> Result<(Option<PathBuf>, Option<PathBuf>)> {
+
+    // Subcommand options take precedence over the top-level options.
+    let file = cmd_file.or(global_file);
+    let home = cmd_home.or(global_home);
+
+    // Check mutual exclusivity of the resolved options.
+    if file.is_some() && home.is_some() {
+        return Err(anyhow!("You cannot provide both --file and --home at the same time."));
+    }
+
+    Ok((file, home))
 }

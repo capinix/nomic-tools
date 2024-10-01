@@ -4,15 +4,37 @@ use std::fs::File;
 use std::io::{ Read, Write };
 use std::path::{ Path, PathBuf };
 use fmt::io::unwrap_or_stdin;
-use crate::functions::get_file;
+use crate::functions::{ get_file, resolve_file_home };
 use anyhow::{anyhow, Result, Context};
 
+/// Retrieves the path to the private key file. This checks if the `file` or `home` 
+/// paths are provided and, if not, defaults to `.orga-wallet/privkey`.
+/// 
+/// # Arguments
+///
+/// * `file` - Optional reference to a file path.
+/// * `home` - Optional reference to a home directory path.
+///
+/// # Returns
+///
+/// Returns a `PathBuf` with the resolved path to the private key file.
 fn get_privkey_file(
 	file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
 	let sub_path = Path::new(".orga-wallet").join("privkey");
 	get_file(file, home, Some(&sub_path))
 }
 
+/// Formats a hexadecimal string by inserting line breaks after a specified number
+/// of bytes, mimicking the output of `xxd -ps -c <bytes_per_line>`.
+/// 
+/// # Arguments
+///
+/// * `hex_string` - The hexadecimal string to be formatted.
+/// * `bytes_per_line` - The number of bytes to display per line (each byte is 2 hex characters).
+///
+/// # Returns
+///
+/// A formatted string with the specified number of bytes per line.
 fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
 	hex_string
 		.chars()
@@ -23,7 +45,18 @@ fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
 		.join("\n")
 }
 
+/// Reads the private key from a file and returns it as a formatted hexadecimal string.
+///
+/// # Arguments
+///
+/// * `file` - Optional reference to a file path.
+/// * `home` - Optional reference to a home directory path.
+///
+/// # Returns
+///
+/// A `Result` with the formatted hexadecimal string, or an error if the file could not be read.
 pub fn get_privkey(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
+
 	// Get the privkey file path
 	let privkey_file = get_privkey_file(file, home)
 		.context("Failed to get privkey file path")?;
@@ -45,22 +78,53 @@ pub fn get_privkey(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 	Ok(formatted_output)
 }
 
+/// Sets the private key in the file by writing the provided hexadecimal string.
+///
+/// # Arguments
+///
+/// * `hex_str` - Optional hexadecimal string to write to the file.
+/// * `file` - Optional reference to a file path.
+/// * `home` - Optional reference to a home directory path.
+/// * `force` - If true, forces overwriting of an existing file without confirmation.
+///
+/// # Returns
+///
+/// A `Result` indicating success or failure.
 pub fn set_privkey(
 	hex_str: Option<&str>,
 	file: Option<&Path>,
 	home: Option<&Path>,
+	force: bool,
 ) -> Result<()> {
+
 	// Use unwrap_or_stdin to read hex string from command line or stdin
 	let input_data = unwrap_or_stdin(hex_str, 5, 500)
-		.map_err(|e| anyhow::anyhow!("Error reading hex string: {}", e))?; // Use anyhow directly
+		.map_err(|e| anyhow::anyhow!("Error reading hex string: {}", e))?;
 
 	// Decode the hex string into bytes
-	let decoded_data = decode(&input_data)  // Ensure input_data is correctly passed
+	let decoded_data = decode(&input_data)
 		.context("Failed to decode hexadecimal string")?;
 
 	// Get the privkey file path
 	let privkey_file = get_privkey_file(file, home)
 		.context("Failed to get privkey file path")?;
+
+	// Check if the file already exists
+	if privkey_file.exists() && !force {
+		// Prompt for confirmation if not forced
+		println!(
+			"File '{}' already exists. Do you want to overwrite it? [y/N]: ",
+			privkey_file.display()
+		);
+		
+		let mut response = String::new();
+		std::io::stdin().read_line(&mut response)?;
+
+		if !response.trim().eq_ignore_ascii_case("y") {
+			println!("Aborted. File was not overwritten.");
+			return Ok(());
+		}
+	}
 
 	// Write the decoded data to the specified file
 	let mut file = File::create(&privkey_file)
@@ -69,16 +133,25 @@ pub fn set_privkey(
 	file.write_all(&decoded_data)
 		.context("Failed to write to the privkey file")?;
 
+	println!("Private key set successfully.");
 	Ok(())
 }
 
-/// Custom parser for validating a hex string
+/// Custom parser that validates whether a given string is a valid hexadecimal string.
+///
+/// # Arguments
+///
+/// * `s` - A string to validate as hexadecimal.
+///
+/// # Returns
+///
+/// Returns a `Result` where `Ok` contains the validated hexadecimal string, and `Err` contains an error message.
 fn is_hex_string(s: &str) -> Result<String, String> {
-    if s.chars().all(|c| c.is_ascii_hexdigit()) {
-        Ok(s.to_string())
-    } else {
-        Err(format!("'{}' is not a valid hex string", s))
-    }
+	if s.chars().all(|c| c.is_ascii_hexdigit()) {
+		Ok(s.to_string())
+	} else {
+		Err(format!("'{}' is not a valid hex string", s))
+	}
 }
 
 /// Defines the CLI structure for the `privkey` command.
@@ -114,7 +187,7 @@ pub enum CliCommand {
 	/// Set contents of PrivKey file
 	Set {
 		/// Hex string
-		#[arg(long, short, value_parser = is_hex_string)]
+		#[arg(long, short = 'i', value_parser = is_hex_string)]
 		hex_string: String,
 
 		/// Filename
@@ -124,50 +197,53 @@ pub enum CliCommand {
 		/// Home directory
 		#[arg(long, short = 'H')]
 		home: Option<PathBuf>,
+
+		/// Force overwrite without confirmation
+		#[arg(long, short = 'f')]
+		force: bool,
 	},
 }
 
+/// Runs the CLI for managing the private key.
+///
+/// # Arguments
+///
+/// * `cli` - A reference to the parsed CLI arguments.
+///
+/// # Returns
+///
+/// Returns a `Result` indicating success or failure.
 pub fn run_cli(cli: &Cli) -> Result<()> {
-	// Check for mutual exclusivity of home and file
-	if cli.file.is_some() && cli.home.is_some() {
-		eprintln!("Error: You cannot provide both --file and --home at the same time.");
-		return Err(anyhow!("Mutually exclusive options provided.")); // Use anyhow for the error
-	}
 
 	match &cli.command {
 		Some(CliCommand::Get { file, home }) => {
-			let file = file.clone().or(cli.file.clone());
-			let home = home.clone().or(cli.home.clone());
-
-			if file.is_some() && home.is_some() {
-				eprintln!("Error: You cannot provide both --file and --home at the same time.");
-				return Err(anyhow!("Mutually exclusive options provided.")); // Use anyhow for the error
-			}
-
-			let privkey = get_privkey(file.as_deref(), home.as_deref())
-				.context("Failed to get private key")?; // Use context for better error handling
+			// Resolve the final file and home options, with subcommand taking precedence.
+			let (resolved_file, resolved_home) = resolve_file_home(
+				file.clone(), home.clone(), cli.file.clone(), cli.home.clone()
+			)?;
+			
+			// Get and print the private key.
+			let privkey = get_privkey(resolved_file.as_deref(), resolved_home.as_deref())
+				.context("Failed to get private key")?;
 
 			println!("Current private key:\n{}", privkey);
 			Ok(())
 		},
-		Some(CliCommand::Set { hex_string, file, home }) => {
-			let file = file.clone().or(cli.file.clone());
-			let home = home.clone().or(cli.home.clone());
+		Some(CliCommand::Set { hex_string, file, home, force }) => {
+			// Resolve the final file and home options, with subcommand taking precedence.
+			let (resolved_file, resolved_home) = resolve_file_home(
+				file.clone(), home.clone(), cli.file.clone(), cli.home.clone()
+			)?;
 
-			if file.is_some() && home.is_some() {
-				eprintln!("Error: You cannot provide both --file and --home at the same time.");
-				return Err(anyhow!("Mutually exclusive options provided.")); // Use anyhow for the error
-			}
+			// Set the private key.
+			set_privkey(Some(hex_string), resolved_file.as_deref(), resolved_home.as_deref(), *force)
+				.context("Failed to set private key")?;
 
-			set_privkey(Some(hex_string), file.as_deref(), home.as_deref())
-				.context("Failed to set private key")?; // Use context for better error handling
-
-			println!("Private key set successfully.");
 			Ok(())
 		},
 		None => {
 			eprintln!("No command provided.");
-			return Err(anyhow!("No command provided.")); // Use anyhow for the error
+			return Err(anyhow!("No command provided."));
 		}
 	}
 }
