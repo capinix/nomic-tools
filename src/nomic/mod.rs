@@ -21,6 +21,6 @@
 //pub mod convert;
 pub mod globals;
 //pub mod key;
-//pub mod nonce;
+pub mod nonce;
 //pub mod profiles;
 pub mod validators;

@@ -963,7 +963,7 @@ impl IntoIterator for ValidatorCollection {
 
 /// Defines the CLI structure for the `validators` command.
 #[derive(Parser)]
-#[command(name = "validators", about = "Manage validators")]
+#[command(name = "validators", about = "Print validators")]
 pub struct Cli {
 	/// Specify the output format
 	#[arg(long, short)]
@@ -979,12 +979,12 @@ pub struct Cli {
 
 	/// Subcommands for the validators command
 	#[command(subcommand)]
-	pub command: Option<ValidatorsCommand>,
+	pub command: Option<CliCommand>,
 }
 
 /// Subcommands for the `validators` command
 #[derive(Subcommand)]
-pub enum ValidatorsCommand {
+pub enum CliCommand {
 	/// Show the top N validators
 	Top {
 		/// Number of top validators to show
@@ -1114,7 +1114,7 @@ pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 	match &cli.command {
 
 		// handle address subcommand
-		Some(ValidatorsCommand::Address { address, format, include_details, column_widths }) => {
+		Some(CliCommand::Address { address, format, include_details, column_widths }) => {
 
 			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
@@ -1134,7 +1134,7 @@ pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 		},
 
 		// handle moniker subcommand
-		Some(ValidatorsCommand::Moniker { moniker, format, include_details, column_widths }) => {
+		Some(CliCommand::Moniker { moniker, format, include_details, column_widths }) => {
 
 			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
@@ -1154,7 +1154,7 @@ pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 		},
 
 		// handle top subcommand
-		Some(ValidatorsCommand::Top { number, format, include_details, column_widths }) => {
+		Some(CliCommand::Top { number, format, include_details, column_widths }) => {
 
 			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
@@ -1170,7 +1170,7 @@ pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 		},
 
 		// handle bottom subcommand
-		Some(ValidatorsCommand::Bottom { number, format, include_details, column_widths }) => {
+		Some(CliCommand::Bottom { number, format, include_details, column_widths }) => {
 
 			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
@@ -1186,7 +1186,7 @@ pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 		},
 
 		// handle skip subcommand
-		Some(ValidatorsCommand::Skip { number, format, include_details, column_widths }) => {
+		Some(CliCommand::Skip { number, format, include_details, column_widths }) => {
 
 			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
@@ -1202,7 +1202,7 @@ pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
 		},
 
 		// handle random subcommand
-		Some(ValidatorsCommand::Random { count, percent, format, include_details, column_widths }) => {
+		Some(CliCommand::Random { count, percent, format, include_details, column_widths }) => {
 
 			let format		  = format.clone().or(cli.format.clone());
 			let include_details = include_details.or(cli.include_details);
