@@ -1,4 +1,5 @@
 
+use fmt::table::Table;
 use fmt::table::TableBuilder;
 use cosmrs::crypto::secp256k1::SigningKey;
 use crate::nomic::globals::PROFILES_DIR;
@@ -442,7 +443,7 @@ impl ProfileCollection {
 		self.0.keys().cloned().collect::<Vec<String>>().join("\n")
 	}
 
-	pub fn to_table(&self) -> String {
+	pub fn to_table(&self) -> Table {
 		// Estimate the size and preallocate string
 		let mut output = String::with_capacity(self.bytes());
 
@@ -464,27 +465,25 @@ impl ProfileCollection {
 			output.push('\n');
 		}
 
-		let formatted_output = TableBuilder::new(&output)
-			.ifs("\x1C")
-			.ofs("  ")
-			.header_row(1)
-			.max_text_width(80)
-			.format();
-
-		formatted_output
+		TableBuilder::new(Some(output))
+			.set_ifs("\x1C".to_string())
+			.set_ofs("  ".to_string())
+			.set_header_index(1)
+			.set_column_width_limits_index(80)
+			.build()
+			.clone()
 	}
 }
 
 impl ProfileCollection {
 	pub fn print(&self, format: &str) {
-		let output = match format {
-			"json" => self.to_json(),
-			"json-pretty" => self.to_json_pretty(),
-			"list" => self.to_list(),
-			"table" => self.to_table(),
-			_ => String::new(),
+		match format {
+			"json" => println!("{}", self.to_json()),
+			"json-pretty" => println!("{}", self.to_json_pretty()),
+			"list" => println!("{}", self.to_list()),
+			"table" => self.to_table().printstd(),
+			_ => (),
 		};
-		println!("{}", output);
 	}
 
 }

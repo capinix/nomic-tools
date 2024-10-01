@@ -468,7 +468,7 @@ dependencies = [
 [[package]]
 name = "fmt"
 version = "0.1.0"
-source = "git+https://github.com/flengure/fmt.git?branch=main#02082dd57a59baa515387d1d199d5ecd63239307"
+source = "git+https://github.com/flengure/fmt.git?branch=main#1c6716656c333d3d4acc4d462ea942a514a2ee7e"
 dependencies = [
  "clap",
  "prettytable",

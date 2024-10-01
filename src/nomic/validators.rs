@@ -1,26 +1,81 @@
-use clap::{Parser, Subcommand};
-use crate::nomic::globals::NOMIC;
-use fmt::table::TableBuilder;
+use clap::{
+	Parser,
+	Subcommand,
+	ValueEnum,
+};
+use crate::nomic::globals::{
+	NOMIC,
+	NOMIC_LEGACY_VERSION,
+};
+use fmt::table::{
+	Table,
+	TableBuilder,
+};
 use indexmap::IndexMap;
-use rand::{ prelude::IteratorRandom, thread_rng };
+use rand::{
+	prelude::IteratorRandom,
+	thread_rng,
+};
 use serde_json;
 use serde::Serialize;
-use std::{ error::Error, iter::FromIterator, mem::size_of, process::Command };
+use std::{ 
+	error::Error, 
+	iter::FromIterator, 
+	mem::size_of, 
+	process::Command,
+	str::FromStr,
+};
 
-const HEADER: [&str; 5] = ["Rank", "Address", "Voting Power", "Moniker", "Details"];
+/// Enum to represent output formats
+#[derive(Debug, Clone, ValueEnum)]
+pub enum OutputFormat {
+    Json,
+    JsonPretty,
+    Raw,
+    Table,
+    Tuple,
+}
+
+impl FromStr for OutputFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "json" => Ok(OutputFormat::Json),
+            "json-pretty" => Ok(OutputFormat::JsonPretty),
+            "raw" => Ok(OutputFormat::Raw),
+            "table" => Ok(OutputFormat::Table),
+            "tuple" => Ok(OutputFormat::Tuple),
+            _ => Err(format!("Invalid output format: {}", s)),
+        }
+    }
+}
+
+impl std::fmt::Display for OutputFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let output = match self {
+            OutputFormat::Json => "json",
+            OutputFormat::JsonPretty => "json-pretty",
+            OutputFormat::Raw => "raw",
+            OutputFormat::Table => "table",
+            OutputFormat::Tuple => "tuple",
+        };
+        write!(f, "{}", output)
+    }
+}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Validator {
 	rank: usize,
 	address: String,
-	voting_power: u64,
+	voting_power: usize,
 	moniker: String,
 	details: String,
 }
 
 impl Validator {
 
-	pub fn new(rank: usize, address: String, voting_power: u64, moniker: String, details: String) -> Self {
+	pub fn new(rank: usize, address: String, voting_power: usize, moniker: String, details: String) -> Self {
 		Self {
 			rank,
 			address,
@@ -174,12 +229,20 @@ impl ValidatorCollection {
 		let mut cmd = Command::new(&*NOMIC);
 		cmd.arg("validators");
 
-		// Execute the command
+		// Set environment variables
+		cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+
+		// Execute the command and collect the output
 		let output = cmd.output()?;
 
 		// Check if the command was successful
 		if !output.status.success() {
-			return Err(format!("Command `{}` failed with output: {:?}", &*NOMIC, output).into());
+			let error_msg = format!(
+				"Command `{}` failed with output: {:?}",
+				&*NOMIC,
+				String::from_utf8_lossy(&output.stderr) // Use stderr for error output
+			);
+			return Err(error_msg.into());
 		}
 
 		// Convert the command output to a string
@@ -213,7 +276,7 @@ impl ValidatorCollection {
 			if chunk.len() == 4 {
 				let address = chunk[0].trim().trim_start_matches('-').trim().to_string();
 				let voting_power_str = chunk[1].split(':').nth(1).unwrap_or("").trim().to_string();
-				let voting_power = voting_power_str.parse::<u64>().unwrap_or(0);
+				let voting_power = voting_power_str.parse::<usize>().unwrap_or(0);
 				let moniker = chunk[2].split(':').nth(1).unwrap_or("").trim().to_string();
 				let details = chunk[3].split(':').nth(1).unwrap_or("").trim().to_string();
 
@@ -539,18 +602,22 @@ impl ValidatorCollection {
 	/// let raw_string = collection.raw();
 	/// assert!(raw_string.contains("address"));
 	/// ```
-	pub fn raw(&self) -> String {
+	pub fn raw(&self, include_details: Option<bool>) -> String {
 		let mut output = String::with_capacity(self.bytes());
 
 		for validator in &self.0 {
 			// Append formatted data to the output string
 			output.push_str(&format!("- {}\n", validator.address));
-			output.push_str(&format!("	  VOTING POWER: {}\n", validator.voting_power));
-			output.push_str(&format!("	  MONIKER: {}\n", validator.moniker));
-			output.push_str(&format!("	  DETAILS: {}\n", validator.details));
+			output.push_str(&format!("    VOTING POWER: {}\n", validator.voting_power));
+			output.push_str(&format!("    MONIKER: {}\n", validator.moniker));
+			
+			// Include details if specified
+			if include_details.unwrap_or(true) {
+				output.push_str(&format!("    DETAILS: {}\n", validator.details));
+			}
 		}
 
- 		output
+		output.trim_end().to_string() // Optionally trim the trailing newline
 	}
 
 	/// Returns a formatted table representation of the validators.
@@ -559,50 +626,90 @@ impl ValidatorCollection {
 	///
 	/// ```
 	/// let collection = ValidatorCollection::new();
-	/// let table = collection.table();
+	/// let table = collection.table(None, None); // Include None for default behavior
 	/// assert!(table.contains("Rank"));
 	/// ```
-	pub fn table(&self) -> String {
-		// Estimate the size and preallocate string
-		let mut output = String::with_capacity(self.bytes());
+	pub fn table(&self, include_details: Option<bool>, column_widths: Option<Vec<usize>>) -> Table {
+		// Initialize the output string
+		let mut output = String::new();
+
+		// Determine whether to include details
+		let details = include_details.unwrap_or(false);
+		
+		// Define the header based on the presence of details
+		let header: Vec<&str> = if details {
+			vec!["Rank", "Address", "Voting Power", "Moniker", "Details"]
+		} else {
+			vec!["Rank", "Address", "Voting Power", "Moniker"]
+		};
+
+		// Define the default widths based on whether details are included
+		let default_widths = if details {
+			vec![0, 0, 0, 0, 20] // Default widths for details
+		} else {
+			vec![0, 0, 0, 0] // Default widths without details
+		};
+
+		// Create the final widths vector, starting with defaults
+		let mut final_widths = default_widths.clone();
+
+		// If user provided widths, overwrite the defaults
+		if let Some(user_widths) = column_widths {
+			for (i, &width) in user_widths.iter().enumerate() {
+				if i < final_widths.len() {
+					final_widths[i] = width; // Use user-provided width
+				}
+			}
+		}
 
 		// Construct the header
-		output.push_str(&HEADER.join("\x1C"));
+		output.push_str(&header.join("\x1C"));
 		output.push('\n');
 
-		// Maximum Column Widths
-		output.push_str(&format!("{}\x1C{}\x1C{}\x1C{}\x1C{}", 0, 0, 0, 0, 40));
+		// Join final widths into a string and append to output
+		output.push_str(&final_widths.iter().map(|w| w.to_string()).collect::<Vec<_>>().join("\x1C"));
 		output.push('\n');
 
 		// Data rows
 		for validator in &self.0 {
-			// Manually format the Validator fields with '\x1C' as the separator
-			let formatted_validator = format!(
-				"{}\x1C{}\x1C{}\x1C{}\x1C{}",
-				validator.rank,
-				validator.address,
-				validator.voting_power_nom(),
-				validator.moniker,
-				validator.details
-			);
+			let row = if details {
+				format!(
+					"{}\x1C{}\x1C{}\x1C{}\x1C{}",
+					validator.rank,
+					validator.address,
+					validator.voting_power_nom(),
+					validator.moniker,
+					validator.details
+				)
+			} else {
+				format!(
+					"{}\x1C{}\x1C{}\x1C{}",
+					validator.rank,
+					validator.address,
+					validator.voting_power_nom(),
+					validator.moniker,
+				)
+			};
 
 			// Add the formatted validator to output
-			output.push_str(&formatted_validator);
+			output.push_str(&row);
 			output.push('\n');
 		}
 
-		let formatted_output = TableBuilder::new(&output)
-			.ifs("\x1C")
-			.ofs("  ")
-			.header_row(1)
-			.max_width_row(2)
-			.max_text_width(80)
-			.pad_decimal_digits(true)
-			.max_decimal_digits(0)
-			.add_thousand_separator(true)
-			.format();
-
-		formatted_output
+		// Create and configure the table
+		let mut table = TableBuilder::new(Some(output))
+			.set_ifs("\x1C".to_string())
+			.set_ofs("  ".to_string())
+			.set_header_index(1)
+			.set_column_width_limits_index(2)
+			.set_max_cell_width(80)
+			.set_pad_decimal_digits(true)
+			.set_max_decimal_digits(0)
+			.set_use_thousand_separator(true)
+			.clone();
+		
+		// Build and return the table
+		table.build().clone()
 	}
 
 	/// Returns an `IndexMap` representation of the validators.
@@ -611,50 +718,56 @@ impl ValidatorCollection {
 	///
 	/// ```
 	/// let collection = ValidatorCollection::new();
-	/// let index_map = collection.index_map();
+	/// let index_map = collection.index_map(None); // Include None for default behavior
 	/// assert!(index_map.contains_key(&1));
 	/// ```
-	pub fn index_map(&self) -> IndexMap<String, IndexMap<String, serde_json::Value>> {
+	pub fn index_map(&self, include_details: Option<bool>) -> IndexMap<String, IndexMap<String, serde_json::Value>> {
+		let details = include_details.unwrap_or(false);
+
 		// Pre-allocate space for the outer map
 		let mut array = IndexMap::with_capacity(self.0.len());
 
 		for validator in &self.0 {
 			// Pre-allocate space for the inner map
-			let mut record = IndexMap::with_capacity(4); // Number of fields
+			let mut record = IndexMap::with_capacity(if details { 5 } else { 4 });
 
 			record.insert("VOTING POWER".to_string(), serde_json::Value::Number(validator.voting_power.into()));
 			record.insert("MONIKER".to_string(), serde_json::Value::String(validator.moniker.clone()));
 			record.insert("RANK".to_string(), serde_json::Value::Number(validator.rank.into()));
-			record.insert("DETAILS".to_string(), serde_json::Value::String(validator.details.clone()));
+
+			if details {
+				record.insert("DETAILS".to_string(), serde_json::Value::String(validator.details.clone()));
+			}
 
 			array.insert(validator.address.clone(), record);
 		}
+
 		array
 	}
 
-	/// Serializes the `ValidatorCollection` into a JSON string.
+	/// Serializes the `ValidatorCollection` into a JSON object.
 	///
 	/// # Example
 	///
 	/// ```
 	/// let collection = ValidatorCollection::new();
-	/// let json_string = collection.to_json();
-	/// assert!(json_string.contains("address"));
+	/// let json_object = collection.to_json(); // This will return a serde_json::Value
+	/// assert!(json_object.get("address").is_some());
 	/// ```
-	pub fn json(&self) -> String {
-		match serde_json::to_string(&self.index_map()) {
-			Ok(json_str) => json_str,
+	pub fn json(&self, include_details: Option<bool>) -> serde_json::Value {
+		match serde_json::to_value(&self.index_map(include_details)) {
+			Ok(json_value) => json_value,
 			Err(e) => {
 				eprintln!("Error serializing to JSON: {}", e);
-				String::new()
+				serde_json::Value::Null // Return a null value on error
 			}
 		}
 	}
 
-	/// Serializes the `ValidatorCollection` into a prettified JSON string.
+	/// Returns a vector of tuples representing the validators in tuple format.
 	///
-	/// This method converts the `ValidatorCollection` into a prettified JSON string representation using the `index_map()` method.
-	/// If serialization fails, it prints an error message and returns an empty string.
+	/// Each tuple contains the rank, address, voting power, and moniker of a validator.
+	/// If `include_details` is true, it will also include the details.
 	///
 	/// # Example
 	///
@@ -662,68 +775,104 @@ impl ValidatorCollection {
 	/// let collection = ValidatorCollection::new();
 	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
 	/// collection.insert(validator);
-	/// let json_pretty_string = collection.json_pretty();
-	/// assert!(json_pretty_string.contains("address"));
+	/// let tuple_vector = collection.tuple(None); // Call with `None` to include default behavior
+	/// assert!(tuple_vector.iter().any(|(_, address, _, _)| *address == "address"));
 	/// ```
-	pub fn json_pretty(&self) -> String {
-		match serde_json::to_string_pretty(&self.index_map()) {
-			Ok(json_str) => json_str,
-			Err(e) => {
-				eprintln!("Error serializing to JSON: {}", e);
-				String::new()
-			}
-		}
-	}
+	pub fn tuple(&self, include_details: Option<bool>) -> Vec<(usize, String, usize, String, Option<String>)> {
+		let details = include_details.unwrap_or(false);
+		let mut output = vec![];
 
-	/// Returns a string representation of the validators in a tuple format.
-	///
-	/// This method creates a plain text string where each line represents a validator with
-	///  its rank, address, voting power, and moniker.
-	///
-	/// # Example
-	///
-	/// ```
-	/// let collection = ValidatorCollection::new();
-	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-	/// collection.insert(validator);
-	/// let tuple_string = collection.tuple();
-	/// assert!(tuple_string.contains("address"));
-	/// ```
-	pub fn tuple(&self) -> String {
-		let mut output = String::new();
 		for validator in &self.0 {
-			output.push_str(&format!("{} {} {} {}\n",
-				validator.rank, validator.address, validator.voting_power, validator.moniker
-			));
+			if details {
+				output.push((
+					validator.rank,
+					validator.address.clone(),
+					validator.voting_power,
+					validator.moniker.clone(),
+					Some(validator.details.clone()), // Wrap details in Some
+				));
+			} else {
+				output.push((
+					validator.rank,
+					validator.address.clone(),
+					validator.voting_power,
+					validator.moniker.clone(),
+					None, // No details
+				));
+			}
 		}
-		output.trim_end().to_string()
+
+		output
 	}
 
-	/// Prints the `ValidatorCollection` in the specified format.
+	/// Prints the representation of the `ValidatorCollection` in the specified format.
 	///
-	/// # Arguments
+	/// This method allows for flexible output of the validator data in various formats.
+	/// The available formats include table, JSON (both compact and pretty), tuple, and raw.
+	/// The output can include additional details based on the `include_details` parameter.
 	///
-	/// * `format` - The format to use for printing. Possible values are `"table"`, `"json"`, `"json-pretty"`, `"tuple"`, and `"raw"`.
+	/// # Parameters
+	/// 
+	/// - `format`: A string indicating the desired output format. Supported formats are:
+	///   - `"table"`: Outputs the data in a table format.
+	///   - `"json"`: Outputs the data in a compact JSON format.
+	///   - `"json-pretty"`: Outputs the data in a formatted (pretty) JSON format.
+	///   - `"tuple"`: Outputs the data in a tuple format for easier reading.
+	///   - `"raw"`: Outputs the raw representation of the validators.
+	/// 
+	/// - `include_details`: An optional boolean that specifies whether to include additional
+	///   details in the output. If `None`, the default behavior is to include details.
+	/// 
+	/// - `column_widths`: An optional vector of column widths, used when the output format
+	///   is `"table"` to control the width of each column.
 	///
 	/// # Example
 	///
 	/// ```
 	/// let collection = ValidatorCollection::new();
-	/// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-	/// collection.insert(validator);
-	/// collection.print("table");
+	/// collection.print("json", Some(true), None);
 	/// ```
-	pub fn print(&self, format: &str) {
-		let output = match format {
-			"table" => self.table(),
-			"json" => self.json(),
-			"json-pretty" => self.json_pretty(),
-			"tuple" => self.tuple(),
-			"raw" => self.raw(),
-			_ => String::new(),
-		};
-		println!("{}", output);
-	}
+	///
+	/// # Panics
+	///
+	/// This method does not panic but will print an error message to `stderr` if there
+	/// is an issue serializing the JSON.
+	///
+	/// # Note
+	///
+	/// Ensure that the desired format is valid, as unsupported formats will result in no output.
+    pub fn print(&self,
+        format: Option<OutputFormat>,
+        include_details: Option<bool>,
+        column_widths: Option<Vec<usize>>
+    ) {
+
+		// Use the default format if None is provided
+		let format = format.unwrap_or(OutputFormat::JsonPretty);
+
+        match format {
+            OutputFormat::Table => self.table(include_details, column_widths).printstd(),
+            OutputFormat::Json => {
+                // Convert the JSON value to a string
+                match serde_json::to_string(&self.json(include_details)) {
+                    Ok(json_str) => println!("{}", json_str),
+                    Err(e) => eprintln!("Error serializing JSON: {}", e),
+                }
+            },
+            OutputFormat::JsonPretty => {
+                // Serialize the JSON value to a pretty string
+                match serde_json::to_string_pretty(&self.json(include_details)) {
+                    Ok(pretty_json) => println!("{}", pretty_json),
+                    Err(e) => eprintln!("Error serializing JSON: {}", e),
+                }
+            },
+            OutputFormat::Tuple => {
+                println!("{:?}", self.tuple(include_details));
+            },
+            OutputFormat::Raw => println!("{}", self.raw(include_details)),
+        }
+    }
+
 }
 
 impl Clone for ValidatorCollection {
@@ -815,14 +964,22 @@ impl IntoIterator for ValidatorCollection {
 /// Defines the CLI structure for the `validators` command.
 #[derive(Parser)]
 #[command(name = "validators", about = "Manage validators")]
-pub struct ValidatorsCli {
+pub struct Cli {
     /// Specify the output format
-    #[arg(short, long, default_value = "json-pretty", value_parser = ["json", "json-pretty", "raw", "table", "tuple"])]
-    pub format: String,
+    #[arg(long, short)]
+    pub format: Option<OutputFormat>,
+
+    /// Wether to include the details field
+    #[arg(short, long)]
+    pub include_details: Option<bool>,
+
+    /// Column widths for table view
+    #[arg(short, long)]
+    pub column_widths: Option<Vec<usize>>,
 
     /// Subcommands for the validators command
     #[command(subcommand)]
-    pub command: ValidatorsCommand,
+    pub command: Option<ValidatorsCommand>,
 }
 
 /// Subcommands for the `validators` command
@@ -833,18 +990,55 @@ pub enum ValidatorsCommand {
         /// Number of top validators to show
         #[arg(value_parser = clap::value_parser!(usize), required = true)]
         number: usize,
+
+		/// Specify the output format
+		#[arg(default_value = "json-pretty", long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(default_value = "false", short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
+
     },
     /// Show the bottom N validators
     Bottom {
         /// Number of bottom validators to show
         #[arg(value_parser = clap::value_parser!(usize), required = true)]
         number: usize,
+
+		/// Specify the output format
+		#[arg(long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
     },
     /// Skip the first N validators
     Skip {
         /// Number of validators to skip
         #[arg(value_parser = clap::value_parser!(usize), required = true)]
         number: usize,
+
+		/// Specify the output format
+		#[arg(long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
     },
     /// Show a specified number of random validators outside a specified top percentage
     Random {
@@ -855,24 +1049,60 @@ pub enum ValidatorsCommand {
         /// Percentage of validators to consider for randomness
         #[arg(short, long, value_parser = clap::value_parser!(u8), required = true)]
         percent: u8,
+
+		/// Specify the output format
+		#[arg(long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
     },
     /// Search for validators by moniker
     Moniker {
         /// Search for validators by moniker
         #[arg(value_parser = clap::value_parser!(String), required = true)]
         moniker: String,
+
+		/// Specify the output format
+		#[arg(long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(default_value = "true", short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
     },
     /// Search for a validator by address
     Address {
         /// Search for a validator by its address
         #[arg(value_parser = clap::value_parser!(String), required = true)]
         address: String,
+
+		/// Specify the output format
+		#[arg(long, short)]
+		format: Option<OutputFormat>,
+
+		/// Wether to include the details field
+		#[arg(default_value = "true", short, long)]
+		include_details: Option<bool>,
+
+		/// Column widths for table view
+		#[arg(short, long)]
+		column_widths: Option<Vec<usize>>,
     },
 }
 
-pub fn options(validators_cli: &ValidatorsCli) -> Result<(), Box<dyn Error>> {
-    // Initialize validator collection and handle the Result
-    let validator_collection = match ValidatorCollection::init() {
+pub fn run_cli(cli: &Cli) -> Result<(), Box<dyn Error>> {
+
+    let collection = match ValidatorCollection::init() {
         Ok(collection) => collection,
         Err(e) => {
             println!("Error initializing validator collection: {}", e);
@@ -880,82 +1110,117 @@ pub fn options(validators_cli: &ValidatorsCli) -> Result<(), Box<dyn Error>> {
         }
     };
 
-    // Determine the output format
-    let default_format = "json-pretty"; // Default output format
-
     // Handle subcommands
-    match &validators_cli.command {
-        // Match each of the subcommands you defined in ValidatorsCli
-        ValidatorsCommand::Address { address, format } => {
-            handle_address_subcommand(address, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+    match &cli.command {
+
+        // handle address subcommand
+        Some(ValidatorsCommand::Address { address, format, include_details, column_widths }) => {
+
+            let format          = format.clone().or(cli.format.clone());
+			let include_details = include_details.or(cli.include_details);
+            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+
+            if !address.is_empty() {
+                let filtered = collection.search_by_address(address);
+                if filtered.is_empty() {
+                    eprintln!("No validators found with the address: {}", address);
+                } else {
+                    filtered.print(format, include_details, column_widths.clone());
+                }
+            } else {
+                eprintln!("Validator address is empty.");
+            }
+            Ok(())
         },
-        ValidatorsCommand::Moniker { moniker, format } => {
-            handle_moniker_subcommand(moniker, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+
+        // handle moniker subcommand
+        Some(ValidatorsCommand::Moniker { moniker, format, include_details, column_widths }) => {
+
+            let format          = format.clone().or(cli.format.clone());
+			let include_details = include_details.or(cli.include_details);
+            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+
+            if !moniker.is_empty() {
+                let filtered = collection.search_by_moniker(moniker);
+                if filtered.is_empty() {
+                    eprintln!("No validators found with the moniker: {}", moniker);
+                } else {
+                    filtered.print(format, include_details, column_widths.clone());
+                }
+            } else {
+                eprintln!("Validator moniker is empty.");
+            }
+            Ok(())
         },
-        ValidatorsCommand::Top { number, format } => {
-            handle_top_subcommand(*number, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+
+        // handle top subcommand
+        Some(ValidatorsCommand::Top { number, format, include_details, column_widths }) => {
+
+            let format          = format.clone().or(cli.format.clone());
+			let include_details = include_details.or(cli.include_details);
+            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+
+            let filtered = collection.top(*number);
+            if filtered.is_empty() {
+                eprintln!("No validators found in the top {}", number);
+            } else {
+				filtered.print(format, include_details, column_widths.clone());
+            }
+            Ok(())
         },
-        ValidatorsCommand::Bottom { number, format } => {
-            handle_bottom_subcommand(*number, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+
+        // handle bottom subcommand
+        Some(ValidatorsCommand::Bottom { number, format, include_details, column_widths }) => {
+
+            let format          = format.clone().or(cli.format.clone());
+			let include_details = include_details.or(cli.include_details);
+            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+
+            let filtered = collection.bottom(*number);
+            if filtered.is_empty() {
+                eprintln!("No validators found in the bottom {}", number);
+            } else {
+				filtered.print(format, include_details, column_widths.clone());
+            }
+            Ok(())
         },
-        ValidatorsCommand::Skip { number, format } => {
-            handle_skip_subcommand(*number, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+
+        // handle skip subcommand
+        Some(ValidatorsCommand::Skip { number, format, include_details, column_widths }) => {
+
+            let format          = format.clone().or(cli.format.clone());
+			let include_details = include_details.or(cli.include_details);
+            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+
+            let filtered = collection.skip(*number);
+            if filtered.is_empty() {
+                eprintln!("No validators found after skipping {}", number);
+            } else {
+				filtered.print(format, include_details, column_widths.clone());
+            }
+            Ok(())
         },
-        ValidatorsCommand::Random { count, percent, format } => {
-            handle_random_subcommand(*count, *percent, format.as_deref().unwrap_or(default_format), &validator_collection)?;
+
+        // handle random subcommand
+        Some(ValidatorsCommand::Random { count, percent, format, include_details, column_widths }) => {
+
+            let format          = format.clone().or(cli.format.clone());
+			let include_details = include_details.or(cli.include_details);
+            let column_widths   = column_widths.clone().or(cli.column_widths.clone());
+
+            let filtered = collection.random(*count, *percent);
+            if filtered.is_empty() {
+                eprintln!("No random validators found");
+            } else {
+				filtered.print(format, include_details, column_widths.clone());
+            }
+            Ok(())
+        },
+
+        // Default case when no subcommand is provided
+        None => {
+            collection.print(cli.format.clone(), cli.include_details, cli.column_widths.clone());
+            Ok(())
         },
     }
-    Ok(())
-}
-
-fn handle_address_subcommand(address: &str, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
-    if !address.is_empty() {
-        let filtered_collection = validator_collection.search_by_address(address);
-        if filtered_collection.is_empty() {
-            eprintln!("No validators found with the address: {}", address);
-        } else {
-            filtered_collection.print(format);
-        }
-    } else {
-        eprintln!("Validator address is empty.");
-    }
-    Ok(())
-}
-
-fn handle_moniker_subcommand(moniker: &str, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
-    if !moniker.is_empty() {
-        let result = validator_collection.search_by_moniker(moniker);
-        if result.is_empty() {
-            eprintln!("No validators found with moniker '{}'", moniker);
-        } else {
-            result.print(format);
-        }
-    } else {
-        eprintln!("Moniker is empty.");
-    }
-    Ok(())
-}
-
-fn handle_top_subcommand(n: usize, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
-    let filtered_collection = validator_collection.top(n);
-    filtered_collection.print(format);
-    Ok(())
-}
-
-fn handle_bottom_subcommand(n: usize, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
-    let filtered_collection = validator_collection.bottom(n);
-    filtered_collection.print(format);
-    Ok(())
-}
-
-fn handle_skip_subcommand(n: usize, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
-    let filtered_collection = validator_collection.skip(n);
-    filtered_collection.print(format);
-    Ok(())
-}
-
-fn handle_random_subcommand(count: usize, percent: u8, format: &str, validator_collection: &ValidatorCollection) -> Result<(), Box<dyn Error>> {
-    let filtered_collection = validator_collection.random(count, percent);
-    filtered_collection.print(format);
-    Ok(())
 }
