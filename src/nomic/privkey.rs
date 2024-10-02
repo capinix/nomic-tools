@@ -6,6 +6,7 @@ use std::path::{ Path, PathBuf };
 use fmt::io::unwrap_or_stdin;
 use crate::functions::{ get_file, resolve_file_home };
 use anyhow::{anyhow, Result, Context};
+use cosmrs::crypto::secp256k1::SigningKey;
 
 /// Retrieves the path to the private key file. This checks if the `file` or `home` 
 /// paths are provided and, if not, defaults to `.orga-wallet/privkey`.
@@ -37,11 +38,10 @@ fn get_privkey_file(
 /// A formatted string with the specified number of bytes per line.
 fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
 	hex_string
-		.chars()
-		.collect::<Vec<_>>()
+		.as_bytes()
 		.chunks(bytes_per_line * 2) // Each byte is represented by 2 hex characters
-		.map(|chunk| chunk.iter().collect::<String>())
-		.collect::<Vec<String>>()
+		.map(|chunk| String::from_utf8_lossy(chunk).to_string())
+		.collect::<Vec<_>>()
 		.join("\n")
 }
 
@@ -55,7 +55,7 @@ fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
 /// # Returns
 ///
 /// A `Result` with the formatted hexadecimal string, or an error if the file could not be read.
-pub fn get_privkey(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
+pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 
 	// Get the privkey file path
 	let privkey_file = get_privkey_file(file, home)
@@ -78,6 +78,43 @@ pub fn get_privkey(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 	Ok(formatted_output)
 }
 
+/// Reads a private key from a file, parses it, and retrieves the corresponding account ID.
+///
+/// # Arguments
+///
+/// * `file` - A reference to the file path containing the private key.
+///
+/// # Returns
+///
+/// Returns a `Result<String>` containing the account ID, 
+///  or an error if the file cannot be opened, read, or the key cannot be parsed.
+pub fn address(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
+	let privkey_file = get_privkey_file(file, home).context("Failed to get privkey file path")?;
+
+	// Check if the file exists
+	if !privkey_file.exists() {
+		return Err(anyhow!("File '{}' does not exist.", privkey_file.display()));
+	}
+
+	// Attempt to open and read the file's contents
+	let mut contents = Vec::new();
+	File::open(&privkey_file)
+		.with_context(|| format!("Error opening file '{}'", privkey_file.display()))?
+		.read_to_end(&mut contents)
+		.with_context(|| format!("Error reading file '{}'", privkey_file.display()))?;
+
+	// Parse the SigningKey from the contents
+	let signing_key = SigningKey::from_slice(&contents)
+		.map_err(|e| anyhow!("Error parsing private key from '{}': {}", privkey_file.display(), e))?;
+
+	// Get the account ID from the public key
+	let account_id = signing_key.public_key()
+		.account_id("nomic")
+		.map_err(|e| anyhow!("Failed to get account ID: {}", e))?;
+
+	Ok(account_id.to_string())
+}
+
 /// Sets the private key in the file by writing the provided hexadecimal string.
 ///
 /// # Arguments
@@ -90,7 +127,7 @@ pub fn get_privkey(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 /// # Returns
 ///
 /// A `Result` indicating success or failure.
-pub fn set_privkey(
+pub fn import(
 	hex_str: Option<&str>,
 	file: Option<&Path>,
 	home: Option<&Path>,
@@ -174,8 +211,8 @@ pub struct Cli {
 /// Subcommands for the `privkey` command
 #[derive(Subcommand)]
 pub enum CliCommand {
-	/// Show contents of PrivKey file
-	Get {
+	/// Show the public address (AccountID)
+	Address {
 		/// Filename
 		#[arg(long, short, conflicts_with = "home")]
 		file: Option<PathBuf>,
@@ -184,8 +221,18 @@ pub enum CliCommand {
 		#[arg(long, short = 'H')]
 		home: Option<PathBuf>,
 	},
-	/// Set contents of PrivKey file
-	Set {
+	/// Export Private Key
+	Export {
+		/// Filename
+		#[arg(long, short, conflicts_with = "home")]
+		file: Option<PathBuf>,
+
+		/// Home directory
+		#[arg(long, short = 'H')]
+		home: Option<PathBuf>,
+	},
+	/// Import Private Key
+	Import {
 		/// Hex string
 		#[arg(long, short = 'i', value_parser = is_hex_string)]
 		hex_string: String,
@@ -216,27 +263,40 @@ pub enum CliCommand {
 pub fn run_cli(cli: &Cli) -> Result<()> {
 
 	match &cli.command {
-		Some(CliCommand::Get { file, home }) => {
+		Some(CliCommand::Address { file, home }) => {
 			// Resolve the final file and home options, with subcommand taking precedence.
 			let (resolved_file, resolved_home) = resolve_file_home(
 				file.clone(), home.clone(), cli.file.clone(), cli.home.clone()
 			)?;
 			
 			// Get and print the private key.
-			let privkey = get_privkey(resolved_file.as_deref(), resolved_home.as_deref())
+			let address = address(resolved_file.as_deref(), resolved_home.as_deref())
+				.context("Failed to get address")?;
+
+			println!("Address:\n{}", address);
+			Ok(())
+		},
+		Some(CliCommand::Export { file, home }) => {
+			// Resolve the final file and home options, with subcommand taking precedence.
+			let (resolved_file, resolved_home) = resolve_file_home(
+				file.clone(), home.clone(), cli.file.clone(), cli.home.clone()
+			)?;
+			
+			// Get and print the private key.
+			let privkey = export(resolved_file.as_deref(), resolved_home.as_deref())
 				.context("Failed to get private key")?;
 
 			println!("Current private key:\n{}", privkey);
 			Ok(())
 		},
-		Some(CliCommand::Set { hex_string, file, home, force }) => {
+		Some(CliCommand::Import { hex_string, file, home, force }) => {
 			// Resolve the final file and home options, with subcommand taking precedence.
 			let (resolved_file, resolved_home) = resolve_file_home(
 				file.clone(), home.clone(), cli.file.clone(), cli.home.clone()
 			)?;
 
 			// Set the private key.
-			set_privkey(Some(hex_string), resolved_file.as_deref(), resolved_home.as_deref(), *force)
+			import(Some(hex_string), resolved_file.as_deref(), resolved_home.as_deref(), *force)
 				.context("Failed to set private key")?;
 
 			Ok(())
