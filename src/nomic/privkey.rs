@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{ Read, Write };
 use std::path::{ Path, PathBuf };
 use fmt::io::unwrap_or_stdin;
-use crate::functions::{ get_file, resolve_file_home };
+use crate::functions::{get_file, is_hex, resolve_file_home};
 use anyhow::{anyhow, Result, Context};
 use cosmrs::crypto::secp256k1::SigningKey;
 
@@ -55,6 +55,18 @@ fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
 /// # Returns
 ///
 /// A `Result` with the formatted hexadecimal string, or an error if the file could not be read.
+///
+/// # Example
+///
+/// ```rust
+/// use std::path::Path;
+/// 
+/// let hex_string = export(Some(&Path::new("path/to/privkey")), None);
+/// match hex_string {
+///     Ok(hex) => println!("Formatted private key:\n{}", hex),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
 pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 
 	// Get the privkey file path
@@ -88,6 +100,18 @@ pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 ///
 /// Returns a `Result<String>` containing the account ID, 
 ///  or an error if the file cannot be opened, read, or the key cannot be parsed.
+///
+/// # Example
+///
+/// ```rust
+/// use std::path::Path;
+/// 
+/// let account_id = address(Some(&Path::new("path/to/privkey")), None);
+/// match account_id {
+///     Ok(id) => println!("Account ID: {}", id),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
 pub fn address(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 	let privkey_file = get_privkey_file(file, home).context("Failed to get privkey file path")?;
 
@@ -127,6 +151,18 @@ pub fn address(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 /// # Returns
 ///
 /// A `Result` indicating success or failure.
+///
+/// # Example
+///
+/// ```rust
+/// use std::path::Path;
+/// 
+/// let result = import(Some("48656c6c6f"), Some(&Path::new("path/to/privkey")), None, false);
+/// match result {
+///     Ok(()) => println!("Private key imported successfully."),
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
 pub fn import(
 	hex_str: Option<&str>,
 	file: Option<&Path>,
@@ -174,23 +210,6 @@ pub fn import(
 	Ok(())
 }
 
-/// Custom parser that validates whether a given string is a valid hexadecimal string.
-///
-/// # Arguments
-///
-/// * `s` - A string to validate as hexadecimal.
-///
-/// # Returns
-///
-/// Returns a `Result` where `Ok` contains the validated hexadecimal string, and `Err` contains an error message.
-fn is_hex_string(s: &str) -> Result<String, String> {
-	if s.chars().all(|c| c.is_ascii_hexdigit()) {
-		Ok(s.to_string())
-	} else {
-		Err(format!("'{}' is not a valid hex string", s))
-	}
-}
-
 /// Defines the CLI structure for the `privkey` command.
 #[derive(Parser)]
 #[command(name = "PrivKey", about = "Manage PrivKey File")]
@@ -234,7 +253,7 @@ pub enum CliCommand {
 	/// Import Private Key
 	Import {
 		/// Hex string
-		#[arg(long, short = 'i', value_parser = is_hex_string)]
+		#[arg(long, short = 'i', value_parser = is_hex)]
 		hex_string: String,
 
 		/// Filename

@@ -71,3 +71,20 @@ pub fn resolve_file_home(
 
     Ok((file, home))
 }
+
+/// Custom parser that validates whether a given string is a valid hexadecimal string.
+///
+/// # Arguments
+///
+/// * `s` - A string to validate as hexadecimal.
+///
+/// # Returns
+///
+/// Returns a `Result` where `Ok` contains the validated hexadecimal string, and `Err` contains an error message.
+pub fn is_hex(s: &str) -> Result<String, String> {
+	if s.chars().all(|c| c.is_ascii_hexdigit()) {
+		Ok(s.to_string())
+	} else {
+		Err(format!("'{}' is not a valid hex string", s))
+	}
+}
