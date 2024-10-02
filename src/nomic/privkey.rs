@@ -1,12 +1,13 @@
-use clap::{ Parser, Subcommand };
-use hex::decode;
-use std::fs::File;
-use std::io::{ Read, Write };
-use std::path::{ Path, PathBuf };
-use fmt::io::unwrap_or_stdin;
+use eyre::{eyre, Result, Context};
+use clap::{Parser, Subcommand};
+use cosmrs::crypto::{secp256k1::SigningKey};
 use crate::functions::{get_file, is_hex, resolve_file_home};
-use anyhow::{anyhow, Result, Context};
-use cosmrs::crypto::secp256k1::SigningKey;
+use fmt::io::{process_input, InputData};
+use hex;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+
 
 /// Retrieves the path to the private key file. This checks if the `file` or `home` 
 /// paths are provided and, if not, defaults to `.orga-wallet/privkey`.
@@ -20,9 +21,9 @@ use cosmrs::crypto::secp256k1::SigningKey;
 ///
 /// Returns a `PathBuf` with the resolved path to the private key file.
 fn get_privkey_file(
-	file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
-	let sub_path = Path::new(".orga-wallet").join("privkey");
-	get_file(file, home, Some(&sub_path))
+    file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
+    let sub_path = Path::new(".orga-wallet").join("privkey");
+    get_file(file, home, Some(&sub_path))
 }
 
 /// Formats a hexadecimal string by inserting line breaks after a specified number
@@ -37,12 +38,12 @@ fn get_privkey_file(
 ///
 /// A formatted string with the specified number of bytes per line.
 fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
-	hex_string
-		.as_bytes()
-		.chunks(bytes_per_line * 2) // Each byte is represented by 2 hex characters
-		.map(|chunk| String::from_utf8_lossy(chunk).to_string())
-		.collect::<Vec<_>>()
-		.join("\n")
+    hex_string
+        .as_bytes()
+        .chunks(bytes_per_line * 2) // Each byte is represented by 2 hex characters
+        .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Reads the private key from a file and returns it as a formatted hexadecimal string.
@@ -108,8 +109,8 @@ pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 /// 
 /// let account_id = address(Some(&Path::new("path/to/privkey")), None);
 /// match account_id {
-///     Ok(id) => println!("Account ID: {}", id),
-///     Err(e) => eprintln!("Error: {}", e),
+///	 Ok(id) => println!("Account ID: {}", id),
+///	 Err(e) => eprintln!("Error: {}", e),
 /// }
 /// ```
 pub fn address(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
@@ -117,7 +118,7 @@ pub fn address(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 
 	// Check if the file exists
 	if !privkey_file.exists() {
-		return Err(anyhow!("File '{}' does not exist.", privkey_file.display()));
+		return Err(eyre!("File '{}' does not exist.", privkey_file.display())); // Update here
 	}
 
 	// Attempt to open and read the file's contents
@@ -129,12 +130,12 @@ pub fn address(file: Option<&Path>, home: Option<&Path>) -> Result<String> {
 
 	// Parse the SigningKey from the contents
 	let signing_key = SigningKey::from_slice(&contents)
-		.map_err(|e| anyhow!("Error parsing private key from '{}': {}", privkey_file.display(), e))?;
+		.map_err(|e| eyre!("Error parsing private key from '{}': {}", privkey_file.display(), e))?; // Update here
 
 	// Get the account ID from the public key
 	let account_id = signing_key.public_key()
 		.account_id("nomic")
-		.map_err(|e| anyhow!("Failed to get account ID: {}", e))?;
+		.map_err(|e| eyre!("Failed to get account ID: {}", e))?; // Update here
 
 	Ok(account_id.to_string())
 }
@@ -170,12 +171,19 @@ pub fn import(
 	force: bool,
 ) -> Result<()> {
 
-	// Use unwrap_or_stdin to read hex string from command line or stdin
-	let input_data = unwrap_or_stdin(hex_str, 5, 500)
-		.map_err(|e| anyhow::anyhow!("Error reading hex string: {}", e))?;
+    // Attempt to process the input (text only), fallback to stdin if necessary
+    let input_data = match process_input(hex_str, 5, 500) {
+        Ok(InputData::Text(content)) => content,  // If it's valid UTF-8, use it
+        Ok(InputData::Binary(_)) => {
+            return Err(eyre::eyre!("Error: Binary input is not supported.")); // Return an error for binary input
+        },
+        Err(e) => {
+            return Err(eyre!("Error processing input: {}", e));  // Propagate error for other cases
+        }
+    };
 
 	// Decode the hex string into bytes
-	let decoded_data = decode(&input_data)
+	let decoded_data = hex::decode(&input_data)
 		.context("Failed to decode hexadecimal string")?;
 
 	// Get the privkey file path
@@ -209,6 +217,7 @@ pub fn import(
 	println!("Private key set successfully.");
 	Ok(())
 }
+
 
 /// Defines the CLI structure for the `privkey` command.
 #[derive(Parser)]
@@ -321,8 +330,7 @@ pub fn run_cli(cli: &Cli) -> Result<()> {
 			Ok(())
 		},
 		None => {
-			eprintln!("No command provided.");
-			return Err(anyhow!("No command provided."));
+			return Err(eyre::eyre!("No command provided."));
 		}
 	}
 }

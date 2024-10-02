@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use anyhow::{Result, Context};
+use eyre::{Context, Result};
 use crate::functions::{get_file, resolve_file_home};
 
 /// Retrieves the nonce file path.
@@ -37,7 +37,7 @@ fn get_nonce_file(file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
 /// # Returns
 ///
 /// - `Ok(u64)` containing the nonce value if successfully retrieved.
-/// - `Err(anyhow::Error)` if an error occurs while retrieving the nonce file or reading its contents.
+/// - `Err(eyre::Error)` if an error occurs while retrieving the nonce file or reading its contents.
 pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<u64> {
 	let nonce_file = get_nonce_file(file, home)
 		.context("Failed to get nonce file path")?;
@@ -50,7 +50,7 @@ pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<u64> {
 		.with_context(|| format!("Failed to read from nonce file at {:?}", nonce_file))?;
 
 	if input.len() > 8 {
-		return Err(anyhow::anyhow!("File content too large to fit in u64 (expected 8 bytes, found {}).", input.len()));
+		return Err(eyre::eyre!("File content too large to fit in u64 (expected 8 bytes, found {}).", input.len())); // Updated error creation
 	}
 
 	let mut bytes = [0u8; 8];
@@ -75,26 +75,31 @@ pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<u64> {
 /// # Returns
 ///
 /// - `Ok(())` if the nonce is successfully written to the file.
-/// - `Err(anyhow::Error)` if an error occurs while retrieving the nonce file path or writing its contents.
+/// - `Err(eyre::Error)` if an error occurs while retrieving the nonce file path or writing its contents.
 pub fn import(value: u64, file: Option<&Path>, home: Option<&Path>, dont_overwrite: bool) -> Result<()> {
-	let nonce_file = get_nonce_file(file, home)
-		.context("Failed to get nonce file path")?;
 
-	// Check if the nonce file already exists and handle the dont_overwrite flag
-	if dont_overwrite && nonce_file.exists() {
-		return Err(anyhow::anyhow!("Nonce file already exists at {:?}. Use --dont-overwrite to prevent overwriting.", nonce_file));
-	}
+    let nonce_file = get_nonce_file(file, home)
+        .context("Failed to get nonce file path")?;
 
-	// Create or open the nonce file in binary write mode
-	let mut file = File::create(&nonce_file)
-		.with_context(|| format!("Failed to create nonce file at {:?}", nonce_file))?;
+    // Check if the nonce file already exists and handle the dont_overwrite flag
+    if dont_overwrite && nonce_file.exists() {
+        return Err(eyre::eyre!(
+			"Nonce file already exists at {:?}. Use --dont-overwrite to prevent overwriting.",
+			nonce_file
+		));
+    }
 
-	// Write the new nonce value as bytes
-	file.write_all(&value.to_be_bytes())
-		.with_context(|| format!("Failed to write to nonce file at {:?}", nonce_file))?;
+    // Create or open the nonce file in binary write mode
+    let mut file = File::create(&nonce_file)
+        .with_context(|| format!("Failed to create nonce file at {:?}", nonce_file))?;
 
-	Ok(())
+    // Write the new nonce value as bytes
+    file.write_all(&value.to_be_bytes())
+        .with_context(|| format!("Failed to write to nonce file at {:?}", nonce_file))?;
+
+    Ok(())
 }
+
 
 /// CLI structure for the `nonce` command.
 ///
@@ -174,8 +179,8 @@ pub fn run_cli(cli: &Cli) -> Result<()> {
 			Ok(())
 		},
 		None => {
-			eprintln!("Error: No command provided.");
-			Err(anyhow::anyhow!("No command provided."))
+			Err(eyre::eyre!("No command provided."))
+
 		}
 	}
 }

@@ -3,6 +3,7 @@ use fmt;
 use crate::nomic::validators;
 use crate::nomic::nonce;
 use crate::nomic::privkey;
+use crate::nomic::key;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -16,6 +17,7 @@ pub struct Cli {
 pub enum Commands {
     Validators(validators::Cli),
     Privkey(privkey::Cli),
+    Key(key::Cli),
     Nonce(nonce::Cli),
 	/// Formats text and tables
     Fmt(fmt::cli::Cli),
@@ -31,6 +33,11 @@ pub fn run_cli(cli: &Cli) {
         Commands::Privkey(privkey_cli) => {
             if let Err(e) = privkey::run_cli(&privkey_cli) {
                 eprintln!("Error executing privkey command: {:?}", e);
+            }
+        },
+        Commands::Key(key_cli) => {
+            if let Err(e) = key::run_cli(&key_cli) {
+                eprintln!("Error executing key command: {:?}", e);
             }
         },
         Commands::Nonce(nonce_cli) => {

@@ -3,8 +3,8 @@ use fmt::table::Table;
 use fmt::table::TableBuilder;
 use cosmrs::crypto::secp256k1::SigningKey;
 use crate::nomic::globals::PROFILES_DIR;
-use crate::nomic::key::{get_key, set_key};
-use crate::nomic::nonce::{get_nonce, set_nonce};
+use crate::nomic::privkey;
+use crate::nomic::nonce;
 use hex::decode;
 use indexmap::IndexMap;
 use serde_json;
@@ -16,6 +16,9 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
+use anyhow::{Context, Result};
+use hex::FromHex;
+
 
 fn default_config(profile_name: &str) -> String {
 	format!(
@@ -32,66 +35,89 @@ fn default_config(profile_name: &str) -> String {
 	)
 }
 
-//#[derive(Debug)]
-#[allow(dead_code)]
 pub struct Profile {
 	home_path:   PathBuf,
-	key_file:	PathBuf,
+	key_file:	 PathBuf,
 	nonce_file:  PathBuf,
 	config_file: PathBuf,
-	signing_key: Option<SigningKey>,
-	pub account_id:  Option<String>,
-	nonce:	   u64,
+	account_id:  Option<String>,
+	nonce:	     Option<u64>,
 }
 
 impl Profile {
-	pub fn bytes(&self) -> usize {
-		let mut size = self.home_path.to_string_lossy().as_bytes().len()
-			+ self.key_file.to_string_lossy().as_bytes().len()
-			+ self.nonce_file.to_string_lossy().as_bytes().len()
-			+ self.config_file.to_string_lossy().as_bytes().len()
-			+ std::mem::size_of::<u64>();
 
-		if let Some(account_id) = &self.account_id {
-			size += account_id.len();
+    pub fn get_nonce(&mut self) -> Result<u64> {
+
+		if let Some(nonce) = self.nonce {
+			return Ok(nonce); // Return the existing nonce
 		}
 
-		size
-	}
+		let nonce = nonce::export(&self.nonce_file, None)
+			.context("Failed to retrieve nonce from file")?;
 
-	pub fn get_nonce(&self) -> u64 {
-		// Assuming you have a function to read the nonce value from the file
-		get_nonce(&self.nonce_file) // You need to implement this function
-	}
-
-	// New method to set the nonce
-	pub fn set_nonce(&self, value: u64) -> Result<(), Box<dyn std::error::Error>> {
-		// Call the external set_nonce function and pass the nonce_file
-		set_nonce(value, &self.nonce_file)
-	}
-
-	// Method to get the key from the key_file
-	pub fn get_key(&self) -> Result<String, Box<dyn Error>> {
-		get_key(&self.key_file)
-	}
-
-	// Method to set the key into the key_file
-	pub fn set_key(&self, hex_str: &str) -> Result<(), Box<dyn Error>> {
-		set_key(&self.key_file, hex_str)
-	}
-
-	// Method to display the content of `config_file`
-	pub fn get_config(&self) -> Result<String, io::Error> {
-		// Open the file
-		let mut file = File::open(&self.config_file)?;
+		self.nonce = Some(nonce);
 		
-		// Read the file content into a string
-		let mut content = String::new();
-		file.read_to_string(&mut content)?;
+		Ok(nonce)
+    }
 
-		// Display the content (or return the content for external handling)
-		Ok(content)
+    pub fn get_address(&mut self) -> Result<String> {
+
+		if let Some(address) = self.account_id {
+			return Ok(address);
+		}
+
+		let address = address::export(&self.privkey_file, None)
+			.context("Failed to retrieve address from file")?;
+
+		self.account_id = Some(address);
+		
+		Ok(address)
+    }
+
+	pub fn set_nonce(&self, value: u64) -> &mut Self {
+
+		if let Err(e) = nonce::import(value, &self.nonce_file, None) {
+			eprintln!("Failed to set nonce: {}", e);
+			return self;
+		}
+		
+        self.nonce = Some(value);
+		self
+
 	}
+
+	pub fn get_key(&self) -> Result<String> {
+		match privkey::export(&self.privkey_file, None) {
+			Ok(key) => Ok(key),
+			Err(e) => {
+				eprintln!("Failed to retrieve private key from file: {}", e);
+				Err(anyhow::anyhow!("Failed to retrieve private key from file"))
+			}
+		}
+	}
+
+	pub fn set_key(&self, hex_str: &str) -> Result<()> {
+		match privkey::import(hex_str, &self.key_file, None) {
+			Ok(()) => Ok(()),
+			Err(e) => {
+				eprintln!("Failed to save private key to file: {}", e);
+				Err(anyhow::anyhow!("Failed to save private key to file"))
+			}
+		}
+	}
+
+    pub fn get_config(&self) -> Result<String> {
+        // Attempt to open the config file
+        let mut file = File::open(&self.config_file)
+            .with_context(|| format!("Failed to open config file at {:?}", self.config_file))?;
+
+        // Read the file content into a string
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .with_context(|| format!("Failed to read config file at {:?}", self.config_file))?;
+
+        Ok(content) // Return the content if successful
+    }
 
 }
 
@@ -99,150 +125,60 @@ pub struct ProfileCollection(IndexMap<String, Profile>);
 
 impl ProfileCollection {
 
-	pub fn get_profile(&self, name: &str) -> Option<&Profile> {
+	pub fn get_profile(&self, name: &str) -> Result<&Profile> {
 		self.0.get(name)
+			.with_context(|| format!("Profile not found: {}", name))
 	}
 
-	// Method to get the account_id for a given profile
-	pub fn get_account_id(&self, name: &str) -> Option<String> {
-		// Retrieve the profile by name
-		if let Some(profile) = self.0.get(name) {
-			// Return the account_id if it exists
-			profile.account_id.clone() // Clone the account_id Option<String>
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
-		}
-	}
-
-	// Method to get the home_path for a given profile
-	pub fn get_home_path(&self, name: &str) -> Option<PathBuf> {
-		// Retrieve the profile by name
-		if let Some(profile) = self.0.get(name) {
-			// Return the home_path for the profile
-			Some(profile.home_path.clone()) // Clone the home_path
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
-		}
-	}
-
-	// Method to get the config_file path for a given profile
-	pub fn get_config_file(&self, name: &str) -> Option<PathBuf> {
-		if let Some(profile) = self.0.get(name) {
-			Some(profile.config_file.clone()) // Clone the config_file path
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
-		}
-	}
-
-	// Method to get the nonce_file path for a given profile
-	pub fn get_nonce_file(&self, name: &str) -> Option<PathBuf> {
-		if let Some(profile) = self.0.get(name) {
-			Some(profile.nonce_file.clone()) // Clone the nonce_file path
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
-		}
-	}
-
-	// Method to get the key_file path for a given profile
-	pub fn get_key_file(&self, name: &str) -> Option<PathBuf> {
-		if let Some(profile) = self.0.get(name) {
-			Some(profile.key_file.clone()) // Clone the key_file path
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
-		}
-	}
-
-	// Method to get the config content for a given profile
-	pub fn get_config(&self, name: &str) -> Option<String> {
-		// Retrieve the profile by name
-		if let Some(profile) = self.0.get(name) {
-			// Try to get the content of the config file
-			match profile.get_config() {
-				Ok(content) => Some(content),	// If successful, return the config content
-				Err(e) => {
-					eprintln!("Failed to read config file for profile '{}': {}", name, e);
-					None
-				}
+	pub fn get_addres(&self, name: &str) -> Result<String> {
+		match self.0.get(name) {
+			Some(profile) => {
+				profile.get_address()
 			}
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
+			None => {
+				eprintln!("Profile not found: {}", name);
+				Err(anyhow::anyhow!("Profile not found: {}", name))
+			}
 		}
 	}
 
-	// Method to get the key for a given profile (returns the hex string)
-	pub fn get_key(&self, name: &str) -> Option<String> {
-		if let Some(profile) = self.0.get(name) {
-			match profile.get_key() {
-				Ok(key) => Some(key),
-				Err(e) => {
-					eprintln!("Failed to read key for profile '{}': {}", name, e);
-					None
-				}
-			}
-		} else {
-			eprintln!("Profile not found: {}", name);
-			None
-		}
+	pub fn get_home_path(&self, name: &str) -> Result<PathBuf> {
+		// Retrieve the profile by name
+		self.0.get(name)
+			.map(|profile| profile.home_path.clone())
+			.with_context(|| format!("Profile not found: {}", name))
 	}
 
-	// Method to set the key for a given profile (takes a hex string and writes the binary data)
-	pub fn set_key(&self, name: &str, hex_str: &str) -> Result<(), Box<dyn std::error::Error>> {
-		if let Some(profile) = self.0.get(name) {
-			match profile.set_key(hex_str) {
-				Ok(()) => Ok(()),
-				Err(e) => {
-					eprintln!("Failed to set key for profile '{}': {}", name, e);
-					Err(e)
-				}
-			}
-		} else {
-			eprintln!("Profile not found: {}", name);
-			Err(Box::from("Profile not found"))
-		}
+	pub fn get_config_file(&self, name: &str) -> Result<PathBuf> {
+		// Retrieve the profile by name and return the config_file path
+		self.0.get(name)
+			.map(|profile| profile.config_file.clone())
+			.with_context(|| format!("Profile not found: {}", name))
+	}
+
+	pub fn get_nonce_file(&self, name: &str) -> Result<PathBuf> {
+		// Retrieve the profile by name and return the nonce_file path
+		self.0.get(name)
+			.map(|profile| profile.nonce_file.clone())
+			.with_context(|| format!("Profile not found: {}", name))
+	}
+
+	pub fn get_key_file(&self, name: &str) -> Result<PathBuf> {
+		// Retrieve the profile by name and return the key_file path
+		self.0.get(name)
+			.map(|profile| profile.key_file.clone())
+			.with_context(|| format!("Profile not found: {}", name))
 	}
 
 }
 
 impl ProfileCollection {
-	/// Create a new ProfileCollection instance and load existing profiles from disk
-	pub fn new() -> Result<Self, Box<dyn Error>> {
-		let mut collection = Self(IndexMap::new());
-		collection.load()?;
-		Ok(collection)
-	}
-
-	fn load_signing_key(key_file: &Path) -> Option<SigningKey> {
-		// Attempt to open the file
-		let mut file = match File::open(key_file) {
-			Ok(f) => f,
-			Err(e) => {
-				eprintln!("Error opening file '{}': {}", key_file.display(), e);
-				return None;
-			}
-		};
-
-		// Attempt to read the file's contents
-		let mut contents = Vec::new();
-		if let Err(e) = file.read_to_end(&mut contents) {
-			eprintln!("Error reading file '{}': {}", key_file.display(), e);
-			return None;
-		}
-
-		// Parse the SigningKey from the contents and wrap it in a Box
-		match SigningKey::from_slice(&contents) {
-			Ok(key) => Some(key),
-			Err(e) => {
-				eprintln!("Error parsing private key from '{}': {}", key_file.display(), e);
-				None
-			},
-		}
-	}
+    /// Create a new ProfileCollection instance and load existing profiles from disk
+    pub fn new() -> Result<Self> {
+        let mut collection = Self(IndexMap::new());
+        collection.load().context("Failed to load profiles from disk")?;
+        Ok(collection)
+    }
 
 	fn load(&mut self) -> Result<(), Box<dyn Error>> {
 		// Clear existing profiles to avoid stale data
@@ -254,156 +190,154 @@ impl ProfileCollection {
 			for entry in entries.flatten() {
 				let home_path = entry.path();
 				if home_path.is_dir() {
-					let key_file = home_path.join(".orga-wallet/privkey");
-					let nonce_file = home_path.join(".orga-wallet/nonce");
+					// Construct file paths using multiple `.join` calls
+					let key_file = home_path.join(".orga-wallet").join("privkey");
+					let nonce_file = home_path.join(".orga-wallet").join("nonce");
+
+					// Check if the key file exists
 					if key_file.exists() {
-						let basename = home_path.file_name().unwrap().to_string_lossy().into_owned();
+						// Safely get the basename
+						let basename = home_path.file_name()
+							.and_then(|name| name.to_str().map(|s| s.to_string()))
+							.unwrap_or_else(|| {
+								eprintln!("Failed to get profile name for {:?}", home_path);
+								continue; // Skip this profile
+							});
+
 						let config_file = home_path.join("config");
 
 						// Check if the config file exists; create if it does not
 						if !config_file.exists() {
 							let config_content = default_config(&basename);
-							fs::write(&config_file, config_content)?;
+							fs::write(&config_file, config_content).map_err(|err| {
+								eprintln!("Failed to write config file for {}: {}", basename, err);
+								err
+							})?;
 						}
 
-						// Retrieve the nonce value using get_nonce
-						let nonce = get_nonce(&nonce_file); // Now returns 0 on error
-
-						// Retrieve the account_id
-						let signing_key = Self::load_signing_key(&key_file);
-
-						let account_id: Option<String> = match signing_key {
-							Some(ref key) => {
-								// Attempt to get the account ID from the public key
-								match key.public_key().account_id("nomic") {
-									Ok(id) => Some(id.to_string()), // Convert Ok to Some(String)
-									Err(err) => {
-										eprintln!("Failed to get account ID: {}", err); // Print the error
-										None // Return None on error
-									}
-								}
-							}
-							None => None, // If signing_key is None, return None
-						};
-
+						// Create the profile
 						let profile = Profile {
 							home_path,
 							key_file,
 							nonce_file,
 							config_file,
-							signing_key,
-							account_id,
-							nonce,
+							account_id: None,
+							nonce: None,
 						};
+
+						// Insert the profile into the collection
 						self.0.insert(basename, profile);
 					}
 				}
 			}
+		} else {
+			eprintln!("Failed to read profiles directory: {:?}", profiles_dir);
 		}
+
 		// Sort profiles after loading
 		self.0.sort_keys();
 		Ok(())
 	}
 
-	pub fn import_file(&mut self, name: &str, key_file: &Path) -> Result<(), Box<dyn Error>> {
+	pub fn import_file(&mut self, name: &str, key_file: &Path) -> Result<()> {
 		// Check if the profile name already exists
 		if self.0.contains_key(name) {
-			return Err(format!("Profile name '{}' already exists.", name).into());
+			return Err(anyhow::anyhow!("Profile name '{}' already exists.", name));
 		}
 
-		// Read the contents of the new privkey file
+		// Read the contents of the new private key file
 		let mut new_key_content = Vec::new();
-		File::open(key_file)?.read_to_end(&mut new_key_content)?;
+		File::open(key_file)
+			.and_then(|mut file| file.read_to_end(&mut new_key_content))
+			.context("Failed to read new private key file")?;
 
-		// Check for binary diff against existing private keys
-		for (profile_name, profile) in self.0.iter() {
+		// Check for binary differences against existing private keys
+		for (profile_name, profile) in &self.0 {
 			let mut existing_key_content = Vec::new();
-			File::open(&profile.key_file)?.read_to_end(&mut existing_key_content)?;
+			File::open(&profile.key_file)
+				.and_then(|mut file| file.read_to_end(&mut existing_key_content))
+				.context(format!("Failed to read existing key file for profile '{}'", profile_name))?;
 
 			if new_key_content == existing_key_content {
-				return Err(format!("The provided private key is already in use by profile '{}'.", profile_name).into());
+				return Err(anyhow::anyhow!(
+					"The provided private key is already in use by profile '{}'.",
+					profile_name
+				));
+			}
+		}
+
+		// Create the new profile directory
+		let profile_dir = PROFILES_DIR.join(name);
+		fs::create_dir_all(profile_dir.join(".orga-wallet"))
+			.context("Failed to create profile directory")?;
+
+		// Copy the private key file to the new directory
+		let dest_key_file = profile_dir.join(".orga-wallet/privkey");
+		fs::copy(key_file, &dest_key_file)
+			.context("Failed to copy private key file")?;
+
+		// Create a new config file
+		let config_content = default_config(name);
+		fs::write(profile_dir.join("config"), config_content)
+			.context("Failed to write config file")?;
+
+		// Load the updated profiles
+		self.load().context("Failed to load updated profiles")?;
+
+		Ok(())
+	}
+
+	pub fn import_hex(&mut self, name: &str, hex_string: &str) -> Result<()> {
+		// Check if the profile name already exists
+		if self.0.contains_key(name) {
+			return Err(anyhow::anyhow!("Profile name '{}' already exists.", name));
+		}
+
+		// Decode the hex string into binary data
+		let new_key_content = Vec::from_hex(hex_string)
+			.context("Invalid hex string. Please provide a valid hexadecimal string.")?;
+
+		// Check for binary diff against existing private keys in all profiles
+		for (profile_name, profile) in self.0.iter() {
+			let mut existing_key_content = Vec::new();
+			File::open(&profile.key_file)
+				.and_then(|mut file| file.read_to_end(&mut existing_key_content))
+				.context(format!("Failed to read key file for profile '{}'", profile_name))?;
+
+			if new_key_content == existing_key_content {
+				return Err(anyhow::anyhow!(
+					"The provided private key is already in use by the profile '{}'.",
+					profile_name
+				));
 			}
 		}
 
 		// Create the new profile directory
 		let profile_dir = Path::new(&*PROFILES_DIR).join(name);
-		fs::create_dir_all(profile_dir.join(".orga-wallet"))?;
+		fs::create_dir_all(profile_dir.join(".orga-wallet"))
+			.context("Failed to create profile directory")?;
 
-		// Copy the privkey file to the new directory
+		// Write the decoded binary private key to the new file
 		let dest_key_file = profile_dir.join(".orga-wallet/privkey");
-		fs::copy(key_file, &dest_key_file)?;
+		let mut file = File::create(&dest_key_file)
+			.context("Failed to create private key file")?;
+		file.write_all(&new_key_content)
+			.context("Failed to write to private key file")?;
 
 		// Create a new config file
 		let config_content = default_config(name);
-		fs::write(profile_dir.join("config"), config_content)?;
+		fs::write(profile_dir.join("config"), config_content)
+			.context("Failed to write config file")?;
 
 		// Load the updated profiles
-		self.load()?;
+		self.load().context("Failed to load updated profiles")?;
 
+		println!("Profile '{}' successfully imported.", name);
 		Ok(())
 	}
 
-    pub fn import_hex(&mut self, name: &str, hex_string: &str) -> Result<(), Box<dyn Error>> {
-        // Check if the profile name already exists
-        if self.0.contains_key(name) {
-            println!("Profile name '{}' already exists.", name);
-            return Err(format!("Profile name '{}' already exists.", name).into());
-        }
-
-        // Decode the hex string into binary data
-        let new_key_content = decode(hex_string)
-            .map_err(|_| "Invalid hex string. Please provide a valid hexadecimal string.")?;
-
-        // Check for binary diff against existing private keys in all profiles
-        for (profile_name, profile) in self.0.iter() {
-            let mut existing_key_content = Vec::new();
-            File::open(&profile.key_file)?.read_to_end(&mut existing_key_content)?;
-
-            if new_key_content == existing_key_content {
-                println!(
-                    "The provided private key is already in use by the profile '{}'.",
-                    profile_name
-                );
-                return Err("The provided private key is already in use.".into());
-            }
-        }
-
-        // Create the new profile directory
-        let profile_dir = Path::new(&*PROFILES_DIR).join(name);
-        fs::create_dir_all(profile_dir.join(".orga-wallet"))?;
-
-        // Write the decoded binary private key to the new file
-        let dest_key_file = profile_dir.join(".orga-wallet/privkey");
-        let mut file = File::create(&dest_key_file)?;
-        file.write_all(&new_key_content)?;
-
-        // Create a new config file
-        let config_content = default_config(name);
-        fs::write(profile_dir.join("config"), config_content)?;
-
-        // Load the updated profiles
-        self.load()?;
-
-        println!("Profile '{}' successfully imported.", name);
-        Ok(())
-    }
-
-	pub fn bytes(&self) -> usize {
-		// Calculate the total size of all profiles in bytes
-		let profile_bytes = self.0.values().map(|p| p.bytes()).sum::<usize>();
-
-		// Estimate additional space for formatting (e.g., newlines, dashes, etc.)
-		let formatting_overhead = self.0.len() * 100; // Adjust as needed
-
-		profile_bytes + formatting_overhead
-	}
-//
-//	pub fn indexmap(&self) -> &IndexMap<String, Profile> {
-//		&self.0
-//	}
-
 	/// Converts the ProfileCollection into a JSON serde_json::Value.
-	pub fn json(&self) -> serde_json::Value {
+	pub fn to_json(&self) -> serde_json::Value {
 		let profiles_json: IndexMap<String, serde_json::Value> = self.0.iter()
 			.map(|(key, profile)| {
 				(
@@ -413,8 +347,8 @@ impl ProfileCollection {
 						"key_file": profile.key_file.to_string_lossy(),
 						"nonce_file": profile.nonce_file.to_string_lossy(),
 						"config_file": profile.config_file.to_string_lossy(),
-						"account_id": profile.account_id,
-						"nonce": profile.nonce,
+						"account_id": profile.get_address().ok(),  // unwrap the option and load if not loaded
+						"nonce": profile.get_nonce().ok(),         // unwrap the option and load if not loaded
 					})
 				)
 			})

@@ -1,0 +1,129 @@
+use clap::{Parser, Subcommand};
+use cosmrs::crypto::{secp256k1::SigningKey, PublicKey};
+use crate::functions::{get_file, is_hex, resolve_file_home};
+use fmt::io::unwrap_or_stdin;
+use hex::{encode, decode};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use eyre::{Result, WrapErr};
+
+/// Formats a hexadecimal string by inserting line breaks after a specified number
+/// of bytes, mimicking the output of `xxd -ps -c <bytes_per_line>`.
+/// 
+/// # Arguments
+///
+/// * `hex_string` - The hexadecimal string to be formatted.
+/// * `bytes_per_line` - The number of bytes to display per line (each byte is 2 hex characters).
+///
+/// # Returns
+///
+/// A formatted string with the specified number of bytes per line.
+fn format_hex_string(hex_string: &str, bytes_per_line: usize) -> String {
+    hex_string
+        .as_bytes()
+        .chunks(bytes_per_line * 2) // Each byte is represented by 2 hex characters
+        .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Retrieves the path to the private key file. This checks if the `file` or `home` 
+/// paths are provided and, if not, defaults to `.orga-wallet/privkey`.
+/// 
+/// # Arguments
+///
+/// * `file` - Optional reference to a file path.
+/// * `home` - Optional reference to a home directory path.
+///
+/// # Returns
+///
+/// Returns a `PathBuf` with the resolved path to the private key file.
+fn get_privkey_file(
+    file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
+    let sub_path = Path::new(".orga-wallet").join("privkey");
+    get_file(file, home, Some(&sub_path))
+}
+
+pub struct Key {
+	bytes:    Vec<u8>,
+	hex:	  String,
+	signing:  SigningKey,
+	public:   PublicKey,
+	address:  String,
+}
+
+impl Key {
+
+    /// Constructs a new `Key` from a privkey file or input string.
+    pub fn new(input: Option<&str>) -> Result<Self> {
+        // Use unwrap_or_stdin to read hex string from command line or stdin
+        let input_data = unwrap_or_stdin(input, 5, 500)
+			.wrap_err("Error reading input data")?;
+
+        let bytes: Vec<u8>;
+        let mut hex: String;
+
+        // Determine if the input is hex or binary
+        match is_hex(&input_data) {
+            Ok(hex_value) => {
+                // Decode the hex string into bytes
+                bytes = decode(&hex_value).wrap_err("Failed to decode hexadecimal string")?;
+                hex = hex_value; // Store the hex string directly
+            }
+            Err(_) => {
+                // Treat input_data as already being bytes
+                bytes = input_data.clone().into(); // Use the input directly
+                hex = encode(&bytes); // Convert bytes to a hexadecimal string
+                // Optionally format the output like `xxd -ps -c 32`
+                hex = format_hex_string(&hex, 32); // Ensure format_hex_string is defined
+            }
+        }
+
+        // Create SigningKey from bytes
+        let signing = SigningKey::from_slice(&bytes)
+            .wrap_err("Failed to create SigningKey from bytes")?;
+
+        // Derive the public key from the signing key
+        let public = signing.public_key();
+
+        // Derive the address from the public key
+        let address = public.account_id("nomic")
+            .wrap_err("Failed to get address from public key")?;
+
+        // Return the constructed Key
+        Ok(Key {
+            bytes,
+            hex,
+            signing,
+            public,
+            address: address.to_string(),
+        })
+    }
+
+    /// Constructs a new `Key` from a privkey file, toggling between home dir and user-provided home.
+    pub fn new_from_file(&self, file: Option<&Path>, home: Option<&Path>) -> Result<Self> {
+        // Get the privkey file path
+        let privkey_file = get_privkey_file(file, home)
+            .context("Failed to get privkey file path")?;
+
+        // Directly use the new function, which handles all input types
+		Key::new(Some(privkey_file.to_str().unwrap())) // Remove the wrapping Ok
+
+    }
+
+	pub fn save_or_show(&self, file: Option<&Path>, home: Option<&Path>) -> Result<()> {
+
+		if file.is_none && home_is_none {
+			println!("{}", self.hex);
+			Ok(())
+		} else {
+			// Get the privkey file path
+			let output_file = get_privkey_file(file, home)
+				.context("Failed to get privkey file path")?;
+			
+				
+		Ok(formatted_output)
+	}
+
+}
