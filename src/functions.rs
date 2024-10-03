@@ -71,35 +71,3 @@ pub fn resolve_file_home(
 
 	Ok((file, home))
 }
-
-/// Checks if a given string is a valid hexadecimal string.
-///
-/// A valid hexadecimal string consists of characters 0-9 and a-f (case insensitive).
-/// Additionally, it must have an even length to ensure that each byte is represented
-/// by two hexadecimal characters.
-///
-/// # Arguments
-///
-/// * `s` - A string slice that is validated as a hexadecimal string.
-///
-/// # Returns
-///
-/// * `Ok(s)` if the string is a valid hexadecimal representation.
-/// * `Err(eyre::Error)` if the string is not valid or empty.
-///
-/// # Example
-///
-/// ```
-/// let valid_hex = is_hex("1a2b3c").unwrap();
-/// let invalid_hex = is_hex("1g2h3i").is_err(); // Invalid hex
-/// let odd_length = is_hex("123").is_err();	// Odd length
-/// ```
-pub fn is_hex(s: &str) -> Result<String> {
-	if s.is_empty() {
-		return Err(eyre::eyre!("Input string cannot be empty"));
-	}
-	if s.len() % 2 != 0 || !s.chars().all(|c| c.is_digit(16)) {
-		return Err(eyre::eyre!("Invalid hexadecimal string"));
-	}
-	Ok(s.to_string())
-}

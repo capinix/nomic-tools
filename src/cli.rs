@@ -2,7 +2,6 @@ use clap::{ Parser, Subcommand };
 use fmt;
 use crate::nomic::validators;
 use crate::nomic::nonce;
-use crate::nomic::privkey;
 use crate::nomic::key;
 
 #[derive(Parser)]
@@ -16,7 +15,6 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     Validators(validators::Cli),
-    Privkey(privkey::Cli),
     Key(key::Cli),
     Nonce(nonce::Cli),
 	/// Formats text and tables
@@ -28,11 +26,6 @@ pub fn run_cli(cli: &Cli) {
         Commands::Validators(validators_cli) => {
             if let Err(e) = validators::run_cli(&validators_cli) {
                 eprintln!("Error executing validators command: {:?}", e);
-            }
-        },
-        Commands::Privkey(privkey_cli) => {
-            if let Err(e) = privkey::run_cli(&privkey_cli) {
-                eprintln!("Error executing privkey command: {:?}", e);
             }
         },
         Commands::Key(key_cli) => {
