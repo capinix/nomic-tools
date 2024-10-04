@@ -263,7 +263,7 @@ pub fn key_from_input_or_stdin<T: AsRef<[u8]>>(input: Option<T>) -> Result<Privk
 /// Returns an error if input processing fails or if key validation fails.
 /// This may include errors from reading the file, decoding the content, or validation errors.
 #[allow(dead_code)]
-pub fn key_from_file_or_stdin<T: AsRef<[u8]>>(input: Option<T>) -> Result<Privkey> {
+pub fn key_from_file_or_stdin(input: Option<&Path>) -> Result<Privkey> {
 	// Retrieve input data, either from file or stdin
 	let input_data = input::file_or_stdin(input, 5, 500)?;
 

@@ -489,7 +489,7 @@ dependencies = [
 [[package]]
 name = "fmt"
 version = "0.1.0"
-source = "git+https://github.com/flengure/fmt.git?branch=main#77bc128395f3d61e6127eec198cc2f3e8a989041"
+source = "git+https://github.com/flengure/fmt.git?branch=main#52aa1a66336eb9f61e54ab1f6c7aed3d574c016e"
 dependencies = [
  "clap",
  "eyre",
