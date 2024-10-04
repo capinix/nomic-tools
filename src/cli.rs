@@ -1,9 +1,9 @@
 use clap::{ Parser, Subcommand };
 use fmt;
-use crate::nomic::key;
-use crate::nomic::nonce;
-use crate::nomic::profiles;
+use crate::key;
+use crate::nonce;
 use crate::nomic::validators;
+use crate::profiles;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -16,7 +16,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
 	/// Manage and use profiles
-    Profiles(profiles::Cli),
+	Profiles(profiles::Cli),
     Validators(validators::Cli),
     Nonce(nonce::Cli),
     Key(key::Cli),

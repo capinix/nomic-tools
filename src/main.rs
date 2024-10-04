@@ -1,6 +1,9 @@
 mod cli;
-mod nomic;
 mod functions;
+mod key;
+mod nomic;
+mod nonce;
+mod profiles;
 
 use clap::Parser;
 
