@@ -1,3 +1,5 @@
+use crate::nomic::globals::NOMIC;
+use crate::nomic::globals::NOMIC_LEGACY_VERSION;
 use crate::nomic::globals::PROFILES_DIR;
 use crate::nomic::key;
 use crate::nomic::key::Privkey;
@@ -14,6 +16,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use clap::{Parser, Subcommand, ValueEnum};
+use std::process::Command;
+use std::process::exit;
 
 fn default_config(profile_name: &str) -> String {
 	format!(
@@ -470,6 +474,34 @@ impl ProfileCollection {
 	}
 }
 
+pub fn nomic(home: &Path, legacy: Option<String>, args: Vec<String>) -> Result<(), eyre::Error> {
+    // Create the command based on whether legacy is provided or not
+    let mut child = if let Some(legacy_version) = legacy {
+        Command::new("nomic") // Use the actual command string for NOMIC
+            .env("NOMIC_LEGACY_VERSION", legacy_version)
+            .env("HOME", home.as_os_str())  // Correct usage of home path as OsStr
+            .args(&args)  // Pass through additional arguments
+            .spawn()?
+    } else {
+        Command::new("nomic")
+            .env("HOME", home.as_os_str())  // HOME environment variable
+            .args(&args)  // Pass through additional arguments
+            .spawn()?
+    };
+
+    // Wait for the command to finish
+    let status = child.wait()?;
+
+    // Ensure eyre properly processes any errors before exiting the program
+    if let Some(code) = status.code() {
+        exit(code);  // Exit with the child's exit code
+    } else {
+        return Err(eyre::eyre!("Process terminated by signal"));  // Handle signal-based termination
+    }
+
+    Ok(())  // Return Ok if everything worked fine
+}
+
 /// Defines the CLI structure for the `profiles` command.
 #[derive(Parser)]
 #[command(name = "Profiles", about = "Manage & use profiles", visible_alias = "p")]
@@ -486,6 +518,17 @@ pub struct Cli {
 /// Subcommands for the `profiles` command
 #[derive(Subcommand)]
 pub enum CliCommand {
+    /// run nomic commands as profile
+	#[command(visible_aliases = ["n"])]
+    Nomic {
+        /// Profile
+        #[arg()]
+        profile: String,
+
+		/// Additional arguments to pass through (only if no subcommand is chosen)
+		#[arg(trailing_var_arg = true)]
+		args: Vec<String>,
+    },
     /// Show the AccountId
 	#[command(visible_aliases = ["a", "addr"])]
     Address {
@@ -526,12 +569,38 @@ pub enum CliCommand {
         name: String,
 
     },
-
 }
+//		let mut cmd = Command::new(&*NOMIC);
+//		cmd.arg("validators");
+//
+//		// Set environment variables
+//		cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+//
+//		// Execute the command and collect the output
+//		let output = cmd.output()?;
+//
+//		// Check if the command was successful
+//		if !output.status.success() {
+//			let error_msg = format!(
+//				"Command `{}` failed with output: {:?}",
+//				&*NOMIC,
+//				String::from_utf8_lossy(&output.stderr) // Use stderr for error output
+//			);
+//			return Err(error_msg.into());
+//		}
 
 pub fn run_cli(cli: &Cli) -> Result<()> {
 	// Handle subcommands
 	match &cli.command {
+		// Handle nomic subcommand
+        Some(CliCommand::Nomic { profile, args }) => {
+            let mut collection = ProfileCollection::new()?;
+            let home_path = collection.get_home_path(profile)?;
+
+            // Call nomic and ignore the output by unwrapping it here
+            nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
+			Ok(())
+        },
 		// Handle export subcommand
 		Some(CliCommand::Export { name }) => {
 			let mut collection = ProfileCollection::new()?;
