@@ -1,17 +1,11 @@
+use crate::key::{FromHex, FromPath, Privkey};
 use crate::nomic::globals::PROFILES_DIR;
-use crate::key;
-use crate::key::Privkey;
+use crate::profiles::{OutputFormat, Profile};
 use eyre::{eyre, Result};
-use fmt::input::binary_file;
-use fmt::table::Table;
-use fmt::table::TableBuilder;
+use fmt::table::{Table, TableBuilder};
 use indexmap::IndexMap;
 use std::fs;
 use std::path::Path;
-use std::path::PathBuf;
-use crate::profiles::OutputFormat;
-use crate::profiles::Profile;
-use crate::profiles::default_config;
 
 pub struct ProfileCollection(IndexMap<String, Profile>);
 
@@ -19,7 +13,7 @@ impl std::fmt::Debug for ProfileCollection {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("ProfileCollection")
 			.field("profiles", &self.0.iter().map(|(key, profile)| {
-				(profile.key().get_address(), key, profile.home_path().display().to_string())
+				(profile.key().address(), key, profile.home_path().display().to_string())
 			}).collect::<Vec<_>>())
 			.finish()
 	}
@@ -27,132 +21,108 @@ impl std::fmt::Debug for ProfileCollection {
 
 impl ProfileCollection {
 
-	/// Retrieves a profile by its name.
-	pub fn get_profile(&self, name: &str) -> Result<&Profile> {
+    /// Loads profiles from the disk into the collection.
+    fn load(&mut self) -> Result<()> {
+        let profiles_dir = &*PROFILES_DIR;
+
+        // Ensure the profiles directory exists
+        if !profiles_dir.exists() {
+            return Err(eyre!("Profiles directory does not exist: {:?}", profiles_dir));
+        }
+
+        let entries = fs::read_dir(profiles_dir)
+            .map_err(|err| eyre!("Failed to read profiles directory: {:?}, error: {}", profiles_dir, err))?;
+
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                if !file_type.is_dir() {
+                    continue;
+                }
+            }
+
+            let home_path = entry.path();
+            let profile_name = home_path.file_name()
+                .and_then(|name| name.to_str().map(|s| s.to_string()))
+                .unwrap_or_else(|| "default_profile_name".to_string());
+
+            // Load the profile and add it to the collection
+            match Profile::new(&home_path) {
+                Ok(profile) => {
+                    self.0.insert(profile_name, profile); // Insert into the collection
+                }
+                Err(e) => {
+                    eprintln!("Failed to load profile {}: {}", profile_name, e);
+                    continue;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Creates a new ProfileCollection instance by loading profiles from disk.
+    pub fn new() -> Result<Self> {
+        let mut collection = ProfileCollection(IndexMap::new());
+        collection.load()?;
+        Ok(collection)
+    }
+
+	/// Finds a profile by its name.
+	pub fn profile_by_name(&self, name: &str) -> Result<&Profile> {
 		self.0.get(name)
 			.ok_or_else(|| eyre::eyre!("Profile not found: {}", name))
 	}
 
-	/// Returns the home path for the given profile.
-	pub fn get_home_path(&self, name: &str) -> Result<&PathBuf> {
-		let profile = self.get_profile(name)?;
-		Ok(profile.home_path())
+	/// Finds a profile by its address.
+	pub fn profile_by_address(&self, address: &str) -> Result<&Profile> {
+		self.0.values()
+			.find(|profile| profile.key().address() == address)
+			.ok_or_else(|| eyre!("Profile with address {} not found", address))
 	}
 
-//	/// Returns the key file path for the given profile.
-//	pub fn get_key_file(&self, name: &str) -> Result<&PathBuf> {
-//		let profile = self.get_profile(name)?;
-//		Ok(profile.key_file())
-//	}
-
-//	/// Returns the nonce file path for the given profile.
-//	pub fn get_nonce_file(&self, name: &str) -> Result<&PathBuf> {
-//		let profile = self.get_profile(name)?;
-//		Ok(profile.nonce_file())
-//	}
-
-//	/// Returns the config file path for the given profile.
-//	pub fn get_config_file(&self, name: &str) -> Result<&PathBuf> {
-//		let profile = self.get_profile(name)?;
-//		Ok(profile.config_file())
-//	}
-
-//	/// Returns the private key (hex) for the given profile.
-//	pub fn get_key(&self, name: &str) -> Result<&Privkey> {
-//		let profile = self.get_profile(name)?;
-//		Ok(profile.key())
-//	}
-
-	pub fn get_hex(&self, name: &str) -> Result<String> {
-		let profile = self.get_profile(name)?;
-		Ok(profile.key().get_hex())
-	}
-
-	/// Returns the address derived from the private key for the given profile.
-	pub fn get_address(&self, name: &str) -> Result<String> {
-		let profile = self.get_profile(name)?;
-		Ok(profile.key().get_address())
-	}
-
-	/// Retrieves the content of the config file for the given profile.
-	pub fn get_config(&self, name: &str) -> Result<String> {
-		let profile = self.get_profile(name)?;
-		profile.get_config()
-	}
-}
-
-impl ProfileCollection {
-
-	/// Create a new ProfileCollection instance and load existing profiles from disk
-	pub fn new() -> Result<Self> {
-		// Create a new instance of ProfileCollection with an empty IndexMap
-		let mut collection = Self { 0: IndexMap::new() };
-
-		// Reload profiles from disk and update the collection with the result
-		collection = collection.reload()?;
-
-		Ok(collection)  // Return the updated instance with loaded profiles
-
-	}
-
-	/// Create a new ProfileCollection instance and load existing profiles from disk
-	pub fn reload(&mut self) -> Result<Self> {
-		let profiles_dir = &*PROFILES_DIR;
-
-		// Clear the existing profiles before reloading
-		self.0.clear();
-
-		let mut profiles = IndexMap::new(); // Create a new collection to store profiles
-
-		// Attempt to read the entries in the profiles directory
-		let entries = fs::read_dir(profiles_dir).map_err(|err| {
-			eyre!("Failed to read profiles directory: {:?}, error: {}", profiles_dir, err)
-		})?;
-
-		for entry in entries.flatten() {
-			// Check if the entry is a directory
-			if let Ok(file_type) = entry.file_type() {
-				if !file_type.is_dir() {
-					continue; // Skip non-directory entries
-				}
-			}
-
-			// Assume home_path is derived from the entry path
-			let home_path = entry.path();
-
-			// Attempt to create a Profile; we assume home_path is valid
-			match Profile::new(&home_path) {
-				Ok(profile) => {
-					// Directly extract the basename
-					let basename = home_path.file_name()
-						.and_then(|name| name.to_str().map(|s| s.to_string()))
-						.unwrap_or_else(|| "default_profile_name".to_string());
-
-					// Check if the config file exists; create if it does not
-					if !profile.config_file().exists() {
-						let config_content = default_config(&basename);
-						fs::write(&profile.config_file(), config_content).map_err(|err| {
-							eprintln!("Failed to write config file for {}: {}", basename, err);
-							err
-						})?;
-					}
-
-					// Insert the profile into the collection
-					profiles.insert(basename, profile);
-				}
-				Err(e) => {
-					// Log or print the error and continue to the next entry
-					eprintln!("Failed to create profile: {}", e);
-					continue;  // Skips to the next entry in the loop
-				}
-			}
+	/// Finds a profile by its name or address.
+	pub fn profile_by_name_or_address(&self, name_or_address: &str) -> Result<&Profile> {
+		// First try to find the profile by name
+		if let Ok(profile) = self.profile_by_name(name_or_address) {
+			return Ok(profile);
 		}
 
-		// Sort profiles after loading
-		profiles.sort_keys();
+		// If not found by name, try to find by address
+		self.profile_by_address(name_or_address)
+	}
 
-		// Return a new ProfileCollection instance with the collected profiles
-		Ok(ProfileCollection(profiles))
+	/// Retrieves the home path of a profile by its name or address.
+	pub fn profile_home_path(&self, name_or_address: &str) -> Result<&Path> {
+		let profile = self.profile_by_name_or_address(name_or_address)?;
+		Ok(&profile.home_path())
+	}
+
+	/// Retrieves the hex of a profile by its name or address.
+	pub fn profile_hex(&self, name_or_address: &str) -> Result<String> {
+		let profile = self.profile_by_name_or_address(name_or_address)?;
+		Ok(profile.key().hex())
+	}
+
+	/// Retrieves the address of a profile by its name or address.
+	pub fn profile_address(&self, name_or_address: &str) -> Result<&str> {
+		let profile = self.profile_by_name_or_address(name_or_address)?;
+		Ok(&profile.key().address())
+	}
+
+	/// Retrieves the config of a profile by its name or address.
+	pub fn profile_config(&self, name_or_address: &str) -> Result<String> {
+		let profile = self.profile_by_name_or_address(name_or_address)?;
+		profile.get_config()
+	}
+
+	pub fn export_nonce(&self, name_or_address: &str) -> Result<u64> {
+		let profile = self.profile_by_name_or_address(name_or_address)?;
+		profile.export_nonce()
+	}
+
+	pub fn import_nonce(&self, name_or_address: &str, value: u64, dont_overwrite: bool) -> Result<()> {
+		let profile = self.profile_by_name_or_address(name_or_address)?;
+		profile.import_nonce(value, dont_overwrite)
 	}
 
 	pub fn import(&mut self, name: &str, key: Privkey) -> Result<()> {
@@ -191,22 +161,16 @@ impl ProfileCollection {
 
 		Ok(())
 	}
-//
-//	pub fn import_hex(&mut self, name: &str, hex_string: &str) -> Result<()> {
-//		// Convert the hex string to a private key
-//		let key = key::key_from_hex(hex_string)?;
-//		self.import(name, key)
-//	}
+
+	#[allow(dead_code)]
+	pub fn import_key(&mut self, name: &str, hex_string: &str) -> Result<()> {
+		let key = hex_string.privkey()?;
+		self.import(name, key)
+	}
 
 	pub fn import_file(&mut self, name: &str, file: &Path) -> Result<()> {
-		// Read the file contents as bytes using the binary_file function
-		let bytes = binary_file(file)?;
-
-		// Convert the bytes to a private key
-		let key = key::key_from_bytes(bytes)?;
-
-		// Import the profile using the extracted key
-		self.import(name, key)
+    	let privkey = file.privkey()?;
+		self.import(name, privkey)
 	}
 
 	/// Converts the ProfileCollection into a JSON serde_json::Value.
@@ -220,8 +184,8 @@ impl ProfileCollection {
 						"key_file"   : profile.key_file().to_string_lossy(),
 						"nonce_file" : profile.nonce_file().to_string_lossy(),
 						"config_file": profile.config_file().to_string_lossy(),
-						"account_id" : profile.key().get_address(),
-						"nonce"      : profile.get_nonce().ok(),
+						"account_id" : profile.key().address(),
+						"nonce"      : profile.export_nonce().ok(),
 					})
 				)
 			})
@@ -258,7 +222,7 @@ impl ProfileCollection {
 			// Manually format the profile fields with '\x1C' as the separator
 			let formatted_profile = format!(
 				"{}\x1C{}",
-				profile.key().get_address(),
+				profile.key().address(),
 				basename
 			);
 

@@ -1,0 +1,227 @@
+use cosmrs::{AccountId, crypto::{secp256k1::SigningKey, PublicKey}};
+use crate::functions::get_file;
+use eyre::{Result, WrapErr};
+use once_cell::sync::OnceCell;
+use std::borrow::Cow;
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
+
+
+/// Retrieves the path to the private key file.
+///
+/// This function checks if the `file` or `home` paths are provided. If neither is specified,
+/// it defaults to `$HOME/.orga-wallet/privkey`.
+///
+/// The private key file is typically stored in the user's home directory at:
+///   `$HOME/.orga-wallet/privkey`
+///
+/// Users can specify an arbitrary file path or allow the function to infer the path from the 
+/// provided home directory. The function internally calls `get_file`, which does not specify 
+/// the subpath `.orga-wallet/privkey`.
+///
+/// # Arguments
+///
+/// * `file` - An optional reference to a specific file path.
+/// * `home` - An optional reference to a home directory path.
+///
+/// # Returns
+///
+/// Returns a `Result<PathBuf>`, containing the resolved path to the private key file 
+/// or an error if the path cannot be determined.
+fn get_privkey_file(file: Option<&Path>, home: Option<&Path>) -> Result<PathBuf> {
+    let sub_path = Path::new(".orga-wallet").join("privkey");
+    get_file(file, home, Some(&sub_path))
+}
+
+/// Represents a private key.
+///
+/// This struct encapsulates a 32-byte private key along with its hex representation, signing key, 
+/// public key, account ID, and address. The fields are lazily initialized to improve performance 
+/// and resource usage.
+pub struct Privkey {
+	/// 32-byte representation of the private key.
+	bytes: Vec<u8>,
+	/// Hexadecimal representation of the private key as a string.
+	hex: OnceCell<String>,
+	/// Signing key derived from the private key.
+	signing_key: OnceCell<SigningKey>,
+	/// Public key derived from the signing key.
+	public_key: OnceCell<PublicKey>,
+	/// Account ID associated with the public key.
+	account_id: OnceCell<AccountId>,
+	/// String representation of the account ID.
+	address: OnceCell<String>,
+}
+
+impl Privkey {
+	/// Creates a new `Privkey` from the provided byte vector.
+	///
+	/// # Arguments
+	///
+	/// * `bytes` - A vector containing the private key bytes. Must be exactly 32 bytes in length.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<Self>` containing the new `Privkey` instance or an error if the byte 
+	/// length is invalid.
+	pub fn new(bytes: Vec<u8>) -> Result<Self> {
+		if bytes.len() != 32 {
+			return Err(eyre::eyre!("Invalid byte length: Must be 32 bytes."));
+		}
+		Ok(Self {
+			bytes,
+			hex: OnceCell::new(),
+			signing_key: OnceCell::new(),
+			public_key: OnceCell::new(),
+			account_id: OnceCell::new(),
+			address: OnceCell::new(),
+		})
+	}
+
+	/// Retrieves the hex-encoded private key.
+	///
+	/// This method ensures that the hex representation is computed lazily and only when needed.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<Cow<str>, eyre::Report>` containing the hex-encoded private key or an 
+	/// error if the computation fails.
+	pub fn hex(&self) -> Result<Cow<str>, eyre::Report> {
+		self.hex.get_or_init(|| {
+			Ok(Cow::Owned(hex::encode(&self.bytes)))
+		})
+	}
+
+	/// Lazily retrieves or computes the signing key from the private key bytes.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<&SigningKey, eyre::Report>`, providing a reference to the signing key 
+	/// or an error if the signing key creation fails.
+	pub fn signing_key(&self) -> Result<&SigningKey, eyre::Report> {
+		self.signing_key.get_or_init(|| {
+			SigningKey::from_slice(&self.bytes)
+				.wrap_err("Failed to create SigningKey from bytes")
+		})
+	}
+
+	/// Lazily retrieves or computes the public key from the signing key.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<&PublicKey, eyre::Report>`, providing a reference to the public key 
+	/// or an error if the public key computation fails.
+	pub fn public_key(&self) -> Result<&PublicKey, eyre::Report> {
+		self.public_key.get_or_init(|| {
+			let signing_key = self.signing_key()?;
+			Ok(signing_key.public_key())
+		})
+	}
+
+	/// Lazily retrieves or computes the account ID from the public key.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<&AccountId, eyre::Report>`, providing a reference to the account ID 
+	/// or an error if the account ID computation fails.
+	pub fn account_id(&self) -> Result<&AccountId, eyre::Report> {
+		self.account_id.get_or_init(|| {
+			let public_key = self.public_key()?;
+			public_key.account_id("nomic").wrap_err("Failed to get address from public key")
+		})
+	}
+
+	/// Lazily retrieves or computes the address associated with the account ID.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<Cow<str>, eyre::Report>` containing the address as a string or an 
+	/// error if the address computation fails.
+	pub fn address(&self) -> Result<Cow<str>, eyre::Report> {
+		self.address.get_or_init(|| {
+			let account_id = self.account_id()?;
+			Ok(Cow::Owned(account_id.to_string()))
+		})
+	}
+}
+
+impl std::fmt::Debug for Privkey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.address() {
+            Ok(address) => write!(f, "Privkey {{ address: {} }}", address),
+            Err(err) => write!(f, "Privkey {{ error: {} }}", err),
+        }
+    }
+}
+
+impl PartialEq for Privkey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self.hex(), other.hex()) {
+            (Ok(hex_self), Ok(hex_other)) => hex_self.eq_ignore_ascii_case(&hex_other),
+            _ => false,
+        }
+    }
+}
+
+impl Clone for Privkey {
+    fn clone(&self) -> Self {
+        Self::new(self.bytes.clone()).expect("Failed to create Privkey from cloned bytes")
+    }
+}
+
+impl Privkey {
+	/// Saves the private key to the specified file or home directory.
+	///
+	/// This method ensures that either a `file` or `home` path is provided, but not both.
+	/// If the file already exists and `force` is `false`, it returns an error to prevent 
+	/// overwriting. If `force` is `true`, it will overwrite the existing file.
+	///
+	/// # Arguments
+	///
+	/// * `file` - An optional reference to a specific file path for saving the private key.
+	/// * `home` - An optional reference to a home directory path to derive the save path.
+	/// * `force` - A boolean indicating whether to overwrite an existing file.
+	///
+	/// # Returns
+	///
+	/// Returns a `Result<()>`, indicating success or failure of the save operation.
+	pub fn save(&self, file: Option<&Path>, home: Option<&Path>, force: bool) -> Result<()> {
+		// Check if neither file nor home is provided
+		if file.is_none() && home.is_none() {
+			return Err(eyre::eyre!("Must specify either a file or a home directory"));
+		}
+
+		// Check if both file and home are provided
+		if file.is_some() && home.is_some() {
+			return Err(eyre::eyre!("Cannot specify both a file and a home directory"));
+		}
+
+		// Get the privkey file path
+		let output_file = get_privkey_file(file, home)
+			.context("Failed to get privkey file path")?;
+
+		// Check if the file exists
+		if output_file.exists() {
+			// File exists, check if overwrite is allowed
+			if force {
+				println!("Overwriting existing file: {:?}", output_file);
+			} else {
+				return Err(eyre::eyre!("File already exists. Use --force to overwrite."));
+			}
+		} else {
+			// File does not exist, proceed to create it
+			println!("Creating new file: {:?}", output_file);
+		}
+
+		// Write the decoded data to the specified file
+		let mut file = File::create(&output_file)
+			.context("Failed to create or open the privkey file")?;
+
+		file.write_all(&self.bytes)
+			.context("Failed to write to the privkey file")?;
+
+		println!("Private key set successfully.");
+		Ok(())
+	}
+}

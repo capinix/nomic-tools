@@ -10,7 +10,11 @@ use crate::nonce::{export, import};
 /// This struct defines the command-line interface for managing the nonce file,
 /// allowing users to specify the nonce file and optional home directory.
 #[derive(Parser)]
-#[command(name = "Nonce", about = "Manage Nonce File")]
+#[command(
+	name = "Nonce", 
+	about = "Manage Nonce File",
+	visible_alias = "n",
+)]
 pub struct Cli {
 	#[arg(long, short, conflicts_with = "home")]
 	pub file: Option<PathBuf>,
@@ -25,15 +29,11 @@ pub struct Cli {
 /// Subcommands for the `nonce` command
 #[derive(Subcommand)]
 pub enum CliCommand {
-	/// Export nonce from file
-	Export {
-		#[arg(long, short, conflicts_with = "home")]
-		file: Option<PathBuf>,
-
-		#[arg(long, short = 'H')]
-		home: Option<PathBuf>,
-	},
-	/// Write nonce to file
+	#[command(
+		name = "Import", 
+		about = "Write decimal value to nonce file",
+		visible_alias = "i",
+	)]
 	Import {
 		#[arg(long, short)]
 		value: u64,
@@ -46,6 +46,18 @@ pub enum CliCommand {
 
 		#[arg(long = "dont-overwrite", short = 'D')]
 		dont_overwrite: bool,
+	},
+	#[command(
+		name = "Export", 
+		about = "Display decimal value of the contents of nonce file",
+		visible_alias = "x",
+	)]
+	Export {
+		#[arg(long, short, conflicts_with = "home")]
+		file: Option<PathBuf>,
+
+		#[arg(long, short = 'H')]
+		home: Option<PathBuf>,
 	},
 }
 
@@ -61,7 +73,6 @@ pub enum CliCommand {
 /// # Returns
 ///
 /// - `Ok(())` if the command executes successfully.
-/// - `Err(anyhow::Error)` if an error occurs during command execution.
 pub fn run_cli(cli: &Cli) -> Result<()> {
 	match &cli.command {
 		Some(CliCommand::Export { file, home }) => {

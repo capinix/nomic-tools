@@ -14,3 +14,12 @@ pub fn default_config(profile_name: &str) -> String {
 		profile_name
 	)
 }
+//
+//        PROFILE=dad
+//        MINIMUM_BALANCE=10.00\n\
+//        MINIMUM_BALANCE_RATIO=0.001\n\
+//        MINIMUM_STAKE=5\n\
+//        ADJUST_MINIMUM_STAKE=true\n\
+//        MINIMUM_STAKE_ROUNDING=5\n\
+//        DAILY_REWARD=0.00\n\
+//

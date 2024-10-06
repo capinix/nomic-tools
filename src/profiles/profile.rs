@@ -1,97 +1,86 @@
-use crate::key;
-use crate::nonce;
+use crate::{key::Privkey, nonce};
 use eyre::{eyre, Result, WrapErr};
-use std::fs::File;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::{fs, fs::File, io::Read, path::{Path, PathBuf}};
+use crate::profiles::default_config;
 
+#[derive(Clone)]
 pub struct Profile {
 	home_path:   PathBuf,
 	key_file:	 PathBuf,
 	nonce_file:  PathBuf,
 	config_file: PathBuf,
-	key:		 key::Privkey,
-}
-
-// Custom Debug implementation for Profile
-impl std::fmt::Debug for Profile {
-	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		write!(f, "Profile {{ address: {}, home_path: {:?} }}", self.key.get_address(), self.home_path)
-	}
+	key:		 Privkey,
 }
 
 impl Profile {
 	/// Creates a new Profile instance.
 	pub fn new(home_path: &Path) -> Result<Self> {
 
-		// Check if the home_path exists and is a directory
-		if !home_path.exists() || !home_path.is_dir() {
-			return Err(eyre!("Home path '{}' does not exist or is not a directory", home_path.display()));
-		}
+        // Check if the home_path exists and is a directory
+        if !home_path.exists() || !home_path.is_dir() {
+            return Err(eyre!("Home path '{}' does not exist or is not a directory", home_path.display()));
+        }
 
-		// Construct the file paths based on the home_path
-		let key_file = home_path.join(".orga-wallet").join("privkey");
+        // Derive the profile_name from the home_path (using its basename)
+        let profile_name = home_path.file_name()
+            .ok_or_else(|| eyre::eyre!("Failed to get profile name from home path"))?
+            .to_str()
+            .ok_or_else(|| eyre::eyre!("Profile name contains invalid UTF-8 characters"))?;
 
-		// Check if the key_file exists
-		if !key_file.exists() {
-			return Err(eyre!("Key file '{}' does not exist", key_file.display()));
-		}
+        // Construct the file paths based on the home_path
+        let key_file = home_path.join(".orga-wallet").join("privkey");
 
-		let nonce_file = home_path.join(".orga-wallet").join("nonce");
-		let config_file = home_path.join("config");
+        // Check if the key_file exists
+        if !key_file.exists() {
+            return Err(eyre!("Key file '{}' does not exist", key_file.display()));
+        }
 
-		// Read the binary file (key_file) and handle potential errors
-		let bytes = fmt::input::binary_file(&key_file)
-			.with_context(|| format!("Failed to read key file: {:?}", key_file))?;
+        let nonce_file = home_path.join(".orga-wallet").join("nonce");
+        let config_file = home_path.join("config");
 
-		// Convert the bytes into a Privkey and handle potential errors
-		let key = key::key_from_bytes(bytes)
-			.with_context(|| format!("Failed to create key from bytes in {:?}", key_file))?;
+        // Check if the config_file exists, and if not, write the default config to it
+        if !config_file.exists() {
+            let default_config_content = default_config(profile_name); // Call the default config function
+            fs::write(&config_file, default_config_content)
+                .map_err(|e| eyre::eyre!("Failed to write default config: {}", e))?;
+        }
 
-		// Return the newly created Profile wrapped in a Result
-		Ok(Self {
-			home_path: home_path.to_path_buf(),
-			key_file,
-			nonce_file,
-			config_file,
-			key,
-		})
-	}
+		let key = Privkey::new_from_file(&key_file)?;
 
-	/// Returns a reference to the home path.
-	pub fn home_path(&self) -> &PathBuf {
-		&self.home_path
-	}
+        // Return the newly created Profile wrapped in a Result
+        Ok(Self {
+            home_path: home_path.to_path_buf(),
+            key_file,
+            nonce_file,
+            config_file,
+            key,
+        })
+    }
 
-	/// Returns a reference to the key file path.
-	pub fn key_file(&self) -> &PathBuf {
-		&self.key_file
-	}
+    /// Returns a reference to the home path.
+    pub fn home_path(&self) -> &Path {
+        &self.home_path
+    }
 
-	/// Returns a reference to the nonce file path.
-	pub fn nonce_file(&self) -> &PathBuf {
-		&self.nonce_file
-	}
+    /// Returns the key file path.
+    pub fn key_file(&self) -> &Path {
+        &self.key_file
+    }
 
-	/// Returns a reference to the config file path.
-	pub fn config_file(&self) -> &PathBuf {
-		&self.config_file
-	}
+    /// Returns the nonce file path.
+    pub fn nonce_file(&self) -> &Path {
+        &self.nonce_file
+    }
 
-	/// Returns a reference to the private key.
-	pub fn key(&self) -> &key::Privkey {
-		&self.key
-	}
+    /// Returns the config file path.
+    pub fn config_file(&self) -> &Path {
+        &self.config_file
+    }
 
-	/// Retrieves the nonce from the nonce file.
-	pub fn get_nonce(&self) -> Result<u64> {
-		nonce::export(Some(self.nonce_file.as_path()), None)
-	}
-
-//	/// Sets the nonce value in the nonce file.
-//	pub fn set_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
-//		nonce::import(value, Some(&self.nonce_file), None, dont_overwrite)
-//	}
+    /// Returns a reference to the Privkey.
+    pub fn key(&self) -> &Privkey {
+        &self.key
+    }
 
 	/// Reads and returns the content of the config file.
 	pub fn get_config(&self) -> Result<String> {
@@ -104,6 +93,23 @@ impl Profile {
 		file.read_to_string(&mut content)
 			.with_context(|| format!("Failed to read config file at {:?}", self.config_file))?;
 
-		Ok(content) // Return the content if successful
+		Ok(content)
 	}
+
+	pub fn export_nonce(&self) -> Result<u64> {
+		nonce::export(Some(self.nonce_file()), None)
+	}
+
+	pub fn import_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
+		nonce::import(value, Some(self.nonce_file()), None, dont_overwrite)
+	}
+
+}
+
+// Custom Debug implementation for Profile
+impl std::fmt::Debug for Profile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let address = self.key().address();
+        write!(f, "Profile {{ address: {}, home_path: {:?} }}", address, self.home_path)
+    }
 }
