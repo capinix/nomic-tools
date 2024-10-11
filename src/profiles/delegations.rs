@@ -1,12 +1,13 @@
 
+use core::cell::OnceCell;
 use crate::globals::NOMIC;
 use crate::globals::NOMIC_LEGACY_VERSION;
 use eyre::eyre;
 use eyre::Result;
-use std::process::Command;
-use std::path::Path;
 use indexmap::IndexMap;
-use core::cell::OnceCell;
+use std::fmt;
+use std::path::Path;
+use std::process::Command;
 
 #[derive(Clone, Debug)]
 pub struct Delegation {
@@ -22,11 +23,25 @@ impl Delegation {
     }
 }
 
-#[derive(Debug)]
 pub struct Delegations {
     delegations: IndexMap<String, Delegation>,
     total: OnceCell<Delegation>,
 }
+
+impl fmt::Debug for Delegations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Create a formatted string for the delegations without the total field
+        // Create a formatted string for the delegations without the total field and the word "delegations"
+        f.debug_map()
+            .entries(self.delegations.iter().map(|(k, v)| (k, v)))
+            .finish()
+
+//      f.debug_struct("Delegations")
+//          .field("delegations", &self.delegations)
+//          .finish()
+    }
+}
+
 
 impl Delegations {
     /// Creates a new Delegations instance.

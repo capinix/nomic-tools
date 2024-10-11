@@ -242,6 +242,103 @@ impl ValidatorCollection {
         Ok(ValidatorCollection(validators))
     }
 
+    pub fn search(&self, search: &str) -> eyre::Result<Self> {
+        // Attempt to filter by exact address match first
+        let address_filtered: Vec<Validator> = self.0.iter()
+            .filter(|validator| validator.address().eq_ignore_ascii_case(search)) // Case-insensitive match
+            .cloned() // Cloning for new instances
+            .collect(); // Collecting into a Vec<Validator>
+
+        // If any validators were found by address, return them
+        if !address_filtered.is_empty() {
+            return Ok(ValidatorCollection(address_filtered));
+        }
+
+        // If no exact address matches were found, filter by moniker sub-match
+        let search_lower = search.to_lowercase();
+        let moniker_filtered: Vec<Validator> = self.0.iter()
+            .filter(|validator| validator.moniker().to_lowercase().contains(&search_lower))
+            .cloned() // Cloning for new instances
+            .collect(); // Collecting into a Vec<Validator>
+
+        // Check if any validators were found by moniker
+        if moniker_filtered.is_empty() {
+            return Err(eyre::eyre!("No validators found with address or moniker matching `{}`", search));
+        }
+
+        // Return the new ValidatorCollection with the filtered results
+        Ok(ValidatorCollection(moniker_filtered))
+    }
+
+    pub fn search_multi(&self, searches: Vec<String>) -> eyre::Result<Self> {
+        let mut results = Self(Vec::new()); // Initialize a single results collection
+
+        // Loop through each search term
+        for search in searches {
+            let search_lower = search.to_lowercase();
+
+            // Check each validator against the search term
+            for validator in &self.0 {
+                // Check for exact address match
+                if validator.address().eq_ignore_ascii_case(&search) {
+                    results.0.push(validator.clone());
+                } 
+                // Check for moniker match
+                if validator.moniker().to_lowercase().contains(&search_lower) {
+                    // Push to results if the validator matches the search
+                    results.0.push(validator.clone());
+                }
+            }
+        }
+
+        // Check if any validators were found across all searches
+        if results.0.is_empty() {
+            return Err(eyre::eyre!("No validators found matching any of the provided searches."));
+        }
+
+        // Return the new ValidatorCollection with the filtered results
+        Ok(results)
+
+    }
+
+    pub fn filter_addresses(&self, searches: Vec<String>) -> eyre::Result<Self> {
+        // Create a new ValidatorCollection by filtering the existing one
+        let validators: Vec<Validator> = self.0.iter()
+            .filter(|validator| {
+                // Check if the validator's address matches any address in the searches vector
+                searches.iter().any(|search| validator.address().eq_ignore_ascii_case(search))
+            })
+            .cloned() // Cloning for new instances
+            .collect(); // Collecting into a Vec<Validator>
+
+        // Check if the new collection is empty
+        if validators.is_empty() {
+            return Err(eyre::eyre!("No validators found with the specified addresses."));
+        }
+
+        // Return the new ValidatorCollection with the filtered results
+        Ok(ValidatorCollection(validators))
+    }
+
+    pub fn filter_monikers(&self, searches: Vec<String>) -> eyre::Result<Self> {
+        // Create a new ValidatorCollection by filtering the existing one
+        let validators: Vec<Validator> = self.0.iter()
+            .filter(|validator| {
+                // Check if the validator's moniker matches any of the searches
+                searches.iter().any(|search| validator.moniker().to_lowercase().contains(&search.to_lowercase()))
+            })
+            .cloned() // Cloning for new instances
+            .collect(); // Collecting into a Vec<Validator>
+
+        // Check if the new collection is empty
+        if validators.is_empty() {
+            return Err(eyre::eyre!("No validators found with any of the specified monikers."));
+        }
+
+        // Return the new ValidatorCollection with the filtered results
+        Ok(ValidatorCollection(validators))
+    }
+
     pub fn top(&self, n: Option<usize>) -> eyre::Result<Self> {
         // Clone the current ValidatorCollection to work on a separate copy
         let mut top_validators = self.clone();

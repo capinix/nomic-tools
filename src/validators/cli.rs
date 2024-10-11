@@ -160,6 +160,36 @@ pub enum CliCommand {
         #[arg(short, long)]
         column_widths: Option<Vec<usize>>,
     },
+
+    /// Search for a validator by its address
+    Search {
+        /// Search for a validator by its address
+        #[arg(value_parser = clap::value_parser!(String), required_unless_present = "searches")]
+        search: Option<String>,
+
+        /// Search for validators by their addresses or monikers
+        #[arg(
+            long,
+            short = 't',
+            value_parser = clap::value_parser!(String),
+            num_args = 1..,
+            required_unless_present = "search",
+        )]
+        searches: Option<Vec<String>>,
+
+        /// Specify the output format
+        #[arg(long, short)]
+        format: Option<OutputFormat>,
+
+        /// Whether to include the details field
+        #[arg(default_value = "true", short, long)]
+        include_details: Option<bool>,
+
+        /// Column widths for table view
+        #[arg(short, long)]
+        column_widths: Option<Vec<usize>>,
+    },
+
 }
 
 impl Cli {
@@ -202,6 +232,45 @@ impl Cli {
                     }
                 } else {
                     eprintln!("Validator moniker is empty.");
+                }
+            },
+
+            // Handle search subcommand
+            Some(CliCommand::Search { search, searches, format, include_details, column_widths }) => {
+                let format = format.clone().or_else(|| self.format.clone());
+                let include_details = include_details.or_else(|| self.include_details);
+                let column_widths = column_widths.clone().or_else(|| self.column_widths.clone());
+
+                let mut any_found = false; // Declare the flag before checking searches
+
+                // Check for a single search term
+                if let Some(single_search) = search {
+                    let filtered = collection.search(&single_search)?;
+                    if !filtered.is_empty() {
+                        any_found = true; // Found at least one match
+                        filtered.print(format.clone(), include_details, column_widths.clone())?;
+                    } else {
+                        eprintln!("No validators found with the search: {}", single_search);
+                    }
+                }
+
+                // Check for multiple search terms
+                if let Some(multi_search) = searches {
+                    // Perform search for all terms at once
+                    let filtered = collection.search_multi(multi_search.to_vec())?;
+
+                    // Check if any validators were found
+                    if !filtered.is_empty() {
+                        any_found = true; // Found at least one match
+                        filtered.print(format.clone(), include_details, column_widths.clone())?;
+                    } else {
+                        eprintln!("No validators found matching any of the provided searches.");
+                    }
+                }
+
+                // If no matches were found in any of the searches, notify the user
+                if !any_found {
+                    eprintln!("No validators found with any of the specified searches.");
                 }
             },
 
