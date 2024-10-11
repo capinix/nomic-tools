@@ -1,86 +1,80 @@
 use clap::{Parser, Subcommand};
 use crate::functions::resolve_file_home;
 use std::path::PathBuf;
-use eyre::{eyre, Result, WrapErr};
+use eyre::eyre;
+use eyre::Result;
 use std::time::Duration;
-use crate::key::{
-	FromHex,
-	Privkey,
-};
-
+use crate::key::FromHex;
+use crate::key::PrivKey;
 
 /// Defines the CLI structure for the `privkey` command.
 #[derive(Parser)]
-#[command(
-	name = "PrivKey", 
-	about = "Manage PrivKey File",
-	visible_alias = "k",
-)]
+#[command(name = "PrivKey", about = "Manage PrivKey File", visible_alias = "k",)]
 pub struct Cli {
-	/// Filename
-	#[arg(long, short, conflicts_with = "home")]
-	pub file: Option<PathBuf>,
+    /// Filename
+    #[arg(long, short, conflicts_with = "home")]
+    pub file: Option<PathBuf>,
 
-	/// Home directory
-	#[arg(long, short = 'H')]
-	pub home: Option<PathBuf>,
+    /// Home directory
+    #[arg(long, short = 'H')]
+    pub home: Option<PathBuf>,
 
-	/// Subcommands for the nonce command
-	#[command(subcommand)]
-	pub command: Option<Command>,
+    /// Subcommands for the nonce command
+    #[command(subcommand)]
+    pub command: Option<Command>,
 }
 
 /// Subcommands for the `privkey` command
 #[derive(Subcommand)]
 pub enum Command {
-	/// Show the public address (AccountID)
-	#[command(visible_alias = "a")]
-	Address {
-		/// Key
-		#[arg(long, short, conflicts_with = "file", conflicts_with = "home")]
-		key: Option<String>,
+/// Show the public address (AccountID)
+    #[command(visible_alias = "a")]
+    Address {
+        /// Key
+        #[arg(long, short, conflicts_with = "file", conflicts_with = "home")]
+        key: Option<String>,
 
-		/// Filename
-		#[arg(long, short, conflicts_with = "home")]
-		file: Option<PathBuf>,
+        /// Filename
+        #[arg(long, short, conflicts_with = "home")]
+        file: Option<PathBuf>,
 
-		/// Home directory
-		#[arg(long, short = 'H')]
-		home: Option<PathBuf>,
-	},
-	/// Save Private key to file
-	#[command(visible_alias = "s")]
-	Save {
-		/// Key
-		#[arg(long, short, conflicts_with = "file", conflicts_with = "home")]
-		key: Option<String>,
+        /// Home directory
+        #[arg(long, short = 'H')]
+        home: Option<PathBuf>,
+    },
+    /// Save Private key to file
+    #[command(visible_alias = "s")]
+    Save {
+        /// Key
+        #[arg(long, short, conflicts_with = "file", conflicts_with = "home")]
+        key: Option<String>,
 
-		/// Filename
-		#[arg(long, short = 'F', conflicts_with = "home")]
-		file: Option<PathBuf>,
+        /// Filename
+        #[arg(long, short = 'F', conflicts_with = "home")]
+        file: Option<PathBuf>,
 
-		/// Home directory
-		#[arg(long, short = 'H')]
-		home: Option<PathBuf>,
+        /// Home directory
+        #[arg(long, short = 'H')]
+        home: Option<PathBuf>,
 
-		/// Force overwrite
-		#[arg(long, short = 'f')]
-		force: bool,
-	},
-	/// Export Private key caution
-	Export {
-		/// Key
-		#[arg(long, short, conflicts_with = "file", conflicts_with = "home")]
-		key: Option<String>,
+        /// Force overwrite
+        #[arg(long, short = 'f')]
+        force: bool,
+    },
+    /// Export Private key caution
+    Export {
+        /// Key
+        #[arg(long, short, conflicts_with = "file", conflicts_with = "home")]
+        key: Option<String>,
 
-		/// Filename
-		#[arg(long, short, conflicts_with = "home")]
-		file: Option<PathBuf>,
+        /// Filename
+        #[arg(long, short, conflicts_with = "home")]
+        file: Option<PathBuf>,
 
-		/// Home directory
-		#[arg(long, short = 'H')]
-		home: Option<PathBuf>,
-	},
+        /// Home directory
+        #[arg(long, short = 'H')]
+        home: Option<PathBuf>,
+    },
 }
 
 /// Retrieves the private key based on CLI options.
@@ -102,7 +96,7 @@ fn get_privkey(
     home: Option<PathBuf>, 
     cli_file: Option<PathBuf>, 
     cli_home: Option<PathBuf>,
-) -> Result<Privkey> {
+) -> Result<PrivKey> {
     // Error if both file and home are provided
     if file.is_some() && home.is_some() {
         return Err(eyre!("Error: You cannot provide both 'file' and 'home' options at the same time."));
@@ -118,69 +112,64 @@ fn get_privkey(
         return key.privkey();
     }
 
-	let (resolved_file, resolved_home) = resolve_file_home(file, home, cli_file, cli_home)?;
-	Privkey::new_from_file_or_home(resolved_file.as_deref(), resolved_home.as_deref())
+    let (resolved_file, resolved_home) = resolve_file_home(file, home, cli_file, cli_home)?;
+    PrivKey::load_from_file_or_home(resolved_file.as_deref(), resolved_home.as_deref(), false)
 }
 
-/// Runs the CLI for managing the private key.
-///
-/// # Arguments
-///
-/// * `cli` - A reference to the parsed CLI arguments.
-///
-/// # Returns
-///
-/// Returns a `Result` indicating success or failure.
-pub fn run_cli(cli: &Cli) -> Result<()> {
+impl Cli {
+    pub fn run(&self) -> Result<()> {
+        match &self.command {
+            Some(Command::Address { key, file, home }) => {
+                // Get the private key using the helper function
+                let privkey = get_privkey(
+                    key.clone(),
+                    file.clone(),
+                    home.clone(),
+                    self.file.clone(),
+                    self.home.clone(),
+                )?;
 
-	match &cli.command {
-        Some(Command::Address { key, file, home }) => {
-            // Get the private key using the helper function
-            let privkey = get_privkey(
-				key.clone(),
-				file.clone(),
-				home.clone(),
-				cli.file.clone(),
-				cli.home.clone(),
-			)?;
+                // Use the private key's address
+                let address = privkey.address()?;
+                println!("{}", address.to_string());
+                Ok(())
+            },
 
-            // Use the private key's address
-            println!("{}", privkey.address());
-            Ok(())
-        },
-        Some(Command::Export { key, file, home }) => {
-            // Get the private key using the helper function
-            let privkey = get_privkey(
-				key.clone(),
-				file.clone(),
-				home.clone(),
-				cli.file.clone(),
-				cli.home.clone(),
-			)?;
+            Some(Command::Export { key, file, home }) => {
+                // Get the private key using the helper function
+                let privkey = get_privkey(
+                    key.clone(),
+                    file.clone(),
+                    home.clone(),
+                    self.file.clone(),
+                    self.home.clone(),
+                )?;
 
-            // Use the private key's address
-            println!("{}", privkey.hex());
-            Ok(())
-        },
-		Some(Command::Save { key, file, home, force }) => {
-			// Check if both file and home are provided
-			if file.is_some() && home.is_some() {
-				return Err(eyre!("Error: You cannot provide both 'file' and 'home' options at the same time."));
-			}
+                // Export the private key
+                let export = privkey.export()?;
+                println!("{}", export.to_string());
+                Ok(())
+            },
 
-			let privkey = match key {
-				Some(ref k) => k.clone().privkey()?,
-				None => Privkey::new_from_stdin(5, Duration::from_secs(500))?,
-			};
+            Some(Command::Save { key, file, home, force }) => {
+                // Check if both file and home are provided
+                if file.is_some() && home.is_some() {
+                    return Err(eyre!("Error: You cannot provide both 'file' and 'home' options at the same time."));
+                }
 
-			// Save the private key to the resolved file or home directory
-			privkey.save(file.as_deref(), home.as_deref(), *force)
-				.context("Failed to save the private key")?;
+                // Get the private key
+                let privkey = match key {
+                    Some(ref k) => k.clone().privkey()?,
+                    None => PrivKey::stdin(5, Duration::from_secs(500))?,
+                };
 
-			Ok(())
-		},
-		None => {
-			return Err(eyre::eyre!("No command provided."));
-		}
-	}
+                // Save the private key to file or home
+                privkey.save_to_file_or_home(file.as_deref(), home.as_deref(), *force)?;
+
+                Ok(())
+            },
+
+            None => Err(eyre!("No command provided")),
+        }
+    }
 }

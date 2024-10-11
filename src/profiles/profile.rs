@@ -1,115 +1,172 @@
-use crate::{key::Privkey, nonce};
-use eyre::{eyre, Result, WrapErr};
-use std::{fs, fs::File, io::Read, path::{Path, PathBuf}};
-use crate::profiles::default_config;
+
+use crate::nonce;
+use crate::key::PrivKey;
+use eyre::{Result, WrapErr};
+use once_cell::sync::OnceCell;
+use orga::client::wallet::SimpleWallet;
+//use orga::client::wallet::Wallet;
+//use orga::coins::Address;
+//use orga::secp256k1::SecretKey;
+//use rand::Rng;
+use std::cmp::PartialEq;
+use std::{
+    fs,
+    fs::File,
+    io::Read,
+    path::Path,
+    path::PathBuf,
+};
 
 #[derive(Clone)]
 pub struct Profile {
-	home_path:   PathBuf,
-	key_file:	 PathBuf,
-	nonce_file:  PathBuf,
-	config_file: PathBuf,
-	key:		 Privkey,
+    home:        PathBuf,
+    key:         OnceCell<PrivKey>,
+    wallet:      OnceCell<SimpleWallet>,
 }
 
 impl Profile {
-	/// Creates a new Profile instance.
-	pub fn new(home_path: &Path) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(home: P) -> Result<Self> {
 
-        // Check if the home_path exists and is a directory
-        if !home_path.exists() || !home_path.is_dir() {
-            return Err(eyre!("Home path '{}' does not exist or is not a directory", home_path.display()));
-        }
+        let home = home.as_ref().to_path_buf();
 
-        // Derive the profile_name from the home_path (using its basename)
-        let profile_name = home_path.file_name()
-            .ok_or_else(|| eyre::eyre!("Failed to get profile name from home path"))?
-            .to_str()
-            .ok_or_else(|| eyre::eyre!("Profile name contains invalid UTF-8 characters"))?;
+        // Create the home directory
+        fs::create_dir_all(&home)
+            .wrap_err_with(|| format!("Failed to create directory: {:?}", home))?;
 
-        // Construct the file paths based on the home_path
-        let key_file = home_path.join(".orga-wallet").join("privkey");
-
-        // Check if the key_file exists
-        if !key_file.exists() {
-            return Err(eyre!("Key file '{}' does not exist", key_file.display()));
-        }
-
-        let nonce_file = home_path.join(".orga-wallet").join("nonce");
-        let config_file = home_path.join("config");
-
-        // Check if the config_file exists, and if not, write the default config to it
-        if !config_file.exists() {
-            let default_config_content = default_config(profile_name); // Call the default config function
-            fs::write(&config_file, default_config_content)
-                .map_err(|e| eyre::eyre!("Failed to write default config: {}", e))?;
-        }
-
-		let key = Privkey::new_from_file(&key_file)?;
-
-        // Return the newly created Profile wrapped in a Result
         Ok(Self {
-            home_path: home_path.to_path_buf(),
-            key_file,
-            nonce_file,
-            config_file,
-            key,
+            home,
+            key:         OnceCell::new(),
+            wallet:      OnceCell::new(),
         })
     }
 
-    /// Returns a reference to the home path.
-    pub fn home_path(&self) -> &Path {
-        &self.home_path
+    pub fn home(&self) -> Result<&Path> {
+        Ok(&self.home)
     }
 
-    /// Returns the key file path.
-    pub fn key_file(&self) -> &Path {
-        &self.key_file
+    pub fn name(&self) -> Result<&str> {
+        self.home
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| eyre::eyre!("Failed to extract the last component of the path"))
     }
 
-    /// Returns the nonce file path.
-    pub fn nonce_file(&self) -> &Path {
-        &self.nonce_file
+    pub fn wallet_path(&self) -> Result<PathBuf> {
+        let wallet_path = self.home.join(".orga-wallet");
+        fs::create_dir_all(&wallet_path)
+            .wrap_err_with(|| format!("Failed to create directory: {:?}", wallet_path))?;
+        Ok(wallet_path)
     }
 
     /// Returns the config file path.
-    pub fn config_file(&self) -> &Path {
-        &self.config_file
+    pub fn config_file(&self) -> Result<PathBuf> {
+        Ok(self.home.join("config"))
     }
 
-    /// Returns a reference to the Privkey.
-    pub fn key(&self) -> &Privkey {
-        &self.key
+    /// Returns the key file path.
+    pub fn key_file(&self) -> Result<PathBuf> {
+        let wallet_path = self.wallet_path()?;
+        Ok(wallet_path.join("privkey"))
     }
 
-	/// Reads and returns the content of the config file.
-	pub fn get_config(&self) -> Result<String> {
-		// Attempt to open the config file
-		let mut file = File::open(&self.config_file)
-			.with_context(|| format!("Failed to open config file at {:?}", self.config_file))?;
+    /// Returns the nonce file path.
+    pub fn nonce_file(&self) -> Result<PathBuf> {
+            Ok(self.wallet_path()?.join("nonce"))
+    }
 
-		// Read the file content into a string
-		let mut content = String::new();
-		file.read_to_string(&mut content)
-			.with_context(|| format!("Failed to read config file at {:?}", self.config_file))?;
+    pub fn key(&self) -> Result<&PrivKey> {
+        self.key.get_or_try_init(|| {
+            PrivKey::load(self.key_file()?, true)
+        })
+    }
 
-		Ok(content)
-	}
+    #[allow(dead_code)]
+    pub fn wallet(&self) -> Result<&SimpleWallet> {
+        self.wallet.get_or_try_init(|| {
+            SimpleWallet::open(self.wallet_path()?)
+                .map_err(|e| eyre::eyre!("Failed to open wallet: {}", e))
+        })
+    }
 
-	pub fn export_nonce(&self) -> Result<u64> {
-		nonce::export(Some(self.nonce_file()), None)
-	}
+    pub fn export(&self) -> Result<&str> {
+        self.key()?.export()
+    }
 
-	pub fn import_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
-		nonce::import(value, Some(self.nonce_file()), None, dont_overwrite)
-	}
+    pub fn address(&self) -> Result<&str> {
+        self.key()?.address()
+    }
 
+    /// reads and returns the content of the config file.
+    pub fn config(&self) -> Result<String> {
+        let config_file = self.config_file()?;
+        // attempt to open the config file
+        let mut file = File::open(config_file.clone())
+            .with_context(|| format!("failed to open config file at {:?}", config_file))?;
+
+        // read the file content into a string
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .with_context(|| format!("failed to read config file at {:?}", config_file))?;
+
+        Ok(content)
+    }
+
+    pub fn import(&self, hex_str: &str, force: bool) -> Result<()> {
+        let key_file = self.key_file()?; // Get the key file path
+
+        // Check if the key file already exists
+        if key_file.exists() && !force {
+            return Err(eyre::eyre!("Key file already exists. Use 'force' to overwrite it."));
+        }
+
+        // Import the private key from the hex string
+        let key = PrivKey::import(hex_str)?;
+
+        // Save the key to the key file
+        key.save(key_file, force)?;
+
+        Ok(())
+    }
+
+    pub fn export_nonce(&self) -> Result<u64> {
+        let nonce_file = self.nonce_file()?;
+        nonce::export(Some(&nonce_file), None)
+    }
+
+    pub fn import_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
+        let nonce_file = self.nonce_file()?;
+        nonce::import(value, Some(&nonce_file), None, dont_overwrite)
+    }
 }
 
 // Custom Debug implementation for Profile
 impl std::fmt::Debug for Profile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let address = self.key().address();
-        write!(f, "Profile {{ address: {}, home_path: {:?} }}", address, self.home_path)
+        // Handle the address and name Results manually, converting them into debug-friendly formats
+        let address_str = match self.address() {
+            Ok(address) => address.to_string(),             // Convert &str to String for debug printing
+            Err(_) => "Error fetching address".to_string(), // Handle error case
+        };
+
+        let name_str = match self.name() {
+            Ok(name) => name.to_string(),                // Convert &str to String
+            Err(_) => "Error fetching name".to_string(), // Handle error case
+        };
+
+        write!(
+            f,
+            "Profile {{ address: {}, name: {} }}",
+            address_str, name_str
+        )
+    }
+}
+
+impl PartialEq for Profile {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare the addresses of the two profiles
+        match (self.address(), other.address()) {
+            (Ok(addr1), Ok(addr2)) => addr1 == addr2, // Both addresses are valid
+            _ => false, // If either address is an error, they're not equal
+        }
     }
 }

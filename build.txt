@@ -1,0 +1,1605 @@
+   Compiling nomic-tools v0.1.0 (/home/dad/capinix/nomic-tools)
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:426:39
+    |
+426 | ...                   |app| build_call!(app.signal(signal_version)),
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:427:39
+    |
+427 | ...                   |app| build_call!(app.app_noop()),
+    |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:751:23
+    |
+751 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:752:23
+    |
+752 |                 |app| build_call!(app.accounts.transfer(self.to_addr, self.amount.into())),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:780:23
+    |
+780 |                 |app| build_call!(app.bitcoin.transfer(self.to_addr, self.amount.into())),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:781:23
+    |
+781 |                 |app| build_call!(app.app_noop()),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:930:23
+    |
+930 |                 |app| build_call!(app.accounts.take_as_funding((self.amount + MIN_FEE).into())),
+    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+   --> src/nomic_cmd/cmd.rs:932:21
+    |
+932 | /                     build_call!(app
+933 | |                         .staking
+934 | |                         .delegate_from_self(self.validator_addr, self.amount.into()))
+    | |_____________________________________________________________________________________^ could not find `orga` in the list of imported crates
+    |
+    = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+    |
+19  + use crate::nomic_cmd::orga::call::CallBuilder;
+    |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1010:27
+     |
+1010 |                     |app| build_call!(app.declare_with_nbtc(declaration.clone())),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1011:27
+     |
+1011 |                     |app| build_call!(app.app_noop()),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1021:23
+     |
+1021 |                 |app| build_call!(app.accounts.take_as_funding((self.amount + MIN_FEE).into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1022:23
+     |
+1022 |                 |app| build_call!(app.staking.declare_self(declaration.clone())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1069:23
+     |
+1069 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1071:21
+     |
+1071 | /                     build_call!(app.staking.edit_validator_self(
+1072 | |                         self.commission_rate,
+1073 | |                         self.min_self_delegation.into(),
+1074 | |                         info_bytes.clone().try_into().unwrap()
+1075 | |                     ))
+     | |______________________^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1104:23
+     |
+1104 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1106:21
+     |
+1106 | /                     build_call!(app
+1107 | |                         .staking
+1108 | |                         .unbond_self(self.validator_addr, self.amount.into()))
+     | |______________________________________________________________________________^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1139:23
+     |
+1139 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1141:21
+     |
+1141 | /                     build_call!(app.staking.redelegate_self(
+1142 | |                         self.src_validator_addr,
+1143 | |                         self.dest_validator_addr,
+1144 | |                         self.amount.into()
+1145 | |                     ))
+     | |______________________^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1167:23
+     |
+1167 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1168:23
+     |
+1168 |                 |app| build_call!(app.staking.unjail()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1189:23
+     |
+1189 |                 |app| build_call!(app.staking.claim_all()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1190:23
+     |
+1190 |                 |app| build_call!(app.deposit_rewards()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1258:27
+     |
+1258 |                     |app| build_call!(app.airdrop.claim_airdrop1()),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1259:27
+     |
+1259 |                     |app| build_call!(app.accounts.give_from_funding_all()),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1271:27
+     |
+1271 |                     |app| build_call!(app.airdrop.claim_airdrop2()),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1272:27
+     |
+1272 |                     |app| build_call!(app.accounts.give_from_funding_all()),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1483:23
+     |
+1483 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1484:23
+     |
+1484 |                 |app| build_call!(app.bitcoin.set_signatory_key(xpub.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1640:23
+     |
+1640 |                 |app| build_call!(app.withdraw_nbtc(Adapter::new(script), self.amount.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1641:23
+     |
+1641 |                 |app| build_call!(app.app_noop()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1690:23
+     |
+1690 |                 |app| build_call!(app.ibc_withdraw_nbtc(self.amount.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1691:23
+     |
+1691 |                 |app| build_call!(app.app_noop()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1799:23
+     |
+1799 |                 |app| build_call!(app.ibc_transfer_nbtc(ibc_dest, amount.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:1800:23
+     |
+1800 |                 |app| build_call!(app.app_noop()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:2081:23
+     |
+2081 |                 |app| build_call!(app.accounts.take_as_funding(MIN_FEE.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:2083:21
+     |
+2083 | /                     build_call!(app
+2084 | |                         .bitcoin
+2085 | |                         .set_recovery_script(nomic::bitcoin::adapter::Adapter::new(script.clone())))
+     | |____________________________________________________________________________________________________^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:2293:25
+     |
+2293 | /                         build_call!(app.relay_deposit(
+2294 | |                             tx,
+2295 | |                             block_height,
+2296 | |                             proof,
+...    |
+2299 | |                             dest2
+2300 | |                         ))
+     | |__________________________^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:2302:27
+     |
+2302 |                     |app| build_call!(app.app_noop()),
+     |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:2453:23
+     |
+2453 |                 |app| build_call!(app.bitcoin.transfer_to_fee_pool(self.amount.into())),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+error[E0433]: failed to resolve: could not find `orga` in the list of imported crates
+    --> src/nomic_cmd/cmd.rs:2454:23
+     |
+2454 |                 |app| build_call!(app.app_noop()),
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^ could not find `orga` in the list of imported crates
+     |
+     = note: this error originates in the macro `build_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider importing this struct
+     |
+19   + use crate::nomic_cmd::orga::call::CallBuilder;
+     |
+
+warning: unused import: `Message`
+ --> src/nomic_cmd/mod.rs:3:36
+  |
+3 | pub use bitcoin::secp256k1::{self, Message};
+  |                                    ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `tokio::sync::Mutex`
+  --> src/nomic_cmd/mod.rs:33:9
+   |
+33 | pub use tokio::sync::Mutex;
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::sync::Arc`
+  --> src/nomic_cmd/cmd.rs:28:5
+   |
+28 | use std::sync::Arc;
+   |     ^^^^^^^^^^^^^^
+
+warning: unused import: `clap::Parser`
+  --> src/main.rs:11:5
+   |
+11 | use clap::Parser;
+   |     ^^^^^^^^^^^^
+
+warning: use of deprecated type alias `toml_edit::Document`: Replaced with `DocumentMut`
+   --> src/nomic_cmd/cmd.rs:629:27
+    |
+629 |     F: Fn(&mut toml_edit::Document),
+    |                           ^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated type alias `toml_edit::Document`: Replaced with `DocumentMut`
+   --> src/nomic_cmd/cmd.rs:634:29
+    |
+634 |         .parse::<toml_edit::Document>()
+    |                             ^^^^^^^^
+
+error[E0433]: failed to resolve: use of undeclared crate or module `base64`
+   --> src/nomic_cmd/cmd.rs:976:39
+    |
+976 |         let consensus_key: [u8; 32] = base64::decode(&self.consensus_key)
+    |                                       ^^^^^^ use of undeclared crate or module `base64`
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+  --> src/nomic_cmd/cmd.rs:67:13
+   |
+67 |     config: nomic::network::Config,
+   |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+   |
+   = help: the following other types implement trait `FromArgMatches`:
+             AirdropCmd
+             BalanceCmd
+             Box<T>
+             CenterCli
+             ClaimAirdropCmd
+             ClaimCmd
+             CleanCli
+             CliCommand
+           and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+  --> src/nomic_cmd/cmd.rs:67:13
+   |
+67 |     config: nomic::network::Config,
+   |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+   |
+   = help: the following other types implement trait `clap::Args`:
+             AirdropCmd
+             BalanceCmd
+             Box<T>
+             CenterCli
+             ClaimAirdropCmd
+             ClaimCmd
+             CleanCli
+             DeclareCmd
+           and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:227:13
+    |
+227 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:227:13
+    |
+227 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:740:13
+    |
+740 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:740:13
+    |
+740 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:769:13
+    |
+769 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:769:13
+    |
+769 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:796:13
+    |
+796 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:796:13
+    |
+796 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:826:13
+    |
+826 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:826:13
+    |
+826 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:881:13
+    |
+881 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:881:13
+    |
+881 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:919:13
+    |
+919 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:919:13
+    |
+919 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+   --> src/nomic_cmd/cmd.rs:956:13
+    |
+956 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `FromArgMatches`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              CliCommand
+            and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+   --> src/nomic_cmd/cmd.rs:956:13
+    |
+956 |     config: nomic::network::Config,
+    |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+    |
+    = help: the following other types implement trait `clap::Args`:
+              AirdropCmd
+              BalanceCmd
+              Box<T>
+              CenterCli
+              ClaimAirdropCmd
+              ClaimCmd
+              CleanCli
+              DeclareCmd
+            and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1048:13
+     |
+1048 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1048:13
+     |
+1048 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1093:13
+     |
+1093 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1093:13
+     |
+1093 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1128:13
+     |
+1128 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1128:13
+     |
+1128 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1156:13
+     |
+1156 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1156:13
+     |
+1156 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1178:13
+     |
+1178 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1178:13
+     |
+1178 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1204:13
+     |
+1204 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1204:13
+     |
+1204 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1234:13
+     |
+1234 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1234:13
+     |
+1234 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1304:13
+     |
+1304 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1304:13
+     |
+1304 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1376:13
+     |
+1376 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1376:13
+     |
+1376 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1463:13
+     |
+1463 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1463:13
+     |
+1463 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1558:13
+     |
+1558 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1558:13
+     |
+1558 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1585:13
+     |
+1585 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1585:13
+     |
+1585 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1621:13
+     |
+1621 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1621:13
+     |
+1621 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1679:13
+     |
+1679 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1679:13
+     |
+1679 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1731:13
+     |
+1731 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1731:13
+     |
+1731 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1774:13
+     |
+1774 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1774:13
+     |
+1774 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1810:13
+     |
+1810 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1810:13
+     |
+1810 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1837:13
+     |
+1837 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:1837:13
+     |
+1837 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2061:13
+     |
+2061 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2061:13
+     |
+2061 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2096:13
+     |
+2096 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2096:13
+     |
+2096 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2248:13
+     |
+2248 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2248:13
+     |
+2248 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+error[E0277]: the trait bound `nomic::network::Config: FromArgMatches` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2442:13
+     |
+2442 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `FromArgMatches` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `FromArgMatches`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               CliCommand
+             and 48 others
+
+error[E0277]: the trait bound `nomic::network::Config: clap::Args` is not satisfied
+    --> src/nomic_cmd/cmd.rs:2442:13
+     |
+2442 |     config: nomic::network::Config,
+     |             ^^^^^^^^^^^^^^^^^^^^^^ the trait `clap::Args` is not implemented for `nomic::network::Config`
+     |
+     = help: the following other types implement trait `clap::Args`:
+               AirdropCmd
+               BalanceCmd
+               Box<T>
+               CenterCli
+               ClaimAirdropCmd
+               ClaimCmd
+               CleanCli
+               DeclareCmd
+             and 40 others
+
+Some errors have detailed explanations: E0277, E0433.
+For more information about an error, try `rustc --explain E0277`.
+warning: `nomic-tools` (bin "nomic-tools") generated 6 warnings
+error: could not compile `nomic-tools` (bin "nomic-tools") due to 165 previous errors; 6 warnings emitted

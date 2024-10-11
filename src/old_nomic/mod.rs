@@ -19,5 +19,4 @@
 // pub mod func;
 // pub mod ftable;
 //pub mod convert;
-pub mod globals;
 pub mod validators;

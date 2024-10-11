@@ -3,7 +3,7 @@ use clap::{
 	Subcommand,
 	ValueEnum,
 };
-use crate::nomic::globals::{
+use crate::globals::{
 	NOMIC,
 	NOMIC_LEGACY_VERSION,
 };

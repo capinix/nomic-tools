@@ -1,11 +1,8 @@
 mod cli;
-mod privkey;
+mod key;
 
-pub use cli::{Cli, run_cli};
-pub use privkey::{
-//	FromBytes,
-	FromHex,
-	FromPath,
-	Privkey
-};
+pub use cli::Cli;
+pub use key::FromHex;
+pub use key::FromPath;
+pub use key::PrivKey;
 

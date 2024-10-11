@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use crate::nomic::globals::NOMIC;
+use crate::globals::NOMIC;
 use eyre::{eyre, Result};
 use std::io::{BufReader, Read};
 use std::path::Path;

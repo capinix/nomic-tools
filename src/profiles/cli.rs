@@ -1,19 +1,20 @@
-use clap::{Parser, Subcommand};
-use crate::key::{FromHex, Privkey};
+use clap::Parser;
+use clap::Subcommand;
+//use crate::key::FromHex;
+//use crate::key::PrivKey;
 use crate::profiles::nomic;
 use crate::profiles::OutputFormat;
 use crate::profiles::ProfileCollection;
 use eyre::Result;
 use std::path::Path;
-use std::time::Duration;
-
+//use std::time::Duration;
 
 /// Defines the CLI structure for the `profiles` command.
 #[derive(Parser)]
 #[command(
-	name = "Profile", 
-	about = "Manage & use profiles", 
-	visible_alias = "p"
+    name          = "Profile", 
+    about         = "Manage & use profiles", 
+    visible_alias = "p"
 )]
 pub struct Cli {
     /// Specify the output format
@@ -21,17 +22,17 @@ pub struct Cli {
     pub format: Option<OutputFormat>,
 
     /// Profile
-    #[arg()]
+    #[arg(default_value_t = String::new())]
     pub profile: String,
 
     /// Subcommands for the profiles command
     #[command(subcommand)]
-    pub cmd: Option<Cmd>,
+    pub cmd: Option<Command>,
 }
 
 /// Subcommands for the `profiles` command
-#[derive(Subcommand)]
-pub enum Cmd {
+#[derive(Debug, Subcommand)]
+pub enum Command {
     /// Run nomic commands as profile
     #[command(visible_aliases = ["r"])]
     Nomic {
@@ -45,7 +46,7 @@ pub enum Cmd {
     Nonce {
         #[command(subcommand)]
         nonce_cmd: NonceCmd,
-	},
+    },
 
     /// Show the AccountId
     #[command(visible_aliases = ["a", "addr"])]
@@ -74,7 +75,7 @@ pub enum Cmd {
 
 
 /// Subcommands for the `nonce` command
-#[derive(Subcommand)]
+#[derive(Debug, Subcommand)]
 pub enum NonceCmd {
     /// Export nonce from a file associated with a profile
     Export,
@@ -95,81 +96,72 @@ pub enum NonceCmd {
     },
 }
 
-pub fn run_cli(cli: &Cli) -> Result<()> {
-	// Handle subcommands
-	match &cli.cmd {
-		// Handle nomic subcommand
-		Some(Cmd::Nomic { args }) => {
-			let collection = ProfileCollection::new()?;
-			let home_path = collection.profile_home_path(&cli.profile)?;
-			// Call nomic and ignore the output by unwrapping it here
-			nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
-			Ok(())
-		},
-		// Handle export subcommand
-		Some(Cmd::Export) => {
-			let collection = ProfileCollection::new()?;
-			let output = collection.profile_hex(&cli.profile)?;
-			println!("{}", output);
-			Ok(())
-		},
-		// Handle config subcommand
-		Some(Cmd::Address) => {
-			let collection = ProfileCollection::new()?;
-			let output = collection.profile_address(&cli.profile)?;
-			println!("{}", output);
-			Ok(())
-		},
-		// Handle config subcommand
-		Some(Cmd::Config) => {
-			let collection = ProfileCollection::new()?;
-			let output = collection.profile_config(&cli.profile)?;
-			println!("{}", output);
-			Ok(())
-		},
-		// Handle import subcomman
-		Some(Cmd::Import { key, file }) => {
-			let mut collection = ProfileCollection::new()?;
+impl Cli {
+    pub fn run(&self) -> Result<()> {
+        let collection = ProfileCollection::new()?;
 
-			// Handle file import if a file path is provided
-			if let Some(file_path) = file {
-				// Call import_file with the file path
-				collection.import_file(&cli.profile, Path::new(file_path))?;
-				println!("Profile '{}' imported from file: {}", &cli.profile, file_path);
-			} else {
-				let privkey = if let Some(key) = key {
-					key.clone().privkey()?
-				} else {
-					Privkey::new_from_stdin(5, Duration::from_secs(500))?
-				};
-				// Call import with the decoded key
-				collection.import(&cli.profile, privkey)?;
-				println!("Profile '{}' imported.", &cli.profile);
-			}
+        // Check if no subcommand is provided
+        if self.cmd.is_none() {
+            // Print the collection for the specified profile if no subcommand is provided
+            collection.print(self.format.clone())?;
+            return Ok(());
+        }
 
-			Ok(())
-		},
-        // Handle nonce subcommands
-        Some(Cmd::Nonce { nonce_cmd }) => {
-            let collection = ProfileCollection::new()?;
-            match nonce_cmd {
-                NonceCmd::Export => {
-                    // Handle nonce export logic here
-                    let output = collection.export_nonce(&cli.profile)?;
+        if let Some(command) = &self.cmd {
+            match command {
+                Command::Nomic { args } => {
+                    let home_path = collection.home(&self.profile)?;
+                    // Call nomic and ignore the output by unwrapping it here
+                    nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
+                    Ok(())
+                }
+                Command::Export => {
+                    let output = collection.export(&self.profile)?;
                     println!("{}", output);
                     Ok(())
-                },
-                NonceCmd::Import { value, dont_overwrite } => {
-					collection.import_nonce(&cli.profile, *value, *dont_overwrite)
+                }
+                Command::Address => {
+                    let output = collection.address(&self.profile)?;
+                    println!("{}", output);
+                    Ok(())
+                }
+                Command::Config => {
+                    let output = collection.config(&self.profile)?;
+                    println!("{}", output);
+                    Ok(())
+                }
+                Command::Import { key, file } => {
+                    // Handle file import if a file path is provided
+                    if let Some(file_path) = file {
+                        collection.import_file(&self.profile, Path::new(file_path))?;
+                        println!("Profile '{}' imported from file: {}", self.profile, file_path);
+                    } else {
+                        // Ensure key is available and handle Option<String>
+                        if let Some(key_str) = key {
+                            collection.import(&self.profile, key_str, true)?; // Pass the profile and key directly
+                            println!("Profile '{}' imported.", &self.profile); // Print profile name safely
+                        } else {
+                            eprintln!("No key provided for import.");
+                        }
+                    }
+                    Ok(())
+                }
+                Command::Nonce { nonce_cmd } => {
+                    match nonce_cmd {
+                        NonceCmd::Export => {
+                            // Handle nonce export logic here
+                            let output = collection.export_nonce(&self.profile)?;
+                            println!("{}", output);
+                            Ok(())
+                        }
+                        NonceCmd::Import { value, dont_overwrite } => {
+                            collection.import_nonce(&self.profile, *value, *dont_overwrite)
+                        },
+                    }
                 },
             }
-        },
-		// Default case when no subcommand is provided
-		None => {
-			let collection = ProfileCollection::new()?;
-			collection.print(cli.format.clone());
-			Ok(())
-		},
-	}
-
+        } else {
+            Ok(()) // This case should not happen because of the earlier check
+        }
+    }
 }

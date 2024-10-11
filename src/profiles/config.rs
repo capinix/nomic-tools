@@ -1,5 +1,6 @@
 
 
+#[allow(dead_code)]
 pub fn default_config(profile_name: &str) -> String {
 	format!(
 		"PROFILE={}\n\

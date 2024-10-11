@@ -71,19 +71,19 @@ impl Privkey {
     ///
     /// Returns a `Result<Self>` containing the new `Privkey` instance or an error if the byte 
     /// length is invalid or if the bytes do not represent a valid private key.
-	pub fn new_from_bytes(bytes: Vec<u8>) -> Result<Self> {
-		if bytes.len() != 32 {
-			return Err(eyre::eyre!("Invalid byte length: Must be 32 bytes."));
-		}
-		Ok(Self {
-			bytes,
-			hex: OnceCell::new(),
-			signing_key: OnceCell::new(),
-			public_key: OnceCell::new(),
-			account_id: OnceCell::new(),
-			address: OnceCell::new(),
-		})
+    pub fn new_from_bytes(bytes: Vec<u8>) -> Result<Self> {
+	if bytes.len() != 32 {
+	    return Err(eyre::eyre!("Invalid byte length: Must be 32 bytes."));
 	}
+	Ok(Self {
+	bytes,
+	hex: OnceCell::new(),
+	signing_key: OnceCell::new(),
+	public_key: OnceCell::new(),
+	account_id: OnceCell::new(),
+	address: OnceCell::new(),
+	})
+    }
 
     /// Creates a new `Privkey` from a hexadecimal string representation of the private key.
     ///
