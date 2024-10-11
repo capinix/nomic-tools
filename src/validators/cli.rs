@@ -6,7 +6,7 @@ use eyre::Result;
 
 /// Defines the CLI structure for the `validators` command.
 #[derive(Parser)]
-#[command(name = "validators", about = "Print validators")]
+#[command(name = "validators", about = "Print validators", visible_alias = "v")]
 pub struct Cli {
     /// Specify the output format
     #[arg(long, short)]

@@ -1,8 +1,9 @@
 use crate::globals::PROFILES_DIR;
 //use crate::key::FromHex;
 use crate::key::FromPath;
-//use crate::key::PrivKey;
 use crate::profiles::Profile;
+use crate::profiles::Balance;
+use crate::profiles::Delegations;
 use clap::ValueEnum;
 use eyre::{eyre, Result};
 use fmt::table::{Table, TableBuilder};
@@ -114,6 +115,16 @@ impl ProfileCollection {
     /// Retrieves the address of a profile by its name or address.
     pub fn address(&self, name_or_address: &str) -> Result<&str> {
         self.profile_by_name_or_address(name_or_address)?.address()
+    }
+
+    /// Retrieves the address of a profile by its name or address.
+    pub fn balance(&self, name_or_address: &str) -> Result<&Balance> {
+        self.profile_by_name_or_address(name_or_address)?.balance()
+    }
+
+    /// Retrieves the address of a profile by its name or address.
+    pub fn delegations(&self, name_or_address: &str) -> Result<&Delegations> {
+        self.profile_by_name_or_address(name_or_address)?.delegations()
     }
 
     /// Retrieves the config of a profile by its name or address.

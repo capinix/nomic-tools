@@ -52,6 +52,14 @@ pub enum Command {
     #[command(visible_aliases = ["a", "addr"])]
     Address,
 
+    /// Show the Balance
+    #[command(visible_aliases = ["b", "bal"])]
+    Balance,
+
+    /// Show the Delegations
+    #[command(visible_aliases = ["d", "del"])]
+    Delegations,
+
     /// Profile configuration
     #[command(visible_aliases = ["c", "conf"])]
     Config,
@@ -123,6 +131,16 @@ impl Cli {
                 Command::Address => {
                     let output = collection.address(&self.profile)?;
                     println!("{}", output);
+                    Ok(())
+                }
+                Command::Balance => {
+                    let output = collection.balance(&self.profile)?;
+                    println!("{:#?}", output);
+                    Ok(())
+                }
+                Command::Delegations => {
+                    let output = collection.delegations(&self.profile)?;
+                    println!("{:#?}", output);
                     Ok(())
                 }
                 Command::Config => {

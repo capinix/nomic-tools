@@ -1,27 +1,25 @@
 
-use crate::nonce;
 use crate::key::PrivKey;
-use eyre::{Result, WrapErr};
+use crate::profiles::Balance;
+use crate::profiles::Delegations;
+use crate::nonce;
+use eyre::Result;
+use eyre::WrapErr;
 use once_cell::sync::OnceCell;
-use orga::client::wallet::SimpleWallet;
-//use orga::client::wallet::Wallet;
-//use orga::coins::Address;
-//use orga::secp256k1::SecretKey;
-//use rand::Rng;
 use std::cmp::PartialEq;
-use std::{
-    fs,
-    fs::File,
-    io::Read,
-    path::Path,
-    path::PathBuf,
-};
+use std::fs;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use std::path::PathBuf;
+
 
 #[derive(Clone)]
 pub struct Profile {
     home:        PathBuf,
     key:         OnceCell<PrivKey>,
-    wallet:      OnceCell<SimpleWallet>,
+    balance:     OnceCell<Balance>,
+    delegations: OnceCell<Delegations>,
 }
 
 impl Profile {
@@ -36,7 +34,8 @@ impl Profile {
         Ok(Self {
             home,
             key:         OnceCell::new(),
-            wallet:      OnceCell::new(),
+            balance:     OnceCell::new(),
+            delegations: OnceCell::new(),
         })
     }
 
@@ -80,20 +79,26 @@ impl Profile {
         })
     }
 
-    #[allow(dead_code)]
-    pub fn wallet(&self) -> Result<&SimpleWallet> {
-        self.wallet.get_or_try_init(|| {
-            SimpleWallet::open(self.wallet_path()?)
-                .map_err(|e| eyre::eyre!("Failed to open wallet: {}", e))
-        })
-    }
-
     pub fn export(&self) -> Result<&str> {
         self.key()?.export()
     }
 
     pub fn address(&self) -> Result<&str> {
         self.key()?.address()
+    }
+
+    /// Retrieves the balance, initializing it if necessary.
+    pub fn balance(&self) -> Result<&Balance> {
+        self.balance.get_or_try_init(|| {
+            Balance::fetch(Some(self.address()?))
+        })
+    }
+
+    /// Retrieves delegations, initializing it if necessary.
+    pub fn delegations(&self) -> Result<&Delegations> {
+        self.delegations.get_or_try_init(|| {
+            Delegations::fetch(Some(self.home()?))
+        })
     }
 
     /// reads and returns the content of the config file.
