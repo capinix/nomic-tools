@@ -2,7 +2,9 @@
 use crate::key::PrivKey;
 use crate::profiles::Balance;
 use crate::profiles::Delegations;
+use crate::validators::ValidatorCollection;
 use crate::nonce;
+use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
 use once_cell::sync::OnceCell;
@@ -20,6 +22,7 @@ pub struct Profile {
     key:         OnceCell<PrivKey>,
     balance:     OnceCell<Balance>,
     delegations: OnceCell<Delegations>,
+    validators:  OnceCell<ValidatorCollection>,
 }
 
 impl Profile {
@@ -36,8 +39,18 @@ impl Profile {
             key:         OnceCell::new(),
             balance:     OnceCell::new(),
             delegations: OnceCell::new(),
+            validators:  OnceCell::new(),
         })
     }
+
+    /// Setter for the validators field with more flexible error handling.
+    pub fn set_validators(&self, validators: ValidatorCollection) -> Result<()> {
+        // Try to set the validators only if it hasn't been set before.
+        self.validators
+            .set(validators)
+            .map_err(|_| eyre!("Validators have already been set")) // Use anyhow for errors
+    }
+
 
     pub fn home(&self) -> Result<&Path> {
         Ok(&self.home)
@@ -98,6 +111,13 @@ impl Profile {
     pub fn delegations(&self) -> Result<&Delegations> {
         self.delegations.get_or_try_init(|| {
             Delegations::fetch(Some(self.home()?))
+        })
+    }
+
+    /// Retrieves validators, initializing it if necessary.
+    pub fn validators(&self) -> Result<&ValidatorCollection> {
+        self.validators.get_or_try_init(|| {
+            ValidatorCollection::fetch()
         })
     }
 

@@ -1,25 +1,35 @@
+use chrono::DateTime;
+use chrono::Utc;
+use clap::ValueEnum;
 use crate::globals::PROFILES_DIR;
-//use crate::key::FromHex;
 use crate::key::FromPath;
-use crate::profiles::Profile;
 use crate::profiles::Balance;
 use crate::profiles::Delegations;
-use clap::ValueEnum;
+use crate::profiles::Profile;
+use crate::validators::ValidatorCollection;
 use eyre::{eyre, Result};
 use fmt::table::{Table, TableBuilder};
+use once_cell::sync::OnceCell;
 use std::fs;
 use std::path::Path;
-//use std::path::PathBuf;
 use std::str::FromStr;
 
 #[derive(Debug)]
-pub struct ProfileCollection(Vec<Profile>);
+pub struct ProfileCollection {
+    profiles: Vec<Profile>,
+    timestamp: DateTime<Utc>,
+    validators: OnceCell<ValidatorCollection>,
+}
 
 impl ProfileCollection {
     /// Creates a new ProfileCollection instance by loading profiles from disk.
     pub fn new() -> Result<Self> {
-        let mut collection = ProfileCollection(Vec::new());
-        collection.load()?;
+        let mut collection = ProfileCollection {
+            profiles: Vec::new(),
+            timestamp: Utc::now(), // Initialize the timestamp to the current time
+            validators: OnceCell::new(), // Initialize OnceCell
+        };
+        collection.load()?; // Load profiles from disk (assuming this is defined elsewhere)
         Ok(collection)
     }
 
@@ -59,7 +69,8 @@ impl ProfileCollection {
             // Load the profile using the path from the entry
             match Profile::new(entry.path()) {  // Pass the path here
                 Ok(profile) => {
-                    self.0.push(profile); // Use push to add to the vector
+                    profile.set_validators(self.validators()?.clone())?;
+                    self.profiles.push(profile); // Use push to add to the vector
                 }
                 Err(e) => {
                     // Handle the error appropriately, e.g., log it or store it
@@ -73,7 +84,7 @@ impl ProfileCollection {
     /// Finds a profile by its name.
     pub fn profile_by_name(&self, name: &str) -> Result<&Profile> {
         // Iterate through the vector to find a profile with the given name
-        self.0
+        self.profiles
             .iter()
             .find(|profile| { profile.name()
                 .map_or(false, |n| format!("{}", n) == name)
@@ -83,7 +94,7 @@ impl ProfileCollection {
 
     /// Finds a profile by its address.
     pub fn profile_by_address(&self, address: &str) -> Result<&Profile> {
-        self.0
+        self.profiles
             .iter()
             .find(|profile| { profile.address()
                     .map_or(false, |addr| format!("{}", addr) == address)
@@ -144,7 +155,7 @@ impl ProfileCollection {
         self.profile_by_name_or_address(name_or_address)?
             .import_nonce(value, dont_overwrite)
     }
-    
+
     pub fn import(&self,
         name_or_address: &str,
         hex_str: &str,
@@ -154,7 +165,6 @@ impl ProfileCollection {
             .import(hex_str, force)
     }
 
-
     pub fn import_file(&self, 
         name: &str, 
         file: &Path
@@ -162,12 +172,19 @@ impl ProfileCollection {
         self.import(name, file.privkey()?.export()?, true)
     }
 
+    /// Retrieves validators, initializing it if necessary.
+    pub fn validators(&mut self) -> Result<&ValidatorCollection> {
+        self.validators.get_or_try_init(|| {
+            self.timestamp = Utc::now();
+            ValidatorCollection::fetch()
+        })
+    }
+
     pub fn json(&self) -> Result<serde_json::Value> {
         // Create a mutable vector of profiles to sort
-        let mut profiles: Vec<&Profile> = self.0.iter().collect();
+        let mut profiles: Vec<&Profile> = self.profiles.iter().collect();
 
         // Sort profiles by name
-//        profiles.sort_by_key(|profile| profile.name());
         profiles.sort_by_key(|profile| profile.name().unwrap_or_default());
 
         // Create a JSON object with address as keys
@@ -206,7 +223,7 @@ impl ProfileCollection {
     }
 
     pub fn list_addresses(&self) -> Result<Vec<String>> {
-        self.0
+        self.profiles
             .iter()
             .map(|profile| {
                 profile
@@ -217,7 +234,7 @@ impl ProfileCollection {
     }
 
     pub fn list_names(&self) -> Result<Vec<String>> {
-        self.0
+        self.profiles
             .iter()
             .map(|profile| profile.name().map(|name| name.to_string())) // Map the Result to convert &str to String
             .collect::<Result<Vec<String>, _>>() // Collect into a Result<Vec<String>>
@@ -233,7 +250,7 @@ impl ProfileCollection {
 
 
         // Collect profiles into a vector for sorting
-        let mut profiles: Vec<_> = self.0.iter().collect();
+        let mut profiles: Vec<_> = self.profiles.iter().collect();
 
         // Sort profiles by name, handling Result properly
         profiles.sort_by(|a, b| {
