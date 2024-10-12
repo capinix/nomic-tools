@@ -2,6 +2,7 @@
 use crate::key::PrivKey;
 use crate::profiles::Balance;
 use crate::profiles::Delegations;
+use crate::profiles::Config;
 use crate::validators::ValidatorCollection;
 use crate::nonce;
 use eyre::eyre;
@@ -20,6 +21,7 @@ use std::path::PathBuf;
 pub struct Profile {
     home:        PathBuf,
     key:         OnceCell<PrivKey>,
+    config:      OnceCell<Config>,
     balance:     OnceCell<Balance>,
     delegations: OnceCell<Delegations>,
     validators:  OnceCell<ValidatorCollection>,
@@ -37,6 +39,7 @@ impl Profile {
         Ok(Self {
             home,
             key:         OnceCell::new(),
+            config:      OnceCell::new(),
             balance:     OnceCell::new(),
             delegations: OnceCell::new(),
             validators:  OnceCell::new(),
@@ -121,19 +124,11 @@ impl Profile {
         })
     }
 
-    /// reads and returns the content of the config file.
-    pub fn config(&self) -> Result<String> {
-        let config_file = self.config_file()?;
-        // attempt to open the config file
-        let mut file = File::open(config_file.clone())
-            .with_context(|| format!("failed to open config file at {:?}", config_file))?;
-
-        // read the file content into a string
-        let mut content = String::new();
-        file.read_to_string(&mut content)
-            .with_context(|| format!("failed to read config file at {:?}", config_file))?;
-
-        Ok(content)
+    /// Retrieves config, initializing it if necessary.
+    pub fn config(&self) -> Result<&Config> {
+        self.config.get_or_try_init(|| {
+            Config::load(self.config_file()?, true)
+        })
     }
 
     pub fn import(&self, hex_str: &str, force: bool) -> Result<()> {

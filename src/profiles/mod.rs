@@ -13,4 +13,5 @@ pub use collection::OutputFormat;
 pub use collection::ProfileCollection;
 pub use profile::Profile;
 pub use util::nomic;
+pub use config::Config;
 

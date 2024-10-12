@@ -145,7 +145,7 @@ impl Cli {
                 }
                 Command::Config => {
                     let output = collection.config(&self.profile)?;
-                    println!("{}", output);
+                    println!("{:?}", output);
                     Ok(())
                 }
                 Command::Import { key, file } => {

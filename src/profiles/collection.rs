@@ -4,6 +4,7 @@ use clap::ValueEnum;
 use crate::globals::PROFILES_DIR;
 use crate::key::FromPath;
 use crate::profiles::Balance;
+use crate::profiles::Config;
 use crate::profiles::Delegations;
 use crate::profiles::Profile;
 use crate::validators::ValidatorCollection;
@@ -139,7 +140,7 @@ impl ProfileCollection {
     }
 
     /// Retrieves the config of a profile by its name or address.
-    pub fn config(&self, name_or_address: &str) -> Result<String> {
+    pub fn config(&self, name_or_address: &str) -> Result<&Config> {
         self.profile_by_name_or_address(name_or_address)?.config()
     }
 
