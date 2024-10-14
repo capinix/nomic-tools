@@ -4,6 +4,7 @@ use crate::profiles::CollectionOutputFormat;
 use crate::profiles::nomic;
 use crate::profiles::ProfileCollection;
 use crate::profiles::ProfileOutputFormat;
+use crate::functions::validate_ratio;
 use eyre::Result;
 use std::path::Path;
 
@@ -64,7 +65,68 @@ pub enum Command {
         visible_alias = "c",
         aliases = ["co", "con", "conf"],
     )]
-    Config,
+    Config {
+        #[arg(
+            short = 'b',
+            long = "minimum-balance",
+            aliases = ["min-bal", "mb", "bal", "balance"],
+        )]
+        minimum_balance: Option<f64>,
+
+        #[arg(
+            short = 'r',
+            long = "minimum-balance-ratio",
+            aliases = ["min-bal-ratio", "mbr", "bal-ratio", "balance-ratio"],
+            value_parser = validate_ratio,
+        )]
+        minimum_balance_ratio: Option<f64>,
+
+        #[arg(
+            short = 's',
+            long = "minimum-stake",
+            aliases = ["min-stake", "ms", "stk", "stake"],
+        )]
+        minimum_stake: Option<f64>,
+
+        #[arg(
+            short = 'a',
+            long = "adjust-minimum-stake",
+            aliases = ["adjust-min-stake", "ams", "adj-stk", "adjust", "adj"],
+        )]
+        adjust_minimum_stake: Option<bool>,
+
+        #[arg(
+            short = 'o',
+            long = "minimum-stake-rounding",
+            aliases = ["min-stake-round", "msr", "rnd", "round", "rounding"],
+        )]
+        minimum_stake_rounding: Option<f64>,
+
+        #[arg(
+            short = 'v',
+            long = "rotate-validators",
+            aliases = ["rotate"],
+            help = "Rotate validators"
+        )]
+        rotate_validators: bool,
+
+//      #[arg(
+//          short = 'd',
+//          long = "remove-validator",
+//          aliases = ["remove"],
+//          help = "Remove validator"
+//      )]
+//      remove_validator: Option<String>,
+
+//      #[arg(
+//          short = 'a',
+//          long = "add-validator",
+//          aliases = ["add"],
+//          help = "Add validator (format: <address>,<moniker>)"
+//          help = "Add validator"
+//      )]
+//      add_validator: Option<String>,
+    },
 
     #[command(
         about = "Display Delegations",
@@ -113,7 +175,6 @@ pub enum Command {
     },
 }
 
-
 /// Subcommands for the `nonce` command
 #[derive(Debug, Subcommand)]
 pub enum NonceCmd {
@@ -149,30 +210,9 @@ impl Cli {
 
         if let Some(command) = &self.cmd {
             match command {
-                Command::Nomic { args } => {
-                    let home_path = collection.home(&self.profile)?;
-                    // Call nomic and ignore the output by unwrapping it here
-                    nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
-                    Ok(())
-                }
-                Command::Export => {
-                    let output = collection.export(&self.profile)?;
-                    println!("{}", output);
-                    Ok(())
-                }
                 Command::Address => {
                     let output = collection.address(&self.profile)?;
                     println!("{}", output);
-                    Ok(())
-                }
-                Command::Balance => {
-                    let output = collection.balance(&self.profile)?;
-                    println!("{:#?}", output);
-                    Ok(())
-                }
-                Command::Delegations => {
-                    let output = collection.delegations(&self.profile)?;
-                    println!("{:#?}", output);
                     Ok(())
                 }
                 Command::AutoDelegate => {
@@ -180,14 +220,60 @@ impl Cli {
                     output.auto_delegate(true)?;
                     Ok(())
                 }
+                Command::Balance => {
+                    let output = collection.balance(&self.profile)?;
+                    println!("{:#?}", output);
+                    Ok(())
+                }
                 Command::Claim => {
                     let output = collection.profile_by_name_or_address(&self.profile)?;
                     output.nomic_claim()?;
                     Ok(())
                 }
-                Command::Config => {
-                    let output = collection.config(&self.profile)?;
-                    println!("{:?}", output);
+                Command::Config {
+                    minimum_balance,
+                    minimum_balance_ratio,
+                    minimum_stake,
+                    adjust_minimum_stake,
+                    minimum_stake_rounding,
+                    rotate_validators,
+//                  remove_validator,
+//                  add_validator,
+                } => {
+                    // Retrieve the profile and its configuration
+                    let profile = collection.profile_by_name_or_address(&self.profile)?;
+                    let mut config = profile.config()?.clone();
+
+                    // If no options are provided, print the current configuration
+                    if minimum_balance.is_none() 
+                        && minimum_balance_ratio.is_none() 
+                        && minimum_stake.is_none() 
+                        && adjust_minimum_stake.is_none() 
+                        && minimum_stake_rounding.is_none() {
+                        println!("{:?}", config);
+                    } else {
+                        // If at least one option is provided, update the configuration
+                        if *rotate_validators {
+                            config.rotate_validators();
+                        }
+                        profile.edit_config(
+                            minimum_balance.map(|b| (b * 1_000_000.0) as u64),
+                            *minimum_balance_ratio,
+                            minimum_stake.map(|b| (b * 1_000_000.0) as u64),
+                            *adjust_minimum_stake,
+                            minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
+                        )?;
+                    }
+                    Ok(())
+                }
+                Command::Delegations => {
+                    let output = collection.delegations(&self.profile)?;
+                    println!("{:#?}", output);
+                    Ok(())
+                }
+                Command::Export => {
+                    let output = collection.export(&self.profile)?;
+                    println!("{}", output);
                     Ok(())
                 }
                 Command::Import { key, file } => {
@@ -204,6 +290,12 @@ impl Cli {
                             eprintln!("No key provided for import.");
                         }
                     }
+                    Ok(())
+                }
+                Command::Nomic { args } => {
+                    let home_path = collection.home(&self.profile)?;
+                    // Call nomic and ignore the output by unwrapping it here
+                    nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
                     Ok(())
                 }
                 Command::Nonce { nonce_cmd } => {

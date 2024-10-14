@@ -89,3 +89,12 @@ pub fn to_bool_string(val: String) -> Option<String> {
         _ => None, // Invalid value, return None
     }
 }
+
+/// for clap
+pub fn validate_ratio(value: &str) -> Result<f64, String> {
+    match value.parse::<f64>() {
+        Ok(val) if val >= 0.0 && val <= 1.0 => Ok(val),
+        Ok(_) => Err(String::from("The minimum balance ratio must be between 0 and 1")),
+        Err(_) => Err(String::from("Invalid input: please provide a valid number")),
+    }
+}

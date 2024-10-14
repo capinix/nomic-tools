@@ -787,4 +787,49 @@ impl Profile {
 
         Ok(())
     }
+
+
+    pub fn edit_config(
+        &self,
+        minimum_balance: Option<u64>,
+        minimum_balance_ratio: Option<f64>,
+        minimum_stake: Option<u64>,
+        adjust_minimum_stake: Option<bool>,
+        minimum_stake_rounding: Option<u64>,
+    ) -> eyre::Result<()> {
+        // Check if all inputs are None, return an error
+        if minimum_balance.is_none()
+            && minimum_balance_ratio.is_none()
+            && minimum_stake.is_none()
+            && adjust_minimum_stake.is_none()
+            && minimum_stake_rounding.is_none()
+        {
+            return Err(eyre!("At least one input must be provided to edit the config."));
+        }
+
+        // Clone the config to modify it
+        let mut config = self.config()?.clone();
+
+        // Apply changes only if the corresponding option is provided
+        if let Some(balance) = minimum_balance {
+            config.minimum_balance = balance;
+        }
+        if let Some(balance_ratio) = minimum_balance_ratio {
+            config.minimum_balance_ratio = balance_ratio;
+        }
+        if let Some(stake) = minimum_stake {
+            config.minimum_stake = stake;
+        }
+        if let Some(adjust_stake) = adjust_minimum_stake {
+            config.adjust_minimum_stake = adjust_stake;
+        }
+        if let Some(stake_rounding) = minimum_stake_rounding {
+            config.minimum_stake_rounding = stake_rounding;
+        }
+
+        // Save the updated config if needed
+        config.save(self.config_file()?, true)?;
+
+        Ok(())
+    }
 }
