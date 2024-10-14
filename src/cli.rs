@@ -18,12 +18,12 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Manage and use profiles
+    Fmt(fmt::cli::Cli),
+    Key(key::Cli),
+    Nonce(nonce::Cli),
+    #[command( visible_alias = "p")]
     Profiles(profiles::Cli),
     Validators(validators::Cli),
-    Nonce(nonce::Cli),
-    Key(key::Cli),
-    Fmt(fmt::cli::Cli),
 }
 
 impl Cli {

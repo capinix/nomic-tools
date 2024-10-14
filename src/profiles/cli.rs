@@ -1,25 +1,22 @@
 use clap::Parser;
 use clap::Subcommand;
-//use crate::key::FromHex;
-//use crate::key::PrivKey;
+use crate::profiles::CollectionOutputFormat;
 use crate::profiles::nomic;
-use crate::profiles::OutputFormat;
 use crate::profiles::ProfileCollection;
+use crate::profiles::ProfileOutputFormat;
 use eyre::Result;
 use std::path::Path;
-//use std::time::Duration;
 
 /// Defines the CLI structure for the `profiles` command.
 #[derive(Parser)]
 #[command(
-    name          = "Profile", 
-    about         = "Manage & use profiles", 
-    visible_alias = "p"
+    name  = "Profile", 
+    about = "Manage & use profiles", 
 )]
 pub struct Cli {
     /// Specify the output format
     #[arg(long, short)]
-    pub format: Option<OutputFormat>,
+    pub format: Option<CollectionOutputFormat>,
 
     /// Profile
     #[arg(default_value_t = String::new())]
@@ -33,6 +30,65 @@ pub struct Cli {
 /// Subcommands for the `profiles` command
 #[derive(Debug, Subcommand)]
 pub enum Command {
+
+    #[command(
+        about = "Display Address",
+        visible_alias = "a",
+        aliases = ["ad", "add", "addr"],
+    )]
+    Address,
+
+    #[command(
+        about = "Auto Delegate",
+        visible_alias = "u",
+        aliases = ["au", "aut", "auto"],
+    )]
+    AutoDelegate,
+
+    #[command(
+        about = "Display Balance",
+        visible_alias = "b",
+        aliases = ["ba", "bal"],
+    )]
+    Balance,
+
+    #[command(
+        about = "Claim Staking Rewards",
+        visible_alias = "l",
+        aliases = ["cl", "cla", "clai"],
+    )]
+    Claim,
+
+    #[command(
+        about = "Profile configuration",
+        visible_alias = "c",
+        aliases = ["co", "con", "conf"],
+    )]
+    Config,
+
+    #[command(
+        about = "Display Delegations",
+        visible_alias = "d",
+        aliases = ["delegati", "delegatio", "delegation"],
+    )]
+    Delegations,
+
+    /// Export a profile
+    #[command()]
+    Export,
+
+    /// Import a profile
+    #[command(visible_alias = "i")]
+    Import {
+        /// Hex string or byte array, if neither key, nor file provided, will attempt to read from stdin
+        #[arg(conflicts_with = "file")]
+        key: Option<String>,
+
+        /// The file path to import from
+        #[arg(long, short)]
+        file: Option<String>,
+    },
+
     /// Run nomic commands as profile
     #[command(visible_aliases = ["r"])]
     Nomic {
@@ -48,37 +104,13 @@ pub enum Command {
         nonce_cmd: NonceCmd,
     },
 
-    /// Show the AccountId
-    #[command(visible_aliases = ["a", "addr"])]
-    Address,
-
-    /// Show the Balance
-    #[command(visible_aliases = ["b", "bal"])]
-    Balance,
-
-    /// Show the Delegations
-    #[command(visible_aliases = ["d", "del"])]
-    Delegations,
-
-    /// Profile configuration
-    #[command(visible_aliases = ["c", "conf"])]
-    Config,
-
-    /// Import a profile
-    #[command(visible_alias = "i")]
-    Import {
-        /// Hex string or byte array, if neither key, nor file provided, will attempt to read from stdin
-        #[arg(conflicts_with = "file")]
-        key: Option<String>,
-
-        /// The file path to import from
+    /// Show the Stats
+    #[command(visible_aliases = ["s"])]
+    Stats {
+        /// Specify the output format
         #[arg(long, short)]
-        file: Option<String>,
+        format: Option<ProfileOutputFormat>,
     },
-
-    /// Export a profile
-    #[command()]
-    Export,
 }
 
 
@@ -143,6 +175,16 @@ impl Cli {
                     println!("{:#?}", output);
                     Ok(())
                 }
+                Command::AutoDelegate => {
+                    let output = collection.profile_by_name_or_address(&self.profile)?;
+                    output.auto_delegate(true)?;
+                    Ok(())
+                }
+                Command::Claim => {
+                    let output = collection.profile_by_name_or_address(&self.profile)?;
+                    output.nomic_claim()?;
+                    Ok(())
+                }
                 Command::Config => {
                     let output = collection.config(&self.profile)?;
                     println!("{:?}", output);
@@ -177,6 +219,10 @@ impl Cli {
                         },
                     }
                 },
+                Command::Stats { format } => {
+                    let profile = collection.profile_by_name_or_address(&self.profile)?;
+                    profile.print(format.clone())
+                }
             }
         } else {
             Ok(()) // This case should not happen because of the earlier check

@@ -3,18 +3,18 @@
 
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Validator {
-    rank         : usize,
+    rank         : u64,
     address      : String,
-    voting_power : usize,
+    voting_power : u64,
     moniker      : String,
     details      : String,
 }
 
 impl Validator {
     pub fn new(
-        rank         : usize,
+        rank         : u64,
         address      : String,
-        voting_power : usize,
+        voting_power : u64,
         moniker      : String,
         details      : String
     ) -> Self {
@@ -28,7 +28,7 @@ impl Validator {
     }
 
     // Getter for rank
-    pub fn rank(&self) -> usize {
+    pub fn rank(&self) -> u64 {
         self.rank
     }
 
@@ -38,7 +38,7 @@ impl Validator {
     }
 
     // Getter for voting power
-    pub fn voting_power(&self) -> usize {
+    pub fn voting_power(&self) -> u64 {
         self.voting_power
     }
 

@@ -68,8 +68,8 @@ impl ProfileCollection {
             }
 
             // Load the profile using the path from the entry
-            match Profile::new(entry.path()) {  // Pass the path here
-                Ok(profile) => {
+            match Profile::new(Some(entry.path())) {  // Pass the path here
+                Ok(mut profile) => {
                     profile.set_validators(self.validators()?.clone())?;
                     self.profiles.push(profile); // Use push to add to the vector
                 }
@@ -87,9 +87,7 @@ impl ProfileCollection {
         // Iterate through the vector to find a profile with the given name
         self.profiles
             .iter()
-            .find(|profile| { profile.name()
-                .map_or(false, |n| format!("{}", n) == name)
-            })
+            .find(|profile| profile.name() == name)
             .ok_or_else(|| eyre!("Profile with name {} not found", name))
     }
 
@@ -97,9 +95,7 @@ impl ProfileCollection {
     pub fn profile_by_address(&self, address: &str) -> Result<&Profile> {
         self.profiles
             .iter()
-            .find(|profile| { profile.address()
-                    .map_or(false, |addr| format!("{}", addr) == address)
-            })
+            .find(|profile| profile.address() == address)
             .ok_or_else(|| eyre!("Profile with address {} not found", address))
     }
 
@@ -116,22 +112,22 @@ impl ProfileCollection {
 
     /// Retrieves the home path of a profile by its name or address.
     pub fn home(&self, name_or_address: &str) -> Result<&Path> {
-        self.profile_by_name_or_address(name_or_address)?.home()
+        self.profile_by_name_or_address(name_or_address)?.home_result()
     }
 
     /// Retrieves the hex of a profile by its name or address.
-    pub fn export(&self, name_or_address: &str) -> Result<&str> {
-        self.profile_by_name_or_address(name_or_address)?.export()
+    pub fn export(&self, name_or_address: &str) -> Result<String> {
+        Ok(self.profile_by_name_or_address(name_or_address)?.export())
     }
 
     /// Retrieves the address of a profile by its name or address.
-    pub fn address(&self, name_or_address: &str) -> Result<&str> {
-        self.profile_by_name_or_address(name_or_address)?.address()
+    pub fn address(&self, name_or_address: &str) -> Result<String> {
+        Ok(self.profile_by_name_or_address(name_or_address)?.address())
     }
 
     /// Retrieves the address of a profile by its name or address.
     pub fn balance(&self, name_or_address: &str) -> Result<&Balance> {
-        self.profile_by_name_or_address(name_or_address)?.balance()
+        self.profile_by_name_or_address(name_or_address)?.balances()
     }
 
     /// Retrieves the address of a profile by its name or address.
@@ -186,18 +182,18 @@ impl ProfileCollection {
         let mut profiles: Vec<&Profile> = self.profiles.iter().collect();
 
         // Sort profiles by name
-        profiles.sort_by_key(|profile| profile.name().unwrap_or_default());
+        profiles.sort_by_key(|profile| profile.name());
 
         // Create a JSON object with address as keys
         let mut profiles_json: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
         for profile in profiles {
-            let address = profile.address()?.to_string();
+            let address = profile.address().to_string();
 
             profiles_json.insert(
                 address.clone(), // Use the address as the key
                 serde_json::json!({
-                    "home"       : profile.home()?.to_string_lossy(),
+                    "home"       : profile.home_str(),
                     "key_file"   : profile.key_file()?.to_string_lossy(),
                     "nonce_file" : profile.nonce_file()?.to_string_lossy(),
                     "config_file": profile.config_file()?.to_string_lossy(),
@@ -237,7 +233,7 @@ impl ProfileCollection {
     pub fn list_names(&self) -> Result<Vec<String>> {
         self.profiles
             .iter()
-            .map(|profile| profile.name().map(|name| name.to_string())) // Map the Result to convert &str to String
+            .map(|profile| Ok(profile.name().to_string())) // Convert &str to String and wrap in Ok
             .collect::<Result<Vec<String>, _>>() // Collect into a Result<Vec<String>>
     }
 
@@ -253,18 +249,14 @@ impl ProfileCollection {
         // Collect profiles into a vector for sorting
         let mut profiles: Vec<_> = self.profiles.iter().collect();
 
-        // Sort profiles by name, handling Result properly
-        profiles.sort_by(|a, b| {
-            let name_a = a.name().as_ref().map(|s| *s).unwrap_or_default();
-            let name_b = b.name().as_ref().map(|s| *s).unwrap_or_default();
-            name_a.cmp(&name_b)
-        });
+        // Sort profiles by name
+        profiles.sort_by(|a, b| a.name().cmp(&b.name()));
 
         // Data rows
         for profile in profiles {
             // Use the correct method to get the address and the basename
-            let address = profile.key()?.address()?;
-            let name = profile.name()?;
+            let address = profile.address();
+            let name = profile.name();
 
             // Manually format the profile fields with '\x1C' as the separator
             let formatted_profile = format!("{}\x1C{}", name, address);

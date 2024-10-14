@@ -67,7 +67,7 @@ impl ValidatorCollection {
             if chunk.len() == 4 {
                 let address = chunk[0].trim().trim_start_matches('-').trim().to_string();
                 let voting_power_str = chunk[1].split(':').nth(1).unwrap_or("").trim().to_string();
-                let voting_power = voting_power_str.parse::<usize>().unwrap_or(0);
+                let voting_power = voting_power_str.parse::<u64>().unwrap_or(0);
                 let moniker = chunk[2].split(':').nth(1).unwrap_or("").trim().to_string();
                 let details = chunk[3].split(':').nth(1).unwrap_or("").trim().to_string();
 
@@ -658,7 +658,7 @@ impl ValidatorCollection {
     /// ```
     pub fn tuple(&self,
         include_details: Option<bool>
-    ) -> eyre::Result<Vec<(usize, String, usize, String, Option<String>)>> {
+    ) -> eyre::Result<Vec<(u64, String, u64, String, Option<String>)>> {
         let details = include_details.unwrap_or(false);
         let mut output = Vec::with_capacity(self.0.len()); // Preallocate output vector
 

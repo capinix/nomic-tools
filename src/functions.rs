@@ -28,46 +28,64 @@ use eyre::{ContextCompat, eyre, Result};
 /// let file_path = get_file(None, None, Some(Path::new("myfile.txt")))?
 /// ```
 pub fn get_file(
-	file: Option<&Path>,
-	base_path: Option<&Path>,
-	sub_path: Option<&Path>,
+    file: Option<&Path>,
+    base_path: Option<&Path>,
+    sub_path: Option<&Path>,
 ) -> Result<PathBuf> {
-	match file {
-		Some(file_path) => Ok(file_path.to_path_buf()), // Return the provided file path
-		None => {
-			// Determine base_path
-			let base_path = base_path
-				.map(PathBuf::from) // Convert Option<&Path> to Option<PathBuf>
-				.or_else(|| {
-					// Use dirs::home_dir() directly since it returns a PathBuf
-					home_dir()
-				})
-				.wrap_err("Could not determine base path")?; // Use eyre for error context
+    match file {
+        Some(file_path) => Ok(file_path.to_path_buf()), // Return the provided file path
+        None => {
+            // Determine base_path
+            let base_path = base_path
+                .map(PathBuf::from) // Convert Option<&Path> to Option<PathBuf>
+                .or_else(|| {
+                    // Use dirs::home_dir() directly since it returns a PathBuf
+                    home_dir()
+                })
+                .wrap_err("Could not determine base path")?; // Use eyre for error context
 
-			// Ensure that sub_path is provided
-			let p = sub_path.wrap_err("Subpath must be provided")?; // Use eyre for error context
+            // Ensure that sub_path is provided
+            let p = sub_path.wrap_err("Subpath must be provided")?; // Use eyre for error context
 
-			// Combine base path with provided sub_path
-			Ok(base_path.join(p))
-		}
-	}
+            // Combine base path with provided sub_path
+            Ok(base_path.join(p))
+        }
+    }
 }
 
 /// Resolves file and home options with mutual exclusivity.
 /// Prioritizes subcommand-level options over the top-level options.
 pub fn resolve_file_home(
-	cmd_file: Option<PathBuf>, cmd_home: Option<PathBuf>, 
-	global_file: Option<PathBuf>, global_home: Option<PathBuf>
+    cmd_file: Option<PathBuf>, cmd_home: Option<PathBuf>, 
+    global_file: Option<PathBuf>, global_home: Option<PathBuf>
 ) -> Result<(Option<PathBuf>, Option<PathBuf>)> {
 
-	// Subcommand options take precedence over the top-level options.
-	let file = cmd_file.or(global_file);
-	let home = cmd_home.or(global_home);
+    // Subcommand options take precedence over the top-level options.
+    let file = cmd_file.or(global_file);
+    let home = cmd_home.or(global_home);
 
-	// Check mutual exclusivity of the resolved options.
-	if file.is_some() && home.is_some() {
-		return Err(eyre!("You cannot provide both --file and --home at the same time."));
-	}
+    // Check mutual exclusivity of the resolved options.
+    if file.is_some() && home.is_some() {
+        return Err(eyre!("You cannot provide both --file and --home at the same time."));
+    }
 
-	Ok((file, home))
+    Ok((file, home))
+}
+
+pub fn to_bool(val: String) -> Option<bool> {
+    match val.trim().to_lowercase().as_str() {
+        "true" | "yes" | "y" | "1" => Some(true),
+        "false" | "no" | "n" | "0" => Some(false),
+        "" => Some(false), // Treat empty string as false
+        _ => None, // Invalid value, return None
+    }
+}
+
+pub fn to_bool_string(val: String) -> Option<String> {
+    match val.trim().to_lowercase().as_str() {
+        "true" | "yes" | "y" | "1" => Some("true".to_string()),
+        "false" | "no" | "n" | "0" => Some("false".to_string()),
+        "" => Some("false".to_string()), // Handle empty string as "false"
+        _ => None, // Invalid value, return None
+    }
 }

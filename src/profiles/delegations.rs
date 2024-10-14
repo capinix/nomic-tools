@@ -8,24 +8,26 @@ use indexmap::IndexMap;
 use std::fmt;
 use std::path::Path;
 use std::process::Command;
+use chrono::{Utc, DateTime};
 
 #[derive(Clone, Debug)]
 pub struct Delegation {
-    staked: usize,
-    liquid: usize,
-    nbtc: usize,
+    pub staked: u64,
+    pub liquid: u64,
+    pub nbtc: u64,
 }
 
 impl Delegation {
     /// Creates a new Delegation instance.
-    pub fn new(staked: usize, liquid: usize, nbtc: usize) -> Self {
+    pub fn new(staked: u64, liquid: u64, nbtc: u64) -> Self {
         Delegation { staked, liquid, nbtc }
     }
 }
 
 pub struct Delegations {
-    delegations: IndexMap<String, Delegation>,
-    total: OnceCell<Delegation>,
+    pub timestamp: DateTime<Utc>,
+    pub delegations: IndexMap<String, Delegation>,
+    pub total: OnceCell<Delegation>,
 }
 
 impl fmt::Debug for Delegations {
@@ -47,6 +49,7 @@ impl Delegations {
     /// Creates a new Delegations instance.
     pub fn new() -> Self {
         Delegations {
+            timestamp: Utc::now(),
             delegations: IndexMap::new(),
             total: OnceCell::new(),
         }
@@ -100,6 +103,8 @@ impl Delegations {
             return Err(eyre!(error_msg));
         }
 
+        let timestamp = Utc::now();
+
         // Convert the output to a string and split it into lines
         let output_str = String::from_utf8_lossy(&output.stdout);
         let lines: Vec<&str> = output_str.lines().collect();
@@ -123,7 +128,7 @@ impl Delegations {
                         .ok_or_else(|| eyre!("Failed to find staked value in: {}", parts[0]))?
                         .trim()
                         .replace(" NOM", "")
-                        .parse::<usize>()?;
+                        .parse::<u64>()?;
 
                     // Parse liquid value
                     let liquid = parts[1]
@@ -132,13 +137,13 @@ impl Delegations {
                         .ok_or_else(|| eyre!("Failed to find liquid value in: {}", parts[1]))?
                         .trim()
                         .replace(" NOM", "")
-                        .parse::<usize>()?;
+                        .parse::<u64>()?;
 
                     // Parse nbtc value
                     let nbtc = parts[2]
                         .trim() // Trim spaces
                         .replace(" NBTC", "") // Remove the " NBTC" suffix
-                        .parse::<usize>()?; // Parse to usize
+                        .parse::<u64>()?; // Parse to u64
 
                     // Create a new Delegation instance
                     let delegation = Delegation::new(staked, liquid, nbtc);
@@ -151,6 +156,8 @@ impl Delegations {
             }
         }
 
+        delegations.timestamp = timestamp;
+
         // Return the delegations instance wrapped in a Result
         Ok(delegations)
     }
@@ -159,6 +166,7 @@ impl Delegations {
 impl Clone for Delegations {
     fn clone(&self) -> Self {
         let new_delegations = Self {
+            timestamp: Utc::now(),
             delegations: self.delegations.clone(), // Clone the IndexMap
             total: OnceCell::new(), // Initialize a new OnceCell
         };

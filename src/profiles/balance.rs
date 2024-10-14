@@ -8,10 +8,10 @@ use std::process::Command;
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
 pub struct Balance {
-    address: String,
-    nom: u64,
-    nbtc: u64,
-    ibc_escrowed_nbtc: u64,
+    pub address: String,
+    pub nom: u64,
+    pub nbtc: u64,
+    pub ibc_escrowed_nbtc: u64,
 }
 
 impl Balance {

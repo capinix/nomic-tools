@@ -1,4 +1,11 @@
-
+use crate::functions::to_bool;
+use crate::globals::{
+    ADJUST_MINIMUM_STAKE, 
+    MINIMUM_BALANCE, 
+    MINIMUM_BALANCE_RATIO, 
+    MINIMUM_STAKE, 
+    MINIMUM_STAKE_ROUNDING, 
+};
 use eyre::ContextCompat;
 use eyre::WrapErr;
 use regex::Regex;
@@ -27,14 +34,16 @@ impl ConfigValidator {
 pub struct Config {
     pub profile: String,
     pub minimum_balance: u64,
-    pub minimum_balance_ratio: f32,
+    pub minimum_balance_ratio: f64,
     pub minimum_stake: u64,
     pub adjust_minimum_stake: bool,
+    pub minimum_stake_rounding: u64,
     pub daily_reward: f64,
     pub validators: Vec<ConfigValidator>,
 }
 
 impl Config {
+    #[allow(dead_code)]
     pub fn new(profile: String) -> Self {
         Self {
             profile,
@@ -42,13 +51,10 @@ impl Config {
             minimum_balance_ratio: 1.0,
             minimum_stake: 0,
             adjust_minimum_stake: false,
+            minimum_stake_rounding: 0,
             daily_reward: 0.0,
             validators: Vec::new(),
         }
-    }
-
-    pub fn add_validator(&mut self, address: String, moniker: String) {
-        self.validators.push(ConfigValidator::new(address, moniker));
     }
 
     pub fn default(profile: String) -> Self {
@@ -68,6 +74,7 @@ impl Config {
             minimum_balance_ratio: 0.001,
             minimum_stake: 200_000,
             adjust_minimum_stake: true,
+            minimum_stake_rounding: 100_000,
             daily_reward: 0.0,
             validators,
         }
@@ -80,7 +87,7 @@ impl Config {
         self
     }
 
-    pub fn import(config_str: &str) -> eyre::Result<Self> {
+    pub fn import(config_str: String) -> eyre::Result<Self> {
         let mut config_map = HashMap::new();
         let mut validators = Vec::new();
         let comment_regex = Regex::new(r"^\s*#").unwrap();
@@ -97,36 +104,73 @@ impl Config {
             }
 
             if let Some((key, value)) = line.split_once('=') {
-                config_map.insert(key.trim(), value.trim().to_string());
+                config_map.insert(key.trim().to_string(), value.trim().to_string()); // Convert to owned String
             } else if let Some(captures) = read_validator_regex.captures(line) {
-                let address = captures.get(1).context("Missing validator address")?.as_str().to_string();
-                let moniker = captures.get(2).context("Missing validator moniker")?.as_str().to_string();
+                let address = captures.get(1).context("Missing validator address")?.as_str().to_string(); // Convert to owned String
+                let moniker = captures.get(2).context("Missing validator moniker")?.as_str().to_string(); // Convert to owned String
                 validators.push(ConfigValidator { address, moniker });
             }
         }
 
+
+        let get_required_u64 = |key: &str, factor: f64| -> eyre::Result<u64> {
+            let value = config_map.get(key)
+                .context(format!("Missing {}", key))?
+                .parse::<f64>()
+                .context(format!("Invalid {}", key))?;
+
+            // Multiply and convert to u64
+            let result = (value * factor) as u64;
+            Ok(result)
+        };
+
+        let get_required_f64 = |key: &str, factor: f64| -> eyre::Result<f64> {
+            let value = config_map.get(key)
+                .context(format!("Missing {}", key))?
+                .parse::<f64>()
+                .context(format!("Invalid {}", key))?;
+
+            // Multiply and convert to f64
+            let result = (value * factor) as f64;
+            Ok(result)
+        };
+
+        let minimum_balance = match *MINIMUM_BALANCE {
+            Some(val) => Ok((val * 1_000_000.0) as u64),
+            None => get_required_u64("MINIMUM_BALANCE", 1_000_000.0),
+        }?; // Use ? to propagate errors
+
+        let minimum_balance_ratio = match *MINIMUM_BALANCE_RATIO {
+            Some(val) => Ok(val),
+            None => get_required_f64("MINIMUM_BALANCE_RATIO", 1.0),
+        }?; // Use ? to propagate errors
+
+        let minimum_stake = match *MINIMUM_STAKE {
+            Some(val) => Ok((val * 1_000_000.0) as u64),
+            None => get_required_u64("MINIMUM_STAKE", 1_000_000.0),
+        }?; // Use ? to propagate errors
+
+        let minimum_stake_rounding = match *MINIMUM_STAKE_ROUNDING {
+            Some(val) => Ok((val * 1_000_000.0) as u64),
+            None => get_required_u64("MINIMUM_STAKE_ROUNDING", 1_000_000.0),
+        }?; // Use ? to propagate errors
+
+        let adjust_minimum_stake = match *ADJUST_MINIMUM_STAKE {
+            Some(ref val) => to_bool(val.clone()).unwrap_or(false),
+            None => config_map.get("ADJUST_MINIMUM_STAKE")
+                .context("Missing adjust minimum stake")? // Handle missing key
+                .parse::<bool>() // Attempt to parse to bool
+                .context("Invalid adjust minimum stake")?, // Handle parsing errors
+        };
+
         Ok(Config {
-            profile: config_map.get("PROFILE").context("Missing profile")?.clone(),
-            minimum_balance: (config_map.get("MINIMUM_BALANCE")
-                .context("Missing minimum balance")?
-                .parse::<f64>()
-                .context("Invalid minimum balance")? * 1_000_000.0) as u64,
-            minimum_balance_ratio: config_map.get("MINIMUM_BALANCE_RATIO")
-                .context("Missing minimum balance ratio")?
-                .parse::<f32>()
-                .context("Invalid minimum balance ratio")?,
-            minimum_stake: (config_map.get("MINIMUM_STAKE")
-                .context("Missing minimum stake")?
-                .parse::<f64>()
-                .context("Invalid minimum stake")? * 1_000_000.0) as u64,
-            adjust_minimum_stake: config_map.get("ADJUST_MINIMUM_STAKE")
-                .context("Missing adjust minimum stake")?
-                .parse::<bool>()
-                .context("Invalid adjust minimum stake")?,
-            daily_reward: config_map.get("DAILY_REWARD")
-                .context("Missing daily reward")?
-                .parse::<f64>()
-                .context("Invalid daily reward")?,
+            profile: config_map.get("PROFILE").context("Missing profile")?.to_string(),
+            minimum_balance,
+            minimum_balance_ratio,
+            minimum_stake,
+            adjust_minimum_stake,
+            minimum_stake_rounding,
+            daily_reward: get_required_f64("DAILY_REWARD", 1_000_000.0)?,
             validators,
         })
     }
@@ -137,7 +181,7 @@ impl Config {
         if path.exists() {
             let file_content = fs::read_to_string(path)
                 .with_context(|| format!("Failed to read from file: {:?}", path))?;
-            Self::import(&file_content)
+            Self::import(file_content)
                 .context("Failed to import configuration from file content")
         } else if new {
             let default_profile = "default_profile".to_string();
@@ -147,9 +191,8 @@ impl Config {
         }
     }
 
-    pub fn validator(&self) -> eyre::Result<String> {
+    pub fn active_validator(&self) -> eyre::Result<&ConfigValidator> {
         self.validators.last()
-            .map(|validator| validator.address.clone())
             .ok_or_else(|| eyre::eyre!("No validators found"))
     }
 
@@ -160,7 +203,8 @@ impl Config {
         output.push_str(&format!("MINIMUM_BALANCE_RATIO={:.3}\n", self.minimum_balance_ratio));
         output.push_str(&format!("MINIMUM_STAKE={:.2}\n", self.minimum_stake as f64 / 1_000_000.0));
         output.push_str(&format!("ADJUST_MINIMUM_STAKE={}\n", self.adjust_minimum_stake));
-        output.push_str(&format!("DAILY_REWARD={:.2}\n", self.daily_reward));
+        output.push_str(&format!("MINIMUM_STAKE_ROUNDING={:.2}\n", self.minimum_stake_rounding as f64 / 1_000_000.0));
+        output.push_str(&format!("DAILY_REWARD={:.2}\n", self.daily_reward as f64 / 1_000_000.0));
 
         for validator in &self.validators {
             output.push_str(&format!(
