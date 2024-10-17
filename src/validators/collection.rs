@@ -1,20 +1,21 @@
+use chrono::{Utc, DateTime};
 use clap::ValueEnum;
 use crate::globals::NOMIC;
 use crate::globals::NOMIC_LEGACY_VERSION;
+use crate::validators::Validator;
+use eyre::eyre;
+use eyre::Result;
 use fmt::table::Table;
 use fmt::table::TableBuilder;
 use indexmap::IndexMap;
+use rand::seq::SliceRandom;
 use serde_json;
+use serde_json::Value;
+use std::fs;
 use std::iter::FromIterator;
+use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
-use crate::validators::Validator;
-use eyre::Result;
-use eyre::eyre;
-use std::path::Path;
-use std::fs;
-use rand::seq::SliceRandom;
-use serde_json::Value;
 
 /// Enum to represent output formats
 #[derive(Debug, Clone, ValueEnum)]
@@ -53,12 +54,44 @@ impl std::fmt::Display for OutputFormat {
     }
 }
 
+// pub struct ValidatorCollection(Vec<Validator>);
+
 #[derive(Debug)] 
-pub struct ValidatorCollection(Vec<Validator>);
+pub struct ValidatorCollection {
+    timestamp: DateTime<Utc>,
+    validators: Vec<Validator>,
+
+}
 
 impl ValidatorCollection {
+    /// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
+    ///
+    /// # Arguments
+    ///
+    /// * `iter` - An iterator over `Validator` instances.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let validators = vec![Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string())];
+    /// let collection = ValidatorCollection::from_iter(validators.into_iter());
+    /// assert_eq!(collection.len(), 1);
+    /// ```
+    pub fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Validator>,
+
+    {
+        Self{ validators: iter.into_iter().collect(), timestamp: Utc::now() }
+    }
+
+    // Getter for validators (for iteration)
+    pub fn iter(&self) -> std::slice::Iter<Validator> {
+        self.validators.iter()
+    }
+
     /// Imports validators from a string input and returns a ValidatorCollection.
-    pub fn import(input: String) -> eyre::Result<Self> {
+    pub fn import(input: String, timestamp: Option<DateTime<Utc>>) -> eyre::Result<Self> {
         let lines: Vec<&str> = input.lines().collect();
         let mut rank = 1; // Start rank from 1
         let mut validators = Vec::new(); // Initialize a vector to store validators
@@ -78,21 +111,30 @@ impl ValidatorCollection {
             }
         }
 
-        Ok(Self(validators)) // Return the ValidatorCollection
+        // Set the timestamp, defaulting to the current time if none is provided
+        let timestamp = timestamp.unwrap_or_else(Utc::now);
+
+        Ok(Self{ timestamp, validators }) // Return the ValidatorCollection
     }
 
     /// Loads validators from a specified file and returns a ValidatorCollection.
     pub fn load<P: AsRef<Path>>(file: P) -> Result<Self> {
+
+        let timestamp = Some(Utc::now());
+
         let file = file.as_ref();
 
         // Read the file content as a string
         let input = fs::read_to_string(file).map_err(|e| eyre::eyre!("Failed to read file: {}", e))?;
 
         // Call the import method to create the ValidatorCollection
-        Self::import(input)
+        Self::import(input, timestamp)
     }
 
     pub fn fetch() -> eyre::Result<Self> {
+
+        let timestamp = Some(Utc::now());
+
         // Create and configure the Command
         let mut cmd = Command::new(&*NOMIC);
         cmd.arg("validators");
@@ -116,7 +158,7 @@ impl ValidatorCollection {
         // Convert the command output to a string
         let output_str = String::from_utf8(output.stdout)?;
 
-        Self::import(output_str)
+        Self::import(output_str, timestamp)
 
     }
 
@@ -134,28 +176,9 @@ impl ValidatorCollection {
     /// assert_eq!(collection.len(), 1);
     /// ```
     pub fn from_vec(validators: Vec<Validator>) -> Self {
-        Self(validators)
+        Self{ validators, timestamp: Utc::now()}
     }
 
-    /// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
-    ///
-    /// # Arguments
-    ///
-    /// * `iter` - An iterator over `Validator` instances.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let validators = vec![Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string())];
-    /// let collection = ValidatorCollection::from_iter(validators.into_iter());
-    /// assert_eq!(collection.len(), 1);
-    /// ```
-    pub fn from_iter<I>(iter: I) -> Self
-    where
-        I: IntoIterator<Item = Validator>,
-    {
-        Self(iter.into_iter().collect())
-    }
 
     /// Adds a `Validator` to the collection.
     ///
@@ -172,7 +195,7 @@ impl ValidatorCollection {
     /// assert_eq!(collection.len(), 1);
     /// ```
     pub fn insert(&mut self, validator: Validator) {
-        self.0.push(validator);
+        self.validators.push(validator);
     }
 
     /// Returns the number of validators in the collection.
@@ -186,7 +209,7 @@ impl ValidatorCollection {
     /// assert_eq!(collection.len(), 1);
     /// ```
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.validators.len()
     }
 
     /// Checks if the collection is empty.
@@ -198,65 +221,77 @@ impl ValidatorCollection {
     /// assert!(collection.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.validators.is_empty()
     }
 
     pub fn validator(&self, address: &str) -> eyre::Result<&Validator> {
-        self.0.iter()
+        self.validators.iter()
             .find(|v| v.address().to_lowercase() == address.to_lowercase())
             .ok_or_else(|| eyre::eyre!("Validator with address `{}` not found", address))
     }
 
+    /// Filters validators by address and returns a new ValidatorCollection with the original timestamp.
     pub fn filter_address(&self, search: &str) -> eyre::Result<Self> {
-        // Create a new ValidatorCollection by filtering the existing one
-        let validators: Vec<Validator> = self.0.iter()
+        // Filter the validators based on the address
+        let filtered_validators: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.address().eq_ignore_ascii_case(search)) // Case-insensitive match
             .cloned() // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
 
-        // Check if the new collection is empty
-        if validators.is_empty() {
+        // Check if the filtered collection is empty
+        if filtered_validators.is_empty() {
             return Err(eyre::eyre!("No validators found with address `{}`", search));
         }
 
-        // Return the new ValidatorCollection with the filtered results
-        Ok(ValidatorCollection(validators))
+        // Return a new ValidatorCollection with the original timestamp and filtered validators
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp,
+            validators: filtered_validators,
+        })
     }
 
+    /// Filters validators by moniker and returns a new ValidatorCollection with the original timestamp.
     pub fn filter_moniker(&self, search: &str) -> eyre::Result<Self> {
         // Convert search term to lowercase for case-insensitive matching
         let search_lower = search.to_lowercase();
 
-        // Create a new ValidatorCollection by filtering the existing one
-        let validators: Vec<Validator> = self.0.iter()
+        // Filter the validators based on the moniker
+        let filtered_validators: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.moniker().to_lowercase().contains(&search_lower))
             .cloned() // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
 
-        // Check if the new collection is empty
-        if validators.is_empty() {
+        // Check if the filtered collection is empty
+        if filtered_validators.is_empty() {
             return Err(eyre::eyre!("No validators found with moniker containing `{}`", search));
         }
 
-        // Return the new ValidatorCollection with the filtered results
-        Ok(ValidatorCollection(validators))
+        // Return a new ValidatorCollection with the original timestamp and filtered validators
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: filtered_validators,
+        })
     }
 
+    /// Searches for validators by address or moniker and returns a new ValidatorCollection with the original timestamp.
     pub fn search(&self, search: &str) -> eyre::Result<Self> {
         // Attempt to filter by exact address match first
-        let address_filtered: Vec<Validator> = self.0.iter()
+        let address_filtered: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.address().eq_ignore_ascii_case(search)) // Case-insensitive match
             .cloned() // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
 
         // If any validators were found by address, return them
         if !address_filtered.is_empty() {
-            return Ok(ValidatorCollection(address_filtered));
+            return Ok(ValidatorCollection {
+                timestamp: self.timestamp, // Retain the original timestamp
+                validators: address_filtered,
+            });
         }
 
         // If no exact address matches were found, filter by moniker sub-match
         let search_lower = search.to_lowercase();
-        let moniker_filtered: Vec<Validator> = self.0.iter()
+        let moniker_filtered: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.moniker().to_lowercase().contains(&search_lower))
             .cloned() // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
@@ -266,44 +301,51 @@ impl ValidatorCollection {
             return Err(eyre::eyre!("No validators found with address or moniker matching `{}`", search));
         }
 
-        // Return the new ValidatorCollection with the filtered results
-        Ok(ValidatorCollection(moniker_filtered))
+        // Return the new ValidatorCollection with the original timestamp and filtered results
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: moniker_filtered,
+        })
     }
 
+    /// Searches for multiple validators based on a list of search terms and returns a new ValidatorCollection with the original timestamp.
     pub fn search_multi(&self, searches: Vec<String>) -> eyre::Result<Self> {
-        let mut results = Self(Vec::new()); // Initialize a single results collection
+        let mut results = Vec::new(); // Initialize a vector to store results
 
         // Loop through each search term
         for search in searches {
             let search_lower = search.to_lowercase();
 
             // Check each validator against the search term
-            for validator in &self.0 {
+            for validator in &self.validators {
                 // Check for exact address match
                 if validator.address().eq_ignore_ascii_case(&search) {
-                    results.0.push(validator.clone());
+                    results.push(validator.clone());
                 } 
                 // Check for moniker match
                 if validator.moniker().to_lowercase().contains(&search_lower) {
                     // Push to results if the validator matches the search
-                    results.0.push(validator.clone());
+                    results.push(validator.clone());
                 }
             }
         }
 
-        // Check if any validators were found across all searches
-        if results.0.is_empty() {
-            return Err(eyre::eyre!("No validators found matching any of the provided searches."));
+        // Check if any results were found
+        if results.is_empty() {
+            return Err(eyre::eyre!("No validators found matching any of the search terms"));
         }
 
-        // Return the new ValidatorCollection with the filtered results
-        Ok(results)
-
+        // Return a new ValidatorCollection with the original timestamp and the filtered results
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: results,
+        })
     }
 
+    /// Filters validators based on a vector of addresses and retains the original timestamp.
     pub fn filter_addresses(&self, searches: Vec<String>) -> eyre::Result<Self> {
-        // Create a new ValidatorCollection by filtering the existing one
-        let validators: Vec<Validator> = self.0.iter()
+        // Create a new vector by filtering the existing validators
+        let validators: Vec<Validator> = self.validators.iter()
             .filter(|validator| {
                 // Check if the validator's address matches any address in the searches vector
                 searches.iter().any(|search| validator.address().eq_ignore_ascii_case(search))
@@ -316,13 +358,17 @@ impl ValidatorCollection {
             return Err(eyre::eyre!("No validators found with the specified addresses."));
         }
 
-        // Return the new ValidatorCollection with the filtered results
-        Ok(ValidatorCollection(validators))
+        // Return the new ValidatorCollection with the filtered results and original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators,
+        })
     }
 
+    /// Filters validators based on a vector of moniker searches and retains the original timestamp.
     pub fn filter_monikers(&self, searches: Vec<String>) -> eyre::Result<Self> {
-        // Create a new ValidatorCollection by filtering the existing one
-        let validators: Vec<Validator> = self.0.iter()
+        // Create a new vector by filtering the existing validators
+        let validators: Vec<Validator> = self.validators.iter()
             .filter(|validator| {
                 // Check if the validator's moniker matches any of the searches
                 searches.iter().any(|search| validator.moniker().to_lowercase().contains(&search.to_lowercase()))
@@ -335,42 +381,53 @@ impl ValidatorCollection {
             return Err(eyre::eyre!("No validators found with any of the specified monikers."));
         }
 
-        // Return the new ValidatorCollection with the filtered results
-        Ok(ValidatorCollection(validators))
+        // Return the new ValidatorCollection with the filtered results and original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators,
+        })
     }
 
+    /// Returns the top `n` validators sorted by voting power in descending order.
     pub fn top(&self, n: Option<usize>) -> eyre::Result<Self> {
         // Clone the current ValidatorCollection to work on a separate copy
         let mut top_validators = self.clone();
 
         // Sort the validators by voting power in descending order
-        top_validators.0.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
+        top_validators.validators.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
 
         // Use n with a default value of 10
         let count = n.unwrap_or(10);
 
         // Truncate to keep only the top `count` validators
-        top_validators.0.truncate(count);
+        top_validators.validators.truncate(count);
 
-        // Return the modified ValidatorCollection
-        Ok(top_validators)
+        // Return the modified ValidatorCollection with the original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: top_validators.validators,
+        })
     }
 
+    /// Returns the bottom `n` validators sorted by voting power in ascending order.
     pub fn bottom(&self, n: Option<usize>) -> eyre::Result<Self> {
         // Clone the current ValidatorCollection to work on a separate copy
         let mut bottom_validators = self.clone();
 
         // Sort the validators by voting power in ascending order
-        bottom_validators.0.sort_by_key(|v| v.voting_power());
+        bottom_validators.validators.sort_by_key(|v| v.voting_power());
 
         // Use n with a default value of 10
         let count = n.unwrap_or(10);
 
         // Truncate to keep only the bottom `count` validators
-        bottom_validators.0.truncate(count);
+        bottom_validators.validators.truncate(count);
 
-        // Return the modified ValidatorCollection
-        Ok(bottom_validators)
+        // Return the modified ValidatorCollection with the original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: bottom_validators.validators,
+        })
     }
 
     pub fn skip_top(&self, n: Option<usize>) -> eyre::Result<Self> {
@@ -378,7 +435,7 @@ impl ValidatorCollection {
         let count = n.unwrap_or(10);
 
         // Check if count is greater than or equal to the number of validators
-        if count >= self.0.len() {
+        if count >= self.validators.len() {
             // Return a clone of the current ValidatorCollection if count is too high
             return Ok(self.clone()); // Corrected to use self.clone()
         }
@@ -387,13 +444,16 @@ impl ValidatorCollection {
         let mut remaining_validators = self.clone();
 
         // Sort the validators by voting power in descending order
-        remaining_validators.0.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
+        remaining_validators.validators.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
 
         // Skip the top `count` validators by draining the first `count` elements
-        remaining_validators.0.drain(..count);
+        remaining_validators.validators.drain(..count);
 
-        // Return the modified ValidatorCollection
-        Ok(remaining_validators)
+        // Return the modified ValidatorCollection with the original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: remaining_validators.validators,
+        })
     }
 
     pub fn skip_bottom(&self, n: Option<usize>) -> eyre::Result<Self> {
@@ -401,7 +461,7 @@ impl ValidatorCollection {
         let count = n.unwrap_or(10);
 
         // Check if count is greater than or equal to the number of validators
-        if count >= self.0.len() {
+        if count >= self.validators.len() {
             // Return a clone of the current ValidatorCollection if count is too high
             return Ok(self.clone()); // Corrected to use self.clone()
         }
@@ -410,15 +470,19 @@ impl ValidatorCollection {
         let mut remaining_validators = self.clone();
 
         // Sort the validators by voting power in ascending order
-        remaining_validators.0.sort_by_key(|v| v.voting_power());
+        remaining_validators.validators.sort_by_key(|v| v.voting_power());
 
         // Skip the bottom `count` validators by draining the first `count` elements
-        remaining_validators.0.drain(..count);
+        remaining_validators.validators.drain(..count);
 
-        // Return the modified ValidatorCollection
-        Ok(remaining_validators)
+        // Return the modified ValidatorCollection with the original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: remaining_validators.validators,
+        })
     }
 
+    /// Returns a random selection of validators, optionally skipping some from the top and bottom.
     pub fn random(&self,
         count: Option<usize>,
         skip_top: Option<usize>,
@@ -433,22 +497,40 @@ impl ValidatorCollection {
             .skip_bottom(skip_bottom)?;
 
         // Check if the number of remaining validators is less than the count
-        if random_validators.0.len() < count {
+        if random_validators.validators.len() < count {
             eprintln!("Warning: Not enough validators to select from. Returning all available validators.");
             return Ok(random_validators); // Return the collection as is
         }
 
         // Shuffle the validator collection
         let mut rng = rand::thread_rng();
-        random_validators.0.shuffle(&mut rng);
+        random_validators.validators.shuffle(&mut rng);
 
         // Truncate to keep only `count` random validators
-        random_validators.0.truncate(count);
+        random_validators.validators.truncate(count);
 
-        // Return the modified ValidatorCollection with random validators
-        Ok(random_validators)
+        // Return the modified ValidatorCollection with the random validators and original timestamp
+        Ok(ValidatorCollection {
+            timestamp: self.timestamp, // Retain the original timestamp
+            validators: random_validators.validators,
+        })
     }
 
+    /// Returns a random selection of validators based on percentage, skipping some from the top and bottom.
+    pub fn random_percent(
+        &self,
+        count: usize,
+        top_percentage: f64,
+        bottom_percentage: f64,
+    ) -> eyre::Result<Self> {
+        // Calculate how many validators to skip from the top and bottom based on the percentages
+        let total_validators = self.validators.len();
+        let skip_top = (top_percentage * total_validators as f64).ceil() as usize;
+        let skip_bottom = (bottom_percentage * total_validators as f64).ceil() as usize;
+
+        // Call the existing random function with the calculated skip values
+        self.random(Some(count), Some(skip_top), Some(skip_bottom))
+    }
 
     /// Returns a raw string representation of the validators.
     ///
@@ -462,7 +544,7 @@ impl ValidatorCollection {
     pub fn raw(&self, include_details: Option<bool>) -> eyre::Result<String> {
         let mut output = String::new(); // Create a new String to hold the output
 
-        for validator in &self.0 {
+        for validator in &self.validators {
             // Append formatted data to the output string
             output.push_str(&format!("- {}\n", validator.address()));
             output.push_str(&format!("    VOTING POWER: {}\n", validator.voting_power()));
@@ -521,7 +603,7 @@ impl ValidatorCollection {
         }
 
         // Sort validators by voting power in descending order
-        let mut sorted_validators = self.0.clone();
+        let mut sorted_validators = self.validators.clone();
         sorted_validators.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
 
         // Construct the header
@@ -593,7 +675,7 @@ impl ValidatorCollection {
         let mut array = IndexMap::new();
 
         // Create a sorted vector of validators based on voting power in descending order
-        let mut sorted_validators = self.0.clone();
+        let mut sorted_validators = self.validators.clone();
         sorted_validators.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
 
         for validator in sorted_validators {
@@ -660,9 +742,9 @@ impl ValidatorCollection {
         include_details: Option<bool>
     ) -> eyre::Result<Vec<(u64, String, u64, String, Option<String>)>> {
         let details = include_details.unwrap_or(false);
-        let mut output = Vec::with_capacity(self.0.len()); // Preallocate output vector
+        let mut output = Vec::with_capacity(self.validators.len()); // Preallocate output vector
 
-        for validator in &self.0 {
+        for validator in &self.validators {
             let tuple = if details {
                 (
                     validator.rank(),
@@ -768,8 +850,12 @@ impl Clone for ValidatorCollection {
     /// assert_eq!(collection.index_map(), cloned_collection.index_map());
     /// ```
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            timestamp: self.timestamp, // Clone the timestamp
+            validators: self.validators.clone(), // Clone the vector of validators
+        }
     }
+
 }
 
 impl FromIterator<Validator> for ValidatorCollection {
@@ -785,11 +871,12 @@ impl FromIterator<Validator> for ValidatorCollection {
     ///     Validator::new(2, "address2".to_string(), 200, "moniker2".to_string(), "details2".to_string()),
     /// ];
     /// let collection: ValidatorCollection = validators.into_iter().collect();
-    /// assert_eq!(collection.index_map().len(), 2);
+    /// assert_eq!(collection.validators.len(), 2);
     /// ```
     fn from_iter<T: IntoIterator<Item = Validator>>(iter: T) -> Self {
         let validators: Vec<Validator> = iter.into_iter().collect(); // Collect the validators into a vector
-        Self(validators) // Wrap the vector in the ValidatorCollection
+        let timestamp = Utc::now(); // Set the timestamp to the current time or any default value you prefer
+        Self { timestamp, validators } // Wrap the vector and timestamp in the ValidatorCollection
     }
 }
 
@@ -801,18 +888,16 @@ impl<'a> IntoIterator for &'a ValidatorCollection {
     /// # Example
     ///
     /// ```
-    /// let collection = ValidatorCollection::new();
-    /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
-    /// collection.insert(validator);
+    /// let collection = ValidatorCollection::import("...".to_string(), None).unwrap();
     /// for validator in &collection {
-    ///     println!("{}", validator.address);
+    ///     println!("{}", validator.address());
     /// }
     /// ```
     type Item = &'a Validator;
     type IntoIter = std::slice::Iter<'a, Validator>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter() // Return an iterator over the slice of Validator instances
+        self.validators.iter() // Return an iterator over the slice of Validator instances
     }
 }
 
@@ -828,13 +913,13 @@ impl IntoIterator for ValidatorCollection {
     /// let validator = Validator::new(1, "address".to_string(), 100, "moniker".to_string(), "details".to_string());
     /// collection.insert(validator);
     /// for validator in collection {
-    ///     println!("{}", validator.address);
+    ///     println!("{}", validator.address());
     /// }
     /// ```
     type Item = Validator; // Specifies that the items yielded by the iterator are Validators.
     type IntoIter = std::vec::IntoIter<Validator>; // Uses the vector's IntoIter for the iteration.
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter() // Consumes self and returns an iterator over the contained Validators.
+        self.validators.into_iter() // Consumes self and returns an iterator over the contained Validators.
     }
 }

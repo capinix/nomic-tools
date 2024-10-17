@@ -4,6 +4,7 @@ use crate::globals::NOMIC_LEGACY_VERSION;
 use eyre::eyre;
 use eyre::Result;
 use std::process::Command;
+use chrono::{Utc, DateTime};
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]
@@ -12,6 +13,7 @@ pub struct Balance {
     pub nom: u64,
     pub nbtc: u64,
     pub ibc_escrowed_nbtc: u64,
+    timestamp: DateTime<Utc>,
 }
 
 impl Balance {
@@ -21,17 +23,20 @@ impl Balance {
         nom: u64,
         nbtc: u64,
         ibc_escrowed_nbtc: u64,
+        timestamp: Option<DateTime<Utc>>,
     ) -> Self {
         Balance {
             address,
             nom,
             nbtc,
             ibc_escrowed_nbtc,
+            timestamp: timestamp.unwrap_or(Utc::now()),
         }
     }
 
     /// Fetches the balance from the command output and returns a new Balance instance.
     pub fn fetch(address: Option<&str>) -> Result<Self> {
+        let timestamp = Some(Utc::now());
         // Create and configure the Command
         let mut cmd = Command::new(&*NOMIC); // Replace with the actual command string
 
@@ -72,7 +77,7 @@ impl Balance {
         let ibc_escrowed_nbtc = lines[3].split_whitespace().next().unwrap().parse::<u64>()?;
 
         // Create and return a new Balance instance
-        Ok(Balance::new(address, nom, nbtc, ibc_escrowed_nbtc))
+        Ok(Balance::new(address, nom, nbtc, ibc_escrowed_nbtc, timestamp))
     }
 
 }

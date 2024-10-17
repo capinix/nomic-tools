@@ -3,10 +3,12 @@ use crate::globals::{
     CLAIM_FEE, 
     NOMIC, 
     NOMIC_LEGACY_VERSION,
-    STAKE_FEE
+    STAKE_FEE,
 };
-use chrono::{Utc, DateTime};
+use chrono::{DateTime, Utc};
 use clap::ValueEnum;
+use crate::functions::prompt_user;
+use crate::globals::PROFILES_DIR;
 use crate::key::PrivKey;
 use crate::nonce;
 use crate::profiles::Balance;
@@ -17,19 +19,23 @@ use crate::validators::ValidatorCollection;
 use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
-use home::home_dir;
 use once_cell::sync::OnceCell;
 use serde_json::json;
 use serde_json::Value;
 use std::cmp::PartialEq;
+use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
 
+
 #[derive(Clone)]
 pub struct Profile {
+    #[allow(dead_code)]
+    timestamp:                     DateTime<Utc>,
+    name:                          String,
     home:                          PathBuf,
     key:                           OnceCell<PrivKey>,
     config:                        OnceCell<Config>,
@@ -37,93 +43,290 @@ pub struct Profile {
     delegations:                   OnceCell<Delegations>,
     validators:                    OnceCell<ValidatorCollection>,
     validator:                     OnceCell<Validator>,
-    name_result:                   OnceCell<String>,
+    config_file:                   OnceCell<PathBuf>,
+    wallet_path:                   OnceCell<PathBuf>,
+    nonce_file:                    OnceCell<PathBuf>,
+    key_file:                      OnceCell<PathBuf>,
+    address:                       OnceCell<String>,
+    export:                        OnceCell<String>,
+    balance:                       OnceCell<u64>,
+    delegations_timestamp:         OnceCell<DateTime<Utc>>,
+    total_staked:                  OnceCell<u64>,
+    total_liquid:                  OnceCell<u64>,
+    config_minimum_balance:        OnceCell<u64>,
+    config_minimum_balance_ratio:  OnceCell<f64>,
+    config_minimum_stake:          OnceCell<u64>,
+    config_adjust_minimum_stake:   OnceCell<bool>,
+    config_minimum_stake_rounding: OnceCell<u64>,
+    config_daily_reward:           OnceCell<f64>,
+    config_validator_address:      OnceCell<String>,
+    config_validator_moniker:      OnceCell<String>,
+    moniker:                       OnceCell<String>,
+    voting_power:                  OnceCell<u64>,
+    rank:                          OnceCell<u64>,
+    validator_staked:              OnceCell<u64>,
+    minimum_balance:               OnceCell<u64>,
+    available_without_claim:       OnceCell<u64>,
+    available_after_claim:         OnceCell<u64>,
+    stake_factor:                  OnceCell<u64>,
+    validator_staked_remainder:    OnceCell<u64>,
+    can_stake_without_claim:       OnceCell<bool>,
+    can_stake_after_claim:         OnceCell<bool>,
+    needs_claim:                   OnceCell<bool>,
+    quantity_to_stake:             OnceCell<u64>,
 }
 
-impl Profile {
-    pub fn new<P: AsRef<Path>>(home: Option<P>) -> Result<Self> {
-        let home = home
-            .map(|h| h.as_ref().to_path_buf())
-            .or_else(home_dir)
-            .ok_or_else(|| eyre!("Home directory must be provided or resolvable."))?;
+// Static zero for use when there is an error
+static ZERO: u64 = 0;
 
-        // Create the Profile instance with a temporary `None` for stats
-        Ok(Profile {
+impl Profile {
+
+    // Helper function to initialize the ValidatorCollection
+    fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
+        match validators {
+            Some(v) => {
+                let cell = OnceCell::new();
+                cell.set(v).unwrap();
+                cell
+            },
+            None => OnceCell::new(),
+        }
+    }
+
+
+    fn create_profile(
+        timestamp:  DateTime<Utc>,
+        name:       String,
+        home:       PathBuf,
+        validators: Option<ValidatorCollection>,
+    ) -> Self {
+        Self {
+            timestamp,
+            name,
             home,
+            validators:                    Self::initialize_validators(validators),
             key:                           OnceCell::new(),
             config:                        OnceCell::new(),
             balances:                      OnceCell::new(),
             delegations:                   OnceCell::new(),
-            validators:                    OnceCell::new(),
             validator:                     OnceCell::new(),
-            name_result:                   OnceCell::new(),
-        })
-    }
-
-    #[allow(dead_code)]
-    pub fn init(self) -> Result<Self> {
-        // Capture the current `home` value
-        let home = self.home.clone();
-
-        // Create a new Profile using the existing `home`
-        Profile::new(Some(home))
-    }
-
-    /// Returns the validated home folder
-    /// Checks if the folder exists, if not tries to create it
-    /// if it does not exist and cannot create it, not much point of the profile
-    /// if it does exist return it
-    pub fn home_result(&self) -> eyre::Result<&Path> {
-        // Check if folder exists
-        if !self.home.exists() {
-            // Attempt to create home folder
-            fs::create_dir_all(&self.home)
-                .wrap_err_with(|| format!("Failed to create directory: {:?}", &self.home))?;
+            config_file:                   OnceCell::new(),
+            wallet_path:                   OnceCell::new(),
+            nonce_file:                    OnceCell::new(),
+            key_file:                      OnceCell::new(),
+            address:                       OnceCell::new(),
+            export:                        OnceCell::new(),
+            balance:                       OnceCell::new(),
+            delegations_timestamp:         OnceCell::new(),
+            total_staked:                  OnceCell::new(),
+            total_liquid:                  OnceCell::new(),
+            config_minimum_balance:        OnceCell::new(),
+            config_minimum_balance_ratio:  OnceCell::new(),
+            config_minimum_stake:          OnceCell::new(),
+            config_adjust_minimum_stake:   OnceCell::new(),
+            config_minimum_stake_rounding: OnceCell::new(),
+            config_daily_reward:           OnceCell::new(),
+            config_validator_address:      OnceCell::new(),
+            config_validator_moniker:      OnceCell::new(),
+            moniker:                       OnceCell::new(),
+            voting_power:                  OnceCell::new(),
+            rank:                          OnceCell::new(),
+            validator_staked:              OnceCell::new(),
+            minimum_balance:               OnceCell::new(),
+            available_without_claim:       OnceCell::new(),
+            available_after_claim:         OnceCell::new(),
+            stake_factor:                  OnceCell::new(),
+            validator_staked_remainder:    OnceCell::new(),
+            can_stake_without_claim:       OnceCell::new(),
+            can_stake_after_claim:         OnceCell::new(),
+            needs_claim:                   OnceCell::new(),
+            quantity_to_stake:             OnceCell::new(),
         }
-        Ok(&self.home)
     }
 
-    /// home_str -> &str
-    pub fn home_str(&self) -> &str {
-        self.home_result()
-            .map(|path| path.to_str().unwrap_or(""))  // Convert Path to &str, handle conversion failure with empty string
-            .unwrap_or_else(|e| {
-                eprintln!("{}", e);                   // Print the error context if any
-                ""                                    // Return an empty string in case of an error
-            })
+    // Helper function to perform copying of config and wallet data
+    fn copy_config_and_wallet<P: AsRef<Path>>(profile_home: P, home: P) -> Result<()> {
+        // Copy home/config to profiles_dir/name/config
+        let home_config = home.as_ref().join("config");
+        let profile_config = profile_home.as_ref().join("config");
+
+        if home_config.exists() {
+            fs::copy(&home_config, &profile_config)
+                .with_context(|| format!("Failed to copy config file from {:?} to {:?}", home_config, profile_config))?;
+        }
+
+        // Copy home/.orga-wallet to profiles_dir/name/.orga-wallet
+        let home_wallet = home.as_ref().join(".orga-wallet");
+        let profile_wallet = profile_home.as_ref().join(".orga-wallet");
+
+        if home_wallet.exists() {
+            fs_extra::dir::copy(&home_wallet, &profile_wallet, &fs_extra::dir::CopyOptions::new())
+                .with_context(|| format!(
+                    "Failed to copy wallet folder from {:?} to {:?}", 
+                    home_wallet, profile_wallet
+                ))?;
+        }
+
+        Ok(())
     }
 
-    /// Returns the wallet path
-    /// We attemot to create the wallet path here if it does not exist
-    /// not much point without a wallet
-    pub fn wallet_path(&self) -> Result<PathBuf> {
+    // Helper function to check and copy data from home to profiles directory
+    fn check_and_copy_data<P: AsRef<Path>>(profile_home: P, home: P, overwrite: Option<bool>) -> Result<()> {
+        let profile_privkey = profile_home.as_ref().join(".orga-wallet/privkey");
+        let home_privkey = home.as_ref().join(".orga-wallet/privkey");
 
-        let wallet_path = self.home.join(".orga-wallet"); // Constructs the wallet path
+        // Check if privkey exists in both locations
+        if profile_privkey.exists() && home_privkey.exists() {
+            // Handle overwrite decision
+            match overwrite {
+                Some(true) => {
+                    // Proceed with copying data
+                    Self::copy_config_and_wallet(profile_home, home)?;
+                },
+                Some(false) => return Err(eyre!("Cannot overwrite existing profile data.")),
+                None => {
+                    // Prompt the user if overwrite decision is not provided
+                    let user_input = prompt_user("Profile data exists. Do you want to overwrite it?")?;
+                    match user_input.as_str() {
+                        "y" | "Y" => {
+                            // Proceed with copying if the user confirms
+                            Self::copy_config_and_wallet(profile_home, home)?;
+                        },
+                        _ => return Err(eyre!("Profile data exists, and overwrite was not confirmed.")),
+                    }
+                }
+            }
+        }
 
-        // Attempt to create the directory and all its parents if they don't exist
-        fs::create_dir_all(&wallet_path)
-            .wrap_err_with(|| format!("Failed to create directory: {:?}", wallet_path))?;
+        Ok(())
+    }
 
-        Ok(wallet_path) // Returns the path
+    pub fn new<P: AsRef<Path>>(
+        name: Option<String>,
+        home: Option<P>,
+        validators: Option<ValidatorCollection>,
+        timestamp: Option<DateTime<Utc>>,
+        overwrite: Option<bool>,
+    ) -> Result<Self> {
+        // Set the timestamp to either provided or current
+        let timestamp = timestamp.unwrap_or_else(Utc::now);
+
+        // Resolve the profiles directory
+        let profiles_dir = &*PROFILES_DIR;
+
+        // Step 1: Handle the case where both `name` and `home` are provided
+        if let (Some(name), Some(home)) = (name.clone(), home.as_ref()) {
+            let home_path = home.as_ref().to_path_buf();
+            let profile_home_path = profiles_dir.join(&name);
+
+            // Check if the resolved `profiles_dir/name` matches the provided `home`
+            if home_path != profile_home_path {
+                // Check if home is an immediate subdirectory of profiles_dir
+                if home_path.starts_with(profiles_dir) {
+                    return Err(eyre!("Invalid name: home is an immediate subdirectory of profiles_dir"));
+                }
+                // Create `profiles_dir/name` if it doesn't exist
+                if !profile_home_path.exists() {
+                    fs::create_dir_all(&profile_home_path)
+                        .with_context(|| format!("Failed to create profile directory: {:?}", profile_home_path))?;
+                }
+
+                // Perform overwrite checks and file copying
+                Self::check_and_copy_data(&profile_home_path, &home_path, overwrite)?;
+            }
+            return Ok(Self::create_profile(
+                timestamp,          // timestamp
+                name,               // name
+                profile_home_path,  // home
+                validators,         // validators
+            ));
+        }
+
+        // Step 2: If only `name` is provided
+        if let Some(name) = name.clone() {
+            let profile_home_path = profiles_dir.join(&name);
+
+            // Create `profiles_dir/name` if it doesn't exist
+            if !profile_home_path.exists() {
+                fs::create_dir_all(&profile_home_path)
+                    .with_context(|| format!("Failed to create profile directory: {:?}", profile_home_path))?;
+            }
+            return Ok(Self::create_profile(
+                timestamp,          // timestamp
+                name,               // name
+                profile_home_path,  // home
+                validators,         // validators
+            ));
+        }
+
+        // Step 3: If only `home` is provided
+        if let Some(home) = home {
+            let home_path = home.as_ref().to_path_buf();
+            let home_name = home_path.file_name()
+                .ok_or_else(|| eyre!("Invalid home directory: unable to extract name"))?
+                .to_string_lossy()
+                .to_string();
+            let profile_home_path = profiles_dir.join(&home_name);
+
+            // Perform overwrite checks and file copying
+//          Self::check_and_copy_data(&profile_home_path, &home_path, overwrite)?;
+
+            return Ok(Self::create_profile(
+                timestamp,          // timestamp
+                home_name,          // name
+                profile_home_path,  // home
+                validators,         // validators
+            ));
+        }
+
+        // Step 4: If both `name` and `home` are `None`, return an error
+        Err(eyre!("Both `name` and `home` cannot be `None`"))
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn home(&self) -> &Path {
+        &self.home
+    }
+
+    /// Lazily initialize and return the wallet path
+    pub fn wallet_path(&self) -> Result<&Path> {
+        self.wallet_path.get_or_try_init(|| {
+            let wallet_path = self.home().join(".orga-wallet");
+
+            if !wallet_path.exists() {
+                fs::create_dir_all(&wallet_path)
+                    .wrap_err_with(|| format!("Failed to create directory: {:?}", wallet_path))?;
+            }
+
+            Ok(wallet_path)
+        }).map(|path| path.as_path())
     }
 
     /// Returns the config file path.
     /// We just want the path here, we leave verification to the Config struct
-    pub fn config_file(&self) -> Result<PathBuf> {
-        Ok(self.home.join("config"))
+    pub fn config_file(&self) -> Result<&Path> {
+        self.config_file.get_or_try_init(|| {
+            Ok(self.home().join("config"))
+        }).map(|path| path.as_path())
     }
 
     /// Returns the key file path.
     /// We only need the path, verification left to the Key struct
-    pub fn key_file(&self) -> Result<PathBuf> {
-        let wallet_path = self.wallet_path()?;
-        Ok(wallet_path.join("privkey"))
+    pub fn key_file(&self) -> Result<&Path> {
+        self.key_file.get_or_try_init(|| {
+            Ok(self.wallet_path()?.join("privkey"))
+        }).map(|path| path.as_path())
     }
 
     /// Returns the nonce file path.
     /// only need the path all other stuff by the Nonce module
-    pub fn nonce_file(&self) -> Result<PathBuf> {
+    pub fn nonce_file(&self) -> Result<&Path> {
+        self.nonce_file.get_or_try_init(|| {
             Ok(self.wallet_path()?.join("nonce"))
+        }).map(|path| path.as_path())
     }
 
     /// Get the key, file read operation, 
@@ -139,14 +342,10 @@ impl Profile {
     /// cached in OnceCell as self.key.address() -> Result<&str>
     /// use self.key.address() to propagate errors
     /// this for display purposes
-    pub fn address(&self) -> String {
-        match self.key.get() {
-            Some(key) => match key.address() {
-                Ok(addr) => addr.to_string(), // Return the address as String
-                Err(_) => "Failed to retrieve address".to_string(), // Handle errors
-            },
-            None => "Key is not initialized".to_string(), // If key is not present in OnceCell
-        }
+    pub fn address(&self) -> eyre::Result<&str> {
+        self.address.get_or_try_init(|| {
+            Ok(self.key()?.address()?.to_string())
+        }).map(|s| s.as_str())
     }
 
     /// Get the export
@@ -154,22 +353,10 @@ impl Profile {
     /// cached in OnceCell as self.key.export() -> Result<&str>
     /// use self.key.export() to propagate errors
     /// this for display purposes
-    pub fn export(&self) -> String {
-        match self.key.get() {
-            Some(key) => match key.export() {
-                Ok(addr) => addr.to_string(),
-                Err(_) => "Failed to retrieve export".to_string(),
-            },
-            None => "Key is not initialized".to_string(),
-        }
-    }
-
-    /// Retrieves config, initializing it if necessary.
-    /// file read operation, cache with OnceCell
-    pub fn config(&self) -> Result<&Config> {
-        self.config.get_or_try_init(|| {
-            Config::load(self.config_file()?, true)
-        })
+    pub fn export(&self) -> eyre::Result<&str> {
+        self.export.get_or_try_init(|| {
+            Ok(self.key()?.export()?.to_string())
+        }).map(|s| s.as_str())
     }
 
     /// Retrieves the balance, initializing it if necessary.
@@ -184,62 +371,28 @@ impl Profile {
     /// blockchain operation, cache with oncecell
     pub fn delegations(&self) -> Result<&Delegations> {
         self.delegations.get_or_try_init(|| {
-            Delegations::fetch(Some(self.home_result()?))
+            Delegations::fetch(Some(self.home()))
         })
     }
 
     /// Retrieves validators, initializing it if necessary.
     /// blockchain operation, cache with oncecell
-    pub fn validators(&self) -> Result<&ValidatorCollection> {
+    pub fn validators(&self) -> eyre::Result<&ValidatorCollection> {
         self.validators.get_or_try_init(|| {
             ValidatorCollection::fetch()
         })
     }
 
-    /// gets the name of the profile from the path
-    /// or default if the home is ystem home
-    /// Complex logic, cache with OnnceCell
-    pub fn name_result(&self) -> eyre::Result<&str> {
-        // Attempt to get the name, initializing it if not already set
-        self.name_result.get_or_try_init(|| {
-            let home = self.home_result()?;
-            // Attempt to get the default home directory
-            match home_dir() {
-                Some(default_home_dir) => {
-                    // Check if the current home is the default home directory
-                    if home == default_home_dir {
-                        // Return a static string reference for the default case
-                        Ok("default".to_string()) // Convert to String
-                    } else {
-                        // Extract the last component of the path and return it as a String
-                        home.file_name()
-                            .and_then(|name| name.to_str()) // This gives Option<&str>
-                            .map(|s| s.to_string()) // Convert to String
-                            .ok_or_else(|| eyre::eyre!("Failed to extract the last component of the path"))
-                    }
-                },
-                None => Err(eyre::eyre!("Failed to get the default home directory")),
-            }
+    /// Retrieves config, initializing it if necessary.
+    /// file read operation, cache with OnceCell
+    pub fn config(&self) -> Result<&Config> {
+        self.config.get_or_try_init(|| {
+            Config::new(
+                Some(self.name()),                // profile name
+                self.config_file()?,              // config file
+                Some(self.validators()?.clone()), // validator collecttion already retrieved
+            )
         })
-        .map(|s| s.as_str()) // Convert String back to &str
-    }
-
-    /// name -> &str
-    pub fn name(&self) -> &str {
-        self.name_result()
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e); // Print the error context if any
-            ""                  // Return an empty string in case of an error
-        })
-    }
-
-    /// Setter for the validators field with more flexible error handling.
-    /// Allow cached validators from a calling function or struct
-    pub fn set_validators(&mut self, validators: ValidatorCollection) -> Result<()> {
-        // Try to set the validators only if it hasn't been set before.
-        self.validators
-            .set(validators)
-            .map_err(|_| eyre!("Validators have already been set"))
     }
 
     /// import a new private key into profile
@@ -252,7 +405,10 @@ impl Profile {
         }
 
         // Import the private key from the hex string
-        let key = PrivKey::import(hex_str)?;
+        let key = PrivKey::import(
+            hex_str,  // hex string
+            None      // generate its own timestamp
+        )?;           // propagate errors
 
         // Save the key to the key file
         key.save(key_file, force)?;
@@ -272,193 +428,179 @@ impl Profile {
 
     /// balance -> u64
     /// self.balances()?.nom ->Result<u64>
-    pub fn balance(&self) -> u64 {
-        self.balances()               // get delegations
-        .map(|bal| bal.nom)           // if Ok get the timestamp
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);       // could not get balances error to stderr
-            0                         // default value
+    fn balance_result(&self) -> Result<&u64> {
+            Ok(&self.balances()?.nom)
+    }
+    pub fn balance(&self) -> &u64 {
+        self.balance.get_or_init(|| {
+            *self.balance_result().unwrap_or(&ZERO)
         })
     }
 
-    /// timestamp -> DateTime<Utc>
+    /// delegations_timestamp -> DateTime<Utc>
     /// self.delegations()?.timestamp -> Result<DateTime<Utc>>
-    pub fn timestamp(&self) -> DateTime<Utc> {
-        self.delegations()             // get delegations
-        .map(|del| del.timestamp)      // if Ok get the timestamp
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);        // could not get delegations error to stderr
-            Utc::now()                 // default value
+    pub fn delegations_timestamp(&self) -> Result<&DateTime<Utc>> {
+        self.delegations_timestamp.get_or_try_init(|| {
+            Ok(self.delegations()?.timestamp)
         })
     }
 
     /// total_staked -> u64
     /// self.delegations()?.total().staked -> Result<u64>
-    pub fn total_staked(&self) -> u64 {
-        self.delegations()             // get delegations
-        .map(|del| del.total().staked) // if Ok get the total staked
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);        // could not get delegations error to stderr
-            0                          // default value
+    fn total_staked_result(&self) -> Result<u64> {
+        Ok(self.delegations()?.total().staked)
+    }
+    pub fn total_staked(&self) -> &u64 {
+        self.total_staked.get_or_init(|| {
+            self.total_staked_result().unwrap_or(ZERO)
         })
     }
 
     /// total_liquid -> u64
     /// self.delegations()?.total().liquid -> Result<u64>
-    pub fn total_liquid(&self) -> u64 {
-        self.delegations()              // get delegations
-        .map(|del| del.total().liquid)  // if Ok get the total staked
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);         // could not get  delegations error to stderr
-            0                           // default value
+    fn total_liquid_result(&self) -> Result<u64> {
+        Ok(self.delegations()?.total().liquid)
+    }
+    pub fn total_liquid(&self) -> &u64 {
+        self.total_liquid.get_or_init(|| {
+            self.total_liquid_result().unwrap_or(ZERO)
         })
     }
 
     /// config_minimum_balance -> u64
     /// self.config()?.minimum_balance -> Result<u64>
-    pub fn config_minimum_balance(&self) -> u64 {
-        self.config()
-        .map(|config| config.minimum_balance)
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            10_000
+    pub fn config_minimum_balance_result(&self) -> Result<u64> {
+        Ok(*self.config()?.minimum_balance())
+    }
+    pub fn config_minimum_balance(&self) -> &u64 {
+        self.config_minimum_balance.get_or_init(|| {
+            self.config_minimum_balance_result().unwrap_or(100_000)
         })
     }
 
     /// config_minimum_balance_ratio -> f64
     /// self.config()?.minimum_balance_ratio -> Result<f64>
-    pub fn config_minimum_balance_ratio(&self) -> f64 {
-        self.config()
-        .map(|config| config.minimum_balance_ratio)
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            0.001
+    pub fn config_minimum_balance_ratio_result(&self) -> Result<f64> {
+        Ok(*self.config()?.minimum_balance_ratio())
+    }
+    pub fn config_minimum_balance_ratio(&self) -> &f64 {
+        self.config_minimum_balance_ratio.get_or_init(|| {
+            self.config_minimum_balance_ratio_result().unwrap_or(0.001)
         })
     }
 
     /// config_minimum_stake -> u64
     /// self.config()?.minimum_stake -> Result<u64>
-    pub fn config_minimum_stake(&self) -> u64 {
-        self.config()
-        .map(|config| config.minimum_stake)
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            1_000_000
+    pub fn config_minimum_stake_result(&self) -> Result<u64> {
+        Ok(*self.config()?.minimum_stake())
+    }
+    pub fn config_minimum_stake(&self) -> &u64 {
+        self.config_minimum_stake.get_or_init(|| {
+            self.config_minimum_stake_result().unwrap_or(1_000_000)
         })
     }
 
     /// config_adjust_minimum_stake -> bool
     /// self.config()?.adjust_minimum_stake -> Result<bool>
-    pub fn config_adjust_minimum_stake(&self) -> bool {
-        self.config()
-        .map(|config| config.adjust_minimum_stake)
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            false
+    pub fn config_adjust_minimum_stake_result(&self) -> Result<bool> {
+        Ok(*self.config()?.adjust_minimum_stake())
+    }
+    pub fn config_adjust_minimum_stake(&self) -> &bool {
+        self.config_adjust_minimum_stake.get_or_init(|| {
+            self.config_adjust_minimum_stake_result().unwrap_or(false)
         })
     }
 
     /// config_minimum_stake_rounding -> u64
     /// self.config()?.minimum_stake_rounding -> Result<u64>
-    pub fn config_minimum_stake_rounding(&self) -> u64 {
-        self.config()
-        .map(|config| config.minimum_stake_rounding)
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            10_000
+    pub fn config_minimum_stake_rounding_result(&self) -> Result<u64> {
+        Ok(*self.config()?.minimum_stake_rounding())
+    }
+    pub fn config_minimum_stake_rounding(&self) -> &u64 {
+        self.config_minimum_stake_rounding.get_or_init(|| {
+            self.config_minimum_stake_rounding_result().unwrap_or(10_000)
         })
     }
 
     /// config_daily_reward -> f64
     /// self.config()?.daily_reward -> Result<f64>
-    pub fn config_daily_reward(&self) -> f64 {
-        self.config()
-        .map(|config| config.daily_reward)
-        .unwrap_or_else(|e| {
-            eprintln!("{}", e);
-            0.0
+    pub fn config_daily_reward_result(&self) -> Result<f64> {
+        Ok(*self.config()?.daily_reward())
+    }
+    pub fn config_daily_reward(&self) -> &f64 {
+        self.config_daily_reward.get_or_init(|| {
+            self.config_daily_reward_result().unwrap_or(0.0)
         })
     }
 
-    /// config_validator -> &str
+    /// config_validator_address -> &str
     /// self.config()?.active_validator()?.address -> Result<&str>
-    pub fn config_validator(&self) -> &str {
-        self.config()
-            .and_then(|config| config.active_validator())  // Access the active validator
-            .map(|validator| validator.address.as_str())   // Get the address as &str
-            .unwrap_or_else(|e| {
-                eprintln!("{}", e);                        // Print the error context if any
-                ""                                         // Return an empty string in case of an error
-            })
+    fn config_validator_address_result(&self) -> Result<&str> {
+        Ok(&self.config()?.active_validator()?.address)
+    }
+    pub fn config_validator_address(&self) -> &str {
+        self.config_validator_address.get_or_init(|| {
+            self.config_validator_address_result().unwrap_or("").to_string()
+        })
     }
 
     /// config_moniker -> &str
     /// self.config()?.active_validator()?.moniker -> Result<&str>
-    pub fn config_moniker(&self) -> &str {
-        self.config()
-            .and_then(|config| config.active_validator())  // Access the active validator
-            .map(|validator| validator.moniker.as_str())   // Get the moniker as &str
-            .unwrap_or_else(|e| {
-                eprintln!("{}", e);                        // Print the error context if any
-                ""                                         // Return an empty string in case of an error
-            })
+    pub fn config_validator_moniker_result(&self) -> Result<&str> {
+        Ok(&self.config()?.active_validator()?.moniker)
+    }
+    pub fn config_validator_moniker(&self) -> &str {
+        self.config_validator_moniker.get_or_init(|| {
+            self.config_validator_moniker_result().unwrap_or("").to_string()
+        })
     }
 
-    /// self.validators()?.validator(self.config_validator())? -> Result<Validator>
-    pub fn validator(&self) -> eyre::Result<Validator> {
+    /// self.validators()?.validator(self.config_validator_address())? -> Result<Validator>
+    pub fn validator(&self) -> eyre::Result<&Validator> {
         self.validator.get_or_try_init(|| {
-            Ok(self.validators()?.validator(self.config_validator())?.clone())
-        }).cloned()
+            Ok(self.validators()?.validator(self.config_validator_address())?.clone())
+        })
     }
 
     /// Retrieves the moniker of the validator as a String.
-    pub fn moniker(&self) -> String {
-        match self.validator() {
-            Ok(validator) => validator.moniker().to_string(), // Return the moniker as a borrowed reference
-            Err(e) => {
-                eprintln!("{}", e); // Print the error context if any
-                "".to_string() // Return an empty string in case of an error
-            }
-        }
+    pub fn moniker_result(&self) -> Result<&str> {
+            Ok(&self.validator()?.moniker())
+    }
+    pub fn moniker(&self) -> &str {
+        self.moniker.get_or_init(|| {
+            self.moniker_result().unwrap_or("").to_string()
+        })
     }
 
     /// Retrieves the voting_power of the validator as a String.
-    pub fn voting_power(&self) -> u64 {
-        match self.validator() {
-            Ok(validator) => validator.voting_power(), // Return the voting_power as a borrowed reference
-            Err(e) => {
-                eprintln!("{}", e); // Print the error context if any
-                0 // Return an empty string in case of an error
-            }
-        }
+    pub fn voting_power_result(&self) -> Result<u64> {
+        Ok(self.validator()?.voting_power())
+    }
+    pub fn voting_power(&self) -> &u64 {
+        self.voting_power.get_or_init(|| {
+            self.voting_power_result().unwrap_or(ZERO)
+        })
     }
 
     /// rank -> u64
-    pub fn rank(&self) -> u64 {
-        match self.validator() {
-            Ok(validator) => validator.rank(), // Return the rank as a borrowed reference
-            Err(e) => {
-                eprintln!("{}", e); // Print the error context if any
-                0 // Return an empty string in case of an error
-            }
-        }
+    pub fn rank_result(&self) -> Result<u64> {
+        Ok(self.validator()?.rank())
+    }
+    pub fn rank(&self) -> &u64 {
+        self.rank.get_or_init(|| {
+            self.rank_result().unwrap_or(ZERO)
+        })
     }
 
     /// validator_staked -> u64
-    /// self.delegations.delegations.get(self.config_validator())?.staked -> Result<u64>
-    pub fn validator_staked(&self) -> u64 {
-        self.delegations()
-            .and_then(|del| {
-                // Get the delegation for the active validator and access the staked value
-                del.delegations
-                    .get(self.config_validator())
-                    .map(|delegation| delegation.staked) // Map to the staked value
-                    .ok_or_else(|| eyre::eyre!("No delegation found for the validator")) // Wrap in Ok
-            })
-            .unwrap_or_else(|e| {
-                eprintln!("{}", e); // Print the error context if any
-                0 // Return a default value in case of an error
-            })
+    /// self.delegations()?.find(self.config_validator_address()?)?.staked -> Result<u64>
+    pub fn validator_staked_result(&self) -> Result<&u64> {
+        Ok(&self.delegations()?.find(self.config_validator_address())?.staked)
+    }
+    pub fn validator_staked(&self) -> &u64 {
+        self.validator_staked.get_or_init(|| {
+            *self.validator_staked_result().unwrap_or(&ZERO)
+        })
     }
 
     pub fn claim_fee(&self) -> u64 {
@@ -469,112 +611,148 @@ impl Profile {
         (*STAKE_FEE * 1_000_000.0) as u64
     }
 
-    pub fn minimum_balance(&self) -> u64 {
+    fn search_validator(&self, search: &str) -> Result<&str> {
+        Ok(match self.config()?.search_validator(&search) {
+            Ok(a) => a,
+            Err(_) => {
+                self.validators()?.validator(&search)?.address()
+            }
+        })
+    }
+
+    pub fn minimum_balance_result(&self) -> Result<u64> {
         // Calculate the minimum required balance based on the ratio
-        let calculated_min = (self.total_staked() as f64 * self.config_minimum_balance_ratio()).ceil() as u64;
+        let calculated_min = (
+            self.total_staked_result()? as f64 *
+            self.config_minimum_balance_ratio_result()?
+        ).floor() as u64;
+        let min_bal = self.config_minimum_balance_result()?;
 
         // Return the maximum of the calculated minimum and configured minimum
-        self.config_minimum_balance().max(calculated_min)
+        Ok(std::cmp::max(min_bal, calculated_min))
+    }
+
+    pub fn minimum_balance(&self) -> &u64 {
+        self.minimum_balance.get_or_init(|| {
+            self.minimum_balance_result().unwrap_or(100_000)
+        })
 
     }
 
-    pub fn available_before_claim(&self) -> u64 {
+    fn available_without_claim_result(&self) -> Result<u64> {
         // Calculate available amount before claim
-        self.balance()
-            .saturating_sub(self.minimum_balance())
+        Ok(self.balance_result()?
+            .saturating_sub(self.minimum_balance_result()?)
             .saturating_sub(self.stake_fee())
             .max(0)
+        )
+    }
+    pub fn available_without_claim(&self) -> &u64 {
+        self.available_without_claim.get_or_init(|| {
+            self.available_without_claim_result().unwrap_or(ZERO)
+        })
     }
 
-    pub fn available_after_claim(&self) -> u64 {
+    pub fn available_after_claim_result(&self) -> Result<u64> {
         // Calculate available amount after the claim
-        self.balance()
-            .saturating_add(self.total_liquid())
-            .saturating_sub(self.minimum_balance())
+        Ok(self.balance_result()?
+            .saturating_add(self.total_liquid_result()?)
+            .saturating_sub(self.minimum_balance_result()?)
             .saturating_sub(self.claim_fee())
             .saturating_sub(self.stake_fee())
             .max(0)
+        )
+    }
+    pub fn available_after_claim(&self) -> &u64 {
+        self.available_after_claim.get_or_init(|| {
+            self.available_after_claim_result().unwrap_or(0)
+        })
     }
 
-    pub fn stake_factor(&self) -> u64 {
+    fn stake_factor_result(&self) -> Result<u64> {
         // Calculate the stake factor based on the rounding logic
-        let min_stake = self.config_minimum_stake();
-        let min_stake_rounding = self.config_minimum_stake_rounding();
+        let stake = self.config_minimum_stake_result()?;
+        let round = self.config_minimum_stake_rounding_result()?;
 
-        if min_stake < min_stake_rounding || min_stake_rounding == 0 {
-            min_stake
+        if round == 0 || stake < round {
+            Ok(stake)
         } else {
-            min_stake
-                .saturating_div(min_stake_rounding)
-                .saturating_mul(min_stake_rounding)
+            Ok(stake.saturating_div(round).saturating_mul(round))
         }
     }
 
-    pub fn validator_staked_remainder(&self) -> u64 {
-        self.validator_staked() % self.stake_factor()
+    pub fn stake_factor(&self) -> &u64 {
+        self.stake_factor.get_or_init(|| {
+            self.stake_factor_result().unwrap_or(10_000)
+        })
     }
 
-    pub fn can_stake_before_claim(&self) -> bool {
-        let factor    = self.stake_factor();
-        let available = self.available_before_claim();
-        let remainder = self.validator_staked_remainder();
-
-        // Determine if staking can occur without needing to claim
-        if remainder > 0 {
-            available > remainder
-        } else {
-            available > factor
-        }
+    pub fn validator_staked_remainder(&self) -> &u64 {
+        self.validator_staked_remainder.get_or_init(|| {
+            self.validator_staked() % *self.stake_factor()
+        })
     }
 
-    pub fn can_stake_after_claim(&self) -> bool {
-        let factor    = self.stake_factor();
-        let available = self.available_after_claim();
-        let remainder = self.validator_staked_remainder();
+    pub fn can_stake_without_claim(&self) -> &bool {
+        self.can_stake_without_claim.get_or_init(|| {
+            let factor    = *self.stake_factor();
+            let available = *self.available_without_claim();
+            let remainder = *self.validator_staked_remainder();
 
-        // Determine if staking can occur after claiming rewards
-        if remainder > 0 {
-            available > remainder
-        } else {
-            available > factor
-        }
-
+            // Determine if staking can occur without needing to claim
+            if remainder > 0 {
+                available > remainder
+            } else {
+                available > factor
+            }
+        })
     }
 
-    pub fn claim(&self) -> bool {
-        !self.can_stake_before_claim() && self.can_stake_after_claim()
+    pub fn can_stake_after_claim(&self) -> &bool {
+        self.can_stake_after_claim.get_or_init(|| {
+        let factor    = *self.stake_factor();
+        let available = *self.available_after_claim();
+        let remainder = *self.validator_staked_remainder();
+        let liquid    = *self.total_liquid();
+        let claim_fee = self.claim_fee();
+
+        (liquid > claim_fee)
+            .then_some(remainder)
+            .map(|rem| if rem > 0 { available > rem } else { available > factor })
+            .unwrap_or(false)
+        })
     }
 
-    pub fn quantity_to_stake(&self) -> u64 {
-        let can_stake_before_claim     = self.can_stake_before_claim();
-        let can_stake_after_claim      = self.can_stake_after_claim();
-        let available_before_claim     = self.available_before_claim();
-        let available_after_claim      = self.available_after_claim();
-        let stake_factor               = self.stake_factor();
-        let validator_staked_remainder = self.validator_staked_remainder();
+    pub fn needs_claim(&self) -> &bool {
+        self.needs_claim.get_or_init(|| {
+            !*self.can_stake_without_claim() &&
+             *self.can_stake_after_claim()
+        })
+    }
 
-        // If staking is not possible either before or after claiming, return 0
-        if !can_stake_before_claim && !can_stake_after_claim {
-            return 0;
-        }
+    pub fn quantity_to_stake(&self) -> &u64 {
+        self.quantity_to_stake.get_or_init(|| {
+            let can_stake_without_claim    = *self.can_stake_without_claim();
+            let can_stake_after_claim      = *self.can_stake_after_claim();
+            let available_without_claim    = *self.available_without_claim();
+            let available_after_claim      = *self.available_after_claim();
+            let stake_factor               = *self.stake_factor();
+            let validator_staked_remainder = *self.validator_staked_remainder();
 
-        // Determine which available amount to use based on staking conditions
-        let available = if can_stake_before_claim {
-            available_before_claim
-        } else {
-            available_after_claim
-        };
+            (can_stake_without_claim || can_stake_after_claim)
+                .then_some(
+                    can_stake_without_claim
+                        .then_some(available_without_claim)
+                        .unwrap_or(available_after_claim)
+                )
+                .unwrap_or(ZERO) // Return ZERO if neither condition is met
+                .saturating_add(validator_staked_remainder)
+                .saturating_sub(stake_factor)
+                .saturating_div(stake_factor)
+                .saturating_mul(stake_factor)
+                .saturating_sub(validator_staked_remainder)
 
-        // Calculate the quantity to stake
-        let mut quantity_to_stake = validator_staked_remainder;
-
-        // Calculate the leftover available amount after accounting for the remainder
-        let leftover = available.saturating_sub(validator_staked_remainder);
-
-        // Add multiples of `stake_factor` from the leftover
-        quantity_to_stake += (leftover / stake_factor) * stake_factor;
-
-        quantity_to_stake
+        })
     }
 }
 
@@ -584,15 +762,18 @@ impl std::fmt::Debug for Profile {
         write!(
             f,
             "Profile {{ address: {}, name: {} }}",
-            self.address(), self.name()
+            self.address().map_err(|_| std::fmt::Error)?,
+            self.name()
         )
     }
 }
 
 impl PartialEq for Profile {
     fn eq(&self, other: &Self) -> bool {
-        // Compare the addresses of the two profiles directly
-        self.address() == other.address()
+        match (self.address(), other.address()) {
+            (Ok(addr1), Ok(addr2)) => addr1 == addr2, // Both addresses are OK, compare them
+            _ => false, // If either address returns an error, they are not equal
+        }
     }
 }
 
@@ -608,7 +789,8 @@ impl Profile {
         cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
 
         // Set the HOME environment variable
-        cmd.env("HOME", self.home_str().to_string());
+        let home_path: &OsStr = self.home().as_os_str();
+        cmd.env("HOME", home_path);
 
         // Execute the command and collect the output
         let output = cmd.output()?;
@@ -626,20 +808,48 @@ impl Profile {
         Ok(())
     }
 
-    pub fn nomic_delegate(&self) -> eyre::Result<()> {
+    pub fn nomic_delegate(
+        &self,
+        validator: Option<String>,
+        quantity: Option<f64>,
+    ) -> eyre::Result<()> {
 
+        let validator = match validator {
+            Some(v) => self.search_validator(&v).map_err(|_| eyre!("Validator not found"))?,
+            None => self.config_validator_address(),
+        };
 
-        let validator = self.config_validator();
-        let quantity = self.quantity_to_stake();
+        let calc_qty = self.quantity_to_stake();
 
+        let quantity = match quantity {
+            Some(q) => ( q * 1_000_000.0 ) as u64,
+            None    => *calc_qty,
+        };
+
+        if quantity <= 0 {
+            return Err(eyre!("Quantity to stake must be greater than 0."));
+        }
+
+        if quantity > *self.available_without_claim() &&
+           quantity > *self.available_after_claim()
+        {
+            return Err(eyre!("Not enough balance to stake that quantity."));
+        }
+
+        if quantity > *self.available_without_claim() {
+            self.nomic_claim()?;
+        }
+
+        // let validator = self.config_validator_address();
         // Create and configure the Command for running "nomic delegate"
         let mut cmd = Command::new(&*NOMIC);
 
         // Set the environment variables for NOMIC_LEGACY_VERSION
         cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
 
-        // Set the HOME environment variable
-        cmd.env("HOME", self.home_str().to_string());
+        // Assuming `self.home()` returns a &Path
+        let home_path: &OsStr = self.home().as_os_str();
+        cmd.env("HOME", home_path);
 
         // Add the "delegate" argument, validator, and quantity
         cmd.arg("delegate");
@@ -663,7 +873,7 @@ impl Profile {
         let mut config = self.config()?.clone();
 
         // Rotate the config validators
-        config.rotate_validators();
+        let _ = config.rotate_validators()?;
 
         // Save config to disk
         config.save(self.config_file()?, true)?;
@@ -671,38 +881,45 @@ impl Profile {
 
     }
 
-    pub fn auto_delegate(&self, log: bool) -> eyre::Result<()> {
-        let quantity = self.quantity_to_stake();
-        let claim = self.claim();
+//  pub fn auto_delegate(&self, log: bool) -> eyre::Result<()> {
+//      let quantity = *self.quantity_to_stake();
+//      let claim = *self.needs_claim();
 
-        // Log the current state if requested
-        if log {
-            self.print(Some(OutputFormat::Json))?;
-        }
+//      // Log the current state if requested
+//      if log {
+//          self.print(Some(OutputFormat::Json))?;
+//      }
 
-        if quantity > 0 {
-            if claim {
-                self.nomic_claim()?;
-            }
-            self.nomic_delegate()?;
-        } else {
-            // Log a message since this is not an error
-            eprintln!("Not enough to stake");
-        }
-        Ok(())
-    }
+//      if quantity > 0 {
+//          if claim {
+//              self.nomic_claim()?;
+//          }
+//          self.nomic_delegate(None, None)?;
+//      } else {
+//          // Log a message since this is not an error
+//          eprintln!("Not enough to stake");
+//      }
+//      Ok(())
+//  }
 
 }
+    pub fn result_to_json_string<T, E>(result: Result<T, E>) -> String
+    where
+        T: ToString,
+        E: ToString,
+    {
+        result.map(|value| value.to_string())
+              .unwrap_or_else(|err| format!("Error: {}", err.to_string()))
+    }
 
 impl Profile {
     pub fn json(&self) -> eyre::Result<Value> {
-        // Call all methods and collect their results
         let json_output = json!({
             "profile":                       self.name(),
-            "address":                       self.address(),
+            "address":                       result_to_json_string(self.address()),
             "balance":                       self.balance(),
             "total_staked":                  self.total_staked(),
-            "timestamp":                     self.timestamp().to_rfc3339(),
+            "timestamp":                     result_to_json_string(self.delegations_timestamp().map(|t| t.to_rfc3339())),
             "total_liquid":                  self.total_liquid(),
             "config_minimum_balance":        self.config_minimum_balance(),
             "config_minimum_balance_ratio":  self.config_minimum_balance_ratio(),
@@ -710,8 +927,8 @@ impl Profile {
             "config_adjust_minimum_stake":   self.config_adjust_minimum_stake(),
             "config_minimum_stake_rounding": self.config_minimum_stake_rounding(),
             "config_daily_reward":           self.config_daily_reward(),
-            "config_validator":              self.config_validator(),
-            "config_moniker":                self.config_moniker(),
+            "config_validator_address":      self.config_validator_address(),
+            "config_validator_moniker":      self.config_validator_moniker(),
             "moniker":                       self.moniker(),
             "voting_power":                  self.voting_power(),
             "rank":                          self.rank(),
@@ -720,18 +937,36 @@ impl Profile {
             "stake_fee":                     self.stake_fee(),
             "minimum_balance":               self.minimum_balance(),
             "stake_factor":                  self.stake_factor(),
-            "available_before_claim":        self.available_before_claim(),
+            "available_without_claim":       self.available_without_claim(),
             "available_after_claim":         self.available_after_claim(),
             "validator_staked_remainder":    self.validator_staked_remainder(),
-            "can_stake_before_claim":        self.can_stake_before_claim(),
+            "can_stake_without_claim":       self.can_stake_without_claim(),
             "can_stake_after_claim":         self.can_stake_after_claim(),
             "daily_reward":                  self.config_daily_reward(),
-            "claim":                         self.claim(),
+            "needs_claim":                   self.needs_claim(),
             "quantity_to_stake":             self.quantity_to_stake(),
         });
 
         Ok(json_output)
     }
+
+    fn print_aligned_json(&self) -> eyre::Result<()> {
+        // Convert JSON value to a HashMap for easier handling
+        let json = self.json()?;
+        let map = json.as_object().unwrap();
+
+        // Calculate the maximum length of the keys
+        let max_key_length = map.keys().map(|k| k.len()).max().unwrap_or(0);
+
+        // Print the JSON with aligned values
+        for (key, value) in map {
+            // Align the key with padding
+            let padded_key = format!("{:width$}", key, width = max_key_length);
+            println!("{}: {}", padded_key, value);
+        }
+        Ok(())
+    }
+
 }
 
 /// Enum to represent output formats
@@ -739,6 +974,7 @@ impl Profile {
 pub enum OutputFormat {
     Json,
     JsonPretty,
+    Table,
 }
 
 impl FromStr for OutputFormat {
@@ -747,6 +983,7 @@ impl FromStr for OutputFormat {
         match s.to_lowercase().as_str() {
             "json"        => Ok(OutputFormat::Json),
             "json-pretty" => Ok(OutputFormat::JsonPretty),
+            "table"       => Ok(OutputFormat::Table),
             _             => Err(format!("Invalid output format: {}", s)),
         }
     }
@@ -757,6 +994,7 @@ impl std::fmt::Display for OutputFormat {
         let output = match self {
             OutputFormat::Json       => "json",
             OutputFormat::JsonPretty => "json-pretty",
+            OutputFormat::Table      => "table",
         };
         write!(f, "{}", output)
     }
@@ -783,6 +1021,9 @@ impl Profile {
                     .map_err(|e| eyre::eyre!("Error serializing JSON: {}", e))?;
                 println!("{}", pretty_json);
             },
+            OutputFormat::Table => {
+                self.print_aligned_json()?;
+            },
         }
 
         Ok(())
@@ -790,12 +1031,15 @@ impl Profile {
 
 
     pub fn edit_config(
-        &self,
+        &mut self,
         minimum_balance: Option<u64>,
         minimum_balance_ratio: Option<f64>,
         minimum_stake: Option<u64>,
         adjust_minimum_stake: Option<bool>,
         minimum_stake_rounding: Option<u64>,
+        rotate_validators: bool,
+        remove_validator: Option<&str>,
+        add_validator: Option<&str>,
     ) -> eyre::Result<()> {
         // Check if all inputs are None, return an error
         if minimum_balance.is_none()
@@ -803,6 +1047,9 @@ impl Profile {
             && minimum_stake.is_none()
             && adjust_minimum_stake.is_none()
             && minimum_stake_rounding.is_none()
+            && !rotate_validators
+            && remove_validator.is_none()
+            && add_validator.is_none()
         {
             return Err(eyre!("At least one input must be provided to edit the config."));
         }
@@ -812,20 +1059,32 @@ impl Profile {
 
         // Apply changes only if the corresponding option is provided
         if let Some(balance) = minimum_balance {
-            config.minimum_balance = balance;
+            config.set_minimum_balance(balance);
         }
-        if let Some(balance_ratio) = minimum_balance_ratio {
-            config.minimum_balance_ratio = balance_ratio;
+        if let Some(ratio) = minimum_balance_ratio {
+            config.set_minimum_balance_ratio(ratio);
         }
         if let Some(stake) = minimum_stake {
-            config.minimum_stake = stake;
+            config.set_minimum_stake(stake);
         }
         if let Some(adjust_stake) = adjust_minimum_stake {
-            config.adjust_minimum_stake = adjust_stake;
+            config.set_adjust_minimum_stake(adjust_stake);
         }
-        if let Some(stake_rounding) = minimum_stake_rounding {
-            config.minimum_stake_rounding = stake_rounding;
+        if let Some(rounding) = minimum_stake_rounding {
+            config.set_minimum_stake_rounding(rounding);
         }
+        if rotate_validators {
+            let _ = config.rotate_validators();
+        }
+        if let Some(search) = remove_validator {
+            let _ = config.remove_validator(search)?;
+        }
+        if let Some(validator) = add_validator {
+            config.add_validator(validator)?;
+        }
+
+        // Update the internal state with the new list of validators.
+        self.config = OnceCell::from(config.clone());
 
         // Save the updated config if needed
         config.save(self.config_file()?, true)?;

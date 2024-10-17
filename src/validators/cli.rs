@@ -9,7 +9,7 @@ use eyre::Result;
 #[command(name = "validators", about = "Print validators", visible_alias = "v")]
 pub struct Cli {
     /// Specify the output format
-    #[arg(long, short)]
+    #[arg(long, short, default_value = "table")]
     pub format: Option<OutputFormat>,
 
     /// Whether to include the details field

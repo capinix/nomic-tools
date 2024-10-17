@@ -14,6 +14,7 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Duration;
+use chrono::{Utc, DateTime};
 
 fn get_file<P: AsRef<Path>>(
     file: Option<P>,
@@ -84,15 +85,16 @@ pub struct PrivKey {
     /// 32-byte representation of the private key.
     bytes: [u8; 32],
     /// Hexadecimal representation of the private key as a string.
-    hex: OnceCell<String>,
+    hex:         OnceCell<String>,
     /// cosmrs Signing key derived from the private key.
     signing_key: OnceCell<SigningKey>,
     /// cosmrs Publickey derived from the signing key.
-    public_key: OnceCell<PublicKey>,
+    public_key:  OnceCell<PublicKey>,
     /// cosmrs AccountId associated with the public key.
-    account_id: OnceCell<AccountId>,
+    account_id:  OnceCell<AccountId>,
     /// String representation of the AccountId.
-    address: OnceCell<String>,
+    address:     OnceCell<String>,
+    timestamp:   DateTime<Utc>,
 }
 
 impl PrivKey {
@@ -106,7 +108,11 @@ impl PrivKey {
     ///
     /// Returns a `Result<Self>` containing the new `Privkey` instance or an error if the byte 
     /// length is invalid or if the bytes do not represent a valid private key.
-    pub fn new(bytes: [u8; 32]) -> Result<Self> {
+    pub fn new(
+        bytes: [u8; 32],
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Result<Self> {
+
         Ok(Self {
             bytes,
             hex:         OnceCell::new(),
@@ -114,6 +120,7 @@ impl PrivKey {
             public_key:  OnceCell::new(),
             account_id:  OnceCell::new(),
             address:     OnceCell::new(),
+            timestamp:   timestamp.unwrap_or_else(Utc::now),
         })
     }
 
@@ -127,7 +134,7 @@ impl PrivKey {
     ///
     /// Returns a `Result<Self>` containing the new `Privkey` instance or an error if the input
     /// is invalid or cannot be parsed into a valid private key.
-    pub fn import(hex_str: &str) -> Result<Self> {
+    pub fn import(hex_str: &str, timestamp: Option<DateTime<Utc>>) -> Result<Self> {
 
         // Strip leading and trailing whitespace
         let hex_str = hex_str.trim();
@@ -151,26 +158,36 @@ impl PrivKey {
         new_bytes.copy_from_slice(&decoded_bytes);
 
         // Use the new constructor to create a PrivKey instance.
-        PrivKey::new(new_bytes)
+        PrivKey::new(new_bytes, timestamp)
     }
 
     pub fn stdin(max_attempts: usize, timeout: Duration) -> Result<Self> {
+        let timestamp = Some(Utc::now());
         // Attempt to read stdin as either binary or text data
         match read_stdin(max_attempts, timeout)? {
-            Data::Binary(bytes) => Self::new(bytes.try_into().map_err(|_| eyre::eyre!("Invalid byte array size for new key"))?),
-            Data::Text(hex_str) => Self::import(&hex_str),
+            Data::Binary(bytes) => Self::new(
+                bytes.try_into()
+                    .map_err(|_| eyre::eyre!("Invalid byte array size for new key"))?, 
+                timestamp
+            ),
+            Data::Text(hex_str) => Self::import(&hex_str, timestamp),
         }
     }
 
     /// Loads an existing key from a file or generates a new one if the file doesn't exist.
     pub fn load<P: AsRef<Path>>(path: P, new: bool) -> Result<Self> {
+        let timestamp = Some(Utc::now());
         let path = path.as_ref();
 
         if path.exists() {
             // Attempt to read the file as either binary or text data
             match binary_or_text_file(&path)? {
-                Data::Binary(bytes) => Self::new(bytes.try_into().map_err(|_| eyre::eyre!("Invalid byte array size for new key"))?),
-                Data::Text(hex_str) => Self::import(&hex_str),
+                Data::Binary(bytes) => Self::new(
+                    bytes.try_into()
+                        .map_err(|_| eyre::eyre!("Invalid byte array size for new key"))?,
+                    timestamp,
+                ),
+                Data::Text(hex_str) => Self::import(&hex_str, timestamp),
             }
         } else if new {
             // If the file doesn't exist and `new` is true, generate a new key.
@@ -186,7 +203,7 @@ impl PrivKey {
             file.write_all(&random_bytes)
                 .wrap_err_with(|| format!("Failed to write new key to file: {:?}", path))?;
 
-            PrivKey::new(random_bytes)
+            PrivKey::new(random_bytes, timestamp)
         } else {
             // If the file doesn't exist and `new` is false, return an error.
             Err(eyre::eyre!(
@@ -246,8 +263,7 @@ impl PrivKey {
     /// or an error if the public key computation fails.
     pub fn public_key(&self) -> Result<&PublicKey> {
         self.public_key.get_or_try_init(|| {
-            let signing_key = self.signing_key()?;
-            Ok(signing_key.public_key())
+            Ok(self.signing_key()?.public_key())
         })
     }
 
@@ -259,8 +275,7 @@ impl PrivKey {
     /// or an error if the account ID computation fails.
     pub fn account_id(&self) -> Result<&AccountId> {
         self.account_id.get_or_try_init(|| {
-            let public_key = self.public_key()?;
-            public_key.account_id("nomic")
+            self.public_key()?.account_id("nomic")
                 .map_err(|e| eyre::eyre!("Failed to get address from public key: {}", e))
         })
     }
@@ -273,8 +288,7 @@ impl PrivKey {
     /// error if the address computation fails.
     pub fn address(&self) -> Result<&str> {
         self.address.get_or_try_init(|| {
-            let account_id = self.account_id()?;
-            Ok(account_id.to_string())
+            Ok(self.account_id()?.to_string())
         }).map(|s| s.as_str())
     }
 
@@ -351,7 +365,8 @@ impl PartialEq for PrivKey {
 /// while adhering to the constraints of the underlying cryptographic types.
 impl Clone for PrivKey {
     fn clone(&self) -> Self {
-        Self::new(self.bytes.clone()).expect("Failed to create Privkey from cloned bytes")
+        Self::new(self.bytes.clone(), Some(self.timestamp))
+            .expect("Failed to create Privkey from cloned bytes")
     }
 }
 
@@ -445,7 +460,7 @@ pub trait FromPath {
 
 impl FromBytes for [u8; 32] {
     fn privkey(self) -> Result<PrivKey> {
-        PrivKey::new(self)
+        PrivKey::new(self, Some(Utc::now()))
     }
 }
 
@@ -461,19 +476,19 @@ impl FromBytes for Vec<u8> {
         let mut array = [0u8; 32];
         array.copy_from_slice(&self);
 
-        PrivKey::new(array)
+        PrivKey::new(array, Some(Utc::now()))
     }
 }
 
 impl FromHex for &str {
     fn privkey(self) -> Result<PrivKey> {
-        PrivKey::import(self)
+        PrivKey::import(self, Some(Utc::now()))
     }
 }
 
 impl FromHex for String {
     fn privkey(self) -> Result<PrivKey> {
-        PrivKey::import(&self)
+        PrivKey::import(&self, Some(Utc::now()))
     }
 }
 

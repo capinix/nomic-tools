@@ -23,7 +23,7 @@ impl Delegation {
         Delegation { staked, liquid, nbtc }
     }
 }
-
+#[derive(Clone)]
 pub struct Delegations {
     pub timestamp: DateTime<Utc>,
     pub delegations: IndexMap<String, Delegation>,
@@ -37,21 +37,22 @@ impl fmt::Debug for Delegations {
         f.debug_map()
             .entries(self.delegations.iter().map(|(k, v)| (k, v)))
             .finish()
-
-//      f.debug_struct("Delegations")
-//          .field("delegations", &self.delegations)
-//          .finish()
     }
 }
 
-
 impl Delegations {
+
+    pub fn find(&self, address: &str) -> Result<&Delegation> {
+        self.delegations.get(address)
+            .ok_or_else(|| eyre!("Delegation not found for address: {}", address))
+    }
+
     /// Creates a new Delegations instance.
-    pub fn new() -> Self {
+    pub fn new(timestamp: Option<DateTime<Utc>>) -> Self {
         Delegations {
-            timestamp: Utc::now(),
+            timestamp:   timestamp.unwrap_or(Utc::now()),
             delegations: IndexMap::new(),
-            total: OnceCell::new(),
+            total:       OnceCell::new(),
         }
     }
 
@@ -79,6 +80,9 @@ impl Delegations {
 
     /// Fetches the delegations from the command output and returns a new Delegations instance.
     pub fn fetch<P: AsRef<Path>>(home: Option<P>) -> Result<Self> {
+
+        let timestamp = Some(Utc::now());
+
         // Create and configure the Command
         let mut cmd = Command::new(&*NOMIC); // Replace with the actual command string
 
@@ -103,13 +107,11 @@ impl Delegations {
             return Err(eyre!(error_msg));
         }
 
-        let timestamp = Utc::now();
-
         // Convert the output to a string and split it into lines
         let output_str = String::from_utf8_lossy(&output.stdout);
         let lines: Vec<&str> = output_str.lines().collect();
 
-        let mut delegations = Delegations::new(); // Assuming you have a way to create a new Delegations instance
+        let mut delegations = Delegations::new(timestamp);
 
         // Iterate over the lines starting with "- nomic"
         for line in lines.iter().filter(|line| line.trim().starts_with("- nomic")) {
@@ -156,28 +158,8 @@ impl Delegations {
             }
         }
 
-        delegations.timestamp = timestamp;
-
         // Return the delegations instance wrapped in a Result
         Ok(delegations)
     }
 }
-
-impl Clone for Delegations {
-    fn clone(&self) -> Self {
-        let new_delegations = Self {
-            timestamp: Utc::now(),
-            delegations: self.delegations.clone(), // Clone the IndexMap
-            total: OnceCell::new(), // Initialize a new OnceCell
-        };
-
-        // If total is initialized, clone the value into the new OnceCell
-        if let Some(total_value) = self.total.get() {
-            new_delegations.total.set(total_value.clone()).ok(); // Set the value if it was already initialized
-        }
-
-        new_delegations
-    }
-}
-
 

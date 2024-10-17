@@ -17,8 +17,9 @@ use std::str::FromStr;
 #[derive(Debug)]
 pub struct ProfileCollection {
     profiles: Vec<Profile>,
-    timestamp: DateTime<Utc>,
     validators: OnceCell<ValidatorCollection>,
+    #[allow(dead_code)]
+    timestamp: DateTime<Utc>,
 }
 
 impl ProfileCollection {
@@ -67,10 +68,15 @@ impl ProfileCollection {
             }
 
             // Load the profile using the path from the entry
-            match Profile::new(Some(entry.path())) {  // Pass the path here
-                Ok(mut profile) => {
-                    profile.set_validators(self.validators()?.clone())?;
-                    self.profiles.push(profile); // Use push to add to the vector
+            match Profile::new(
+                None,                              // name
+                Some(entry.path()),                // home
+                Some(self.validators()?.clone()),  // validators
+                None,                              // timestamp
+                Some(true),                        // overwrite
+            ) {
+                Ok(profile) => {
+                    self.profiles.push(profile);
                 }
                 Err(e) => {
                     // Handle the error appropriately, e.g., log it or store it
@@ -94,7 +100,7 @@ impl ProfileCollection {
     pub fn profile_by_address(&self, address: &str) -> Result<&Profile> {
         self.profiles
             .iter()
-            .find(|profile| profile.address() == address)
+            .find(|profile| profile.address().map_or(false, |profile_address| profile_address == address))
             .ok_or_else(|| eyre!("Profile with address {} not found", address))
     }
 
@@ -111,21 +117,21 @@ impl ProfileCollection {
 
     /// Retrieves the home path of a profile by its name or address.
     pub fn home(&self, name_or_address: &str) -> Result<&Path> {
-        self.profile_by_name_or_address(name_or_address)?.home_result()
+        Ok(self.profile_by_name_or_address(name_or_address)?.home())
     }
 
     /// Retrieves the hex of a profile by its name or address.
-    pub fn export(&self, name_or_address: &str) -> Result<String> {
-        Ok(self.profile_by_name_or_address(name_or_address)?.export())
+    pub fn export(&self, name_or_address: &str) -> Result<&str> {
+        self.profile_by_name_or_address(name_or_address)?.export()
     }
 
     /// Retrieves the address of a profile by its name or address.
-    pub fn address(&self, name_or_address: &str) -> Result<String> {
-        Ok(self.profile_by_name_or_address(name_or_address)?.address())
+    pub fn address(&self, name_or_address: &str) -> Result<&str> {
+        self.profile_by_name_or_address(name_or_address)?.address()
     }
 
     /// Retrieves the address of a profile by its name or address.
-    pub fn balance(&self, name_or_address: &str) -> Result<&Balance> {
+    pub fn balances(&self, name_or_address: &str) -> Result<&Balance> {
         self.profile_by_name_or_address(name_or_address)?.balances()
     }
 
@@ -164,9 +170,9 @@ impl ProfileCollection {
     }
 
     /// Retrieves validators, initializing it if necessary.
-    pub fn validators(&mut self) -> Result<&ValidatorCollection> {
+    /// blockchain operation, cache with oncecell
+    pub fn validators(&self) -> eyre::Result<&ValidatorCollection> {
         self.validators.get_or_try_init(|| {
-            self.timestamp = Utc::now();
             ValidatorCollection::fetch()
         })
     }
@@ -182,16 +188,13 @@ impl ProfileCollection {
         let mut profiles_json: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
 
         for profile in profiles {
-            let address = profile.address().to_string();
-
             profiles_json.insert(
-                address.clone(), // Use the address as the key
+                profile.address()?.to_string(),
                 serde_json::json!({
-                    "home"       : profile.home_str(),
+                    "home"       : profile.home(),
                     "key_file"   : profile.key_file()?.to_string_lossy(),
                     "nonce_file" : profile.nonce_file()?.to_string_lossy(),
                     "config_file": profile.config_file()?.to_string_lossy(),
-                    "account_id" : address, // You can reuse the address here
                     "nonce"      : profile.export_nonce().ok(),
                 }),
             );
@@ -249,7 +252,7 @@ impl ProfileCollection {
         // Data rows
         for profile in profiles {
             // Use the correct method to get the address and the basename
-            let address = profile.address();
+            let address = profile.address()?;
             let name = profile.name();
 
             // Manually format the profile fields with '\x1C' as the separator

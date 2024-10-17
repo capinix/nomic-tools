@@ -5,6 +5,7 @@ use crate::profiles::nomic;
 use crate::profiles::ProfileCollection;
 use crate::profiles::ProfileOutputFormat;
 use crate::functions::validate_ratio;
+use crate::functions::validate_positive;
 use eyre::Result;
 use std::path::Path;
 
@@ -20,12 +21,12 @@ pub struct Cli {
     pub format: Option<CollectionOutputFormat>,
 
     /// Profile
-    #[arg(default_value_t = String::new())]
+    #[arg(required = true)]
     pub profile: String,
 
     /// Subcommands for the profiles command
     #[command(subcommand)]
-    pub cmd: Option<Command>,
+    pub cmd: Command,
 }
 
 /// Subcommands for the `profiles` command
@@ -40,13 +41,6 @@ pub enum Command {
     Address,
 
     #[command(
-        about = "Auto Delegate",
-        visible_alias = "u",
-        aliases = ["au", "aut", "auto"],
-    )]
-    AutoDelegate,
-
-    #[command(
         about = "Display Balance",
         visible_alias = "b",
         aliases = ["ba", "bal"],
@@ -55,7 +49,7 @@ pub enum Command {
 
     #[command(
         about = "Claim Staking Rewards",
-        visible_alias = "l",
+        visible_alias = "m",
         aliases = ["cl", "cla", "clai"],
     )]
     Claim,
@@ -70,6 +64,7 @@ pub enum Command {
             short = 'b',
             long = "minimum-balance",
             aliases = ["min-bal", "mb", "bal", "balance"],
+            help = "Minimum wallet balance"
         )]
         minimum_balance: Option<f64>,
 
@@ -78,59 +73,78 @@ pub enum Command {
             long = "minimum-balance-ratio",
             aliases = ["min-bal-ratio", "mbr", "bal-ratio", "balance-ratio"],
             value_parser = validate_ratio,
+            help = "Ratio of total staked to leave as wallet balance"
         )]
         minimum_balance_ratio: Option<f64>,
 
         #[arg(
-            short = 's',
-            long = "minimum-stake",
+            short = 's', long,
             aliases = ["min-stake", "ms", "stk", "stake"],
+            help = "Minimum stake"
         )]
         minimum_stake: Option<f64>,
 
         #[arg(
-            short = 'a',
+            short = 'j',
             long = "adjust-minimum-stake",
             aliases = ["adjust-min-stake", "ams", "adj-stk", "adjust", "adj"],
+            help = "Adjust minimum stake to daily reward"
         )]
         adjust_minimum_stake: Option<bool>,
 
         #[arg(
-            short = 'o',
-            long = "minimum-stake-rounding",
+            short = 'o', long,
             aliases = ["min-stake-round", "msr", "rnd", "round", "rounding"],
+            help = "Minimum stake will be a multiple of this"
         )]
         minimum_stake_rounding: Option<f64>,
 
         #[arg(
-            short = 'v',
-            long = "rotate-validators",
+            short = 'v', long,
             aliases = ["rotate"],
             help = "Rotate validators"
         )]
         rotate_validators: bool,
 
-//      #[arg(
-//          short = 'd',
-//          long = "remove-validator",
-//          aliases = ["remove"],
-//          help = "Remove validator"
-//      )]
-//      remove_validator: Option<String>,
+        #[arg(
+            short = 'd', long,
+            aliases = ["remove"],
+            help = "Remove a validator"
+        )]
+        remove_validator: Option<String>,
 
-//      #[arg(
-//          short = 'a',
-//          long = "add-validator",
-//          aliases = ["add"],
-//          help = "Add validator (format: <address>,<moniker>)"
-//          help = "Add validator"
-//      )]
-//      add_validator: Option<String>,
+        #[arg(
+            short = 'a', long,
+            aliases = ["add"],
+            help = "Add validator (format: <address>,<moniker>)",
+        )]
+        add_validator: Option<String>,
+    },
+
+    #[command(
+        about = "Delegate",
+        visible_alias = "d",
+        aliases = ["del"],
+    )]
+    Delegate {
+        /// The validator to delegate to
+        #[arg(
+            short, long,
+            help = "validator address or moniker"
+        )]
+        validator: Option<String>,
+
+        /// The amount to delegate
+        #[arg(
+            short, long, help = "Quantity to stake", 
+            value_parser = validate_positive::<f64>,
+        )]
+        quantity: Option<f64>,
     },
 
     #[command(
         about = "Display Delegations",
-        visible_alias = "d",
+        visible_alias = "g",
         aliases = ["delegati", "delegatio", "delegation"],
     )]
     Delegations,
@@ -150,6 +164,13 @@ pub enum Command {
         #[arg(long, short)]
         file: Option<String>,
     },
+
+    #[command(
+        about = "List Profiles",
+        visible_alias = "l",
+        aliases = ["ls"],
+    )]
+    List,
 
     /// Run nomic commands as profile
     #[command(visible_aliases = ["r"])]
@@ -201,123 +222,226 @@ impl Cli {
     pub fn run(&self) -> Result<()> {
         let collection = ProfileCollection::new()?;
 
-        // Check if no subcommand is provided
-        if self.cmd.is_none() {
-            // Print the collection for the specified profile if no subcommand is provided
-            collection.print(self.format.clone())?;
-            return Ok(());
-        }
+        match &self.cmd {
+            Command::Address => {
+                println!("{}", collection.address(&self.profile)?);
+                Ok(())
+            }
+            Command::Balance => {
+                println!("{:#?}", collection.balances(&self.profile)?);
+                Ok(())
+            }
+            Command::Claim => {
+                collection
+                    .profile_by_name_or_address(&self.profile)?
+                    .nomic_claim()?;
+                Ok(())
+            }
+            Command::Config {
+                minimum_balance,
+                minimum_balance_ratio,
+                minimum_stake,
+                adjust_minimum_stake,
+                minimum_stake_rounding,
+                rotate_validators,
+                remove_validator,
+                add_validator,
+            } => {
+                let mut profile = collection.profile_by_name_or_address(&self.profile)?.clone();
 
-        if let Some(command) = &self.cmd {
-            match command {
-                Command::Address => {
-                    let output = collection.address(&self.profile)?;
-                    println!("{}", output);
-                    Ok(())
+                // Check if any options are provided to modify the config
+                if minimum_balance.is_some() || minimum_balance_ratio.is_some()
+                    || minimum_stake.is_some() || adjust_minimum_stake.is_some()
+                    || minimum_stake_rounding.is_some() || *rotate_validators
+                    || remove_validator.is_some() || add_validator.is_some()
+                {
+                    profile.edit_config(
+                        minimum_balance.map(|b| (b * 1_000_000.0) as u64),
+                        *minimum_balance_ratio,
+                        minimum_stake.map(|b| (b * 1_000_000.0) as u64),
+                        *adjust_minimum_stake,
+                        minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
+                        *rotate_validators,
+                        remove_validator.as_deref(),
+                        add_validator.as_deref(),
+                    )?;
                 }
-                Command::AutoDelegate => {
-                    let output = collection.profile_by_name_or_address(&self.profile)?;
-                    output.auto_delegate(true)?;
-                    Ok(())
+                println!("{:?}", profile.config()?.clone());
+                Ok(())
+            }
+            Command::Delegate { validator, quantity } => {
+                collection
+                    .profile_by_name_or_address(&self.profile)?
+                    .nomic_delegate(validator.clone(), *quantity)?;
+                Ok(())
+            }
+            Command::Delegations => {
+                println!("{:#?}", collection.delegations(&self.profile)?);
+                Ok(())
+            }
+            Command::Export => {
+                println!("{}", collection.export(&self.profile)?);
+                Ok(())
+            }
+            Command::Import { key, file } => {
+                // Handle file import if a file path is provided
+                if let Some(file_path) = file {
+                    collection.import_file(&self.profile, Path::new(&file_path))?;
+                    println!("Profile '{}' imported from file: {}", self.profile, file_path);
+                } else if let Some(key_str) = key {
+                    collection.import(&self.profile, &key_str, true)?;
+                    println!("Profile '{}' imported.", &self.profile);
+                } else {
+                    eprintln!("No key provided for import.");
                 }
-                Command::Balance => {
-                    let output = collection.balance(&self.profile)?;
-                    println!("{:#?}", output);
-                    Ok(())
-                }
-                Command::Claim => {
-                    let output = collection.profile_by_name_or_address(&self.profile)?;
-                    output.nomic_claim()?;
-                    Ok(())
-                }
-                Command::Config {
-                    minimum_balance,
-                    minimum_balance_ratio,
-                    minimum_stake,
-                    adjust_minimum_stake,
-                    minimum_stake_rounding,
-                    rotate_validators,
-//                  remove_validator,
-//                  add_validator,
-                } => {
-                    // Retrieve the profile and its configuration
-                    let profile = collection.profile_by_name_or_address(&self.profile)?;
-                    let mut config = profile.config()?.clone();
-
-                    // If no options are provided, print the current configuration
-                    if minimum_balance.is_none() 
-                        && minimum_balance_ratio.is_none() 
-                        && minimum_stake.is_none() 
-                        && adjust_minimum_stake.is_none() 
-                        && minimum_stake_rounding.is_none() {
-                        println!("{:?}", config);
-                    } else {
-                        // If at least one option is provided, update the configuration
-                        if *rotate_validators {
-                            config.rotate_validators();
-                        }
-                        profile.edit_config(
-                            minimum_balance.map(|b| (b * 1_000_000.0) as u64),
-                            *minimum_balance_ratio,
-                            minimum_stake.map(|b| (b * 1_000_000.0) as u64),
-                            *adjust_minimum_stake,
-                            minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
-                        )?;
+                Ok(())
+            }
+            Command::List => {
+                collection.print(self.format.clone())
+            }
+            Command::Nomic { args } => {
+                let home_path = collection.home(&self.profile)?;
+                nomic(&home_path, Some(String::new()), args.clone())?;
+                Ok(())
+            }
+            Command::Nonce { nonce_cmd } => {
+                match nonce_cmd {
+                    NonceCmd::Export => {
+                        println!("{}", collection.export_nonce(&self.profile)?);
+                        Ok(())
                     }
-                    Ok(())
-                }
-                Command::Delegations => {
-                    let output = collection.delegations(&self.profile)?;
-                    println!("{:#?}", output);
-                    Ok(())
-                }
-                Command::Export => {
-                    let output = collection.export(&self.profile)?;
-                    println!("{}", output);
-                    Ok(())
-                }
-                Command::Import { key, file } => {
-                    // Handle file import if a file path is provided
-                    if let Some(file_path) = file {
-                        collection.import_file(&self.profile, Path::new(file_path))?;
-                        println!("Profile '{}' imported from file: {}", self.profile, file_path);
-                    } else {
-                        // Ensure key is available and handle Option<String>
-                        if let Some(key_str) = key {
-                            collection.import(&self.profile, key_str, true)?; // Pass the profile and key directly
-                            println!("Profile '{}' imported.", &self.profile); // Print profile name safely
-                        } else {
-                            eprintln!("No key provided for import.");
-                        }
+                    NonceCmd::Import { value, dont_overwrite } => {
+                        collection.import_nonce(&self.profile, *value, *dont_overwrite)?;
+                        Ok(())
                     }
-                    Ok(())
-                }
-                Command::Nomic { args } => {
-                    let home_path = collection.home(&self.profile)?;
-                    // Call nomic and ignore the output by unwrapping it here
-                    nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
-                    Ok(())
-                }
-                Command::Nonce { nonce_cmd } => {
-                    match nonce_cmd {
-                        NonceCmd::Export => {
-                            // Handle nonce export logic here
-                            let output = collection.export_nonce(&self.profile)?;
-                            println!("{}", output);
-                            Ok(())
-                        }
-                        NonceCmd::Import { value, dont_overwrite } => {
-                            collection.import_nonce(&self.profile, *value, *dont_overwrite)
-                        },
-                    }
-                },
-                Command::Stats { format } => {
-                    let profile = collection.profile_by_name_or_address(&self.profile)?;
-                    profile.print(format.clone())
                 }
             }
-        } else {
-            Ok(()) // This case should not happen because of the earlier check
+            Command::Stats { format } => {
+                collection.profile_by_name_or_address(&self.profile)?
+                    .print(format.clone())
+            }
         }
     }
 }
+
+
+//impl Cli {
+//    pub fn run(&self) -> Result<()> {
+//        let collection = ProfileCollection::new()?;
+//
+//            match self.cmd {
+//                Command::Address => {
+//                    Ok(println!("{}", collection
+//                        .address(&self.profile)?
+//                    ))
+//                }
+//                Command::Balance => {
+//                    Ok(println!("{:#?}", collection
+//                        .balances(&self.profile)?
+//                    ))
+//                }
+//                Command::Claim => {
+//                    Ok(collection
+//                        .profile_by_name_or_address(&self.profile)?
+//                        .nomic_claim()?
+//                    )
+//                }
+//                Command::Config {
+//                    minimum_balance,
+//                    minimum_balance_ratio,
+//                    minimum_stake,
+//                    adjust_minimum_stake,
+//                    minimum_stake_rounding,
+//                    rotate_validators,
+//                    remove_validator,
+//                    add_validator,
+//                } => {
+//                    // Retrieve the profile and its configuration
+//                    let mut profile: Profile = collection.profile_by_name_or_address(&self.profile)?.clone();
+//
+//                    // If no options are provided, print the current configuration
+//                    if minimum_balance.is_some()
+//                        || minimum_balance_ratio.is_some()
+//                        || minimum_stake.is_some()
+//                        || adjust_minimum_stake.is_some()
+//                        || minimum_stake_rounding.is_some()
+//                        || rotate_validators
+//                        || remove_validator.is_some()
+//                        || add_validator.is_some()
+//                    {
+//                        profile.edit_config(
+//                            minimum_balance.map(|b| (b * 1_000_000.0) as u64),
+//                            minimum_balance_ratio,
+//                            minimum_stake.map(|b| (b * 1_000_000.0) as u64),
+//                            adjust_minimum_stake,
+//                            minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
+//                            rotate_validators,
+//                            remove_validator.as_deref(),
+//                            add_validator.as_deref(),
+//                        )?;
+//                    }
+//                    // let config = profile.config()?.clone();
+//                    println!("{:?}", profile.config()?.clone());
+//                    Ok(())
+//                }
+//                Command::Delegate { validator, quantity } => {
+//                    collection.profile_by_name_or_address(&self.profile)?
+//                        .nomic_delegate(validator.clone(), quantity)
+//                }
+//                Command::Delegations => {
+//                    Ok(println!("{:#?}", collection
+//                        .delegations(&self.profile)?
+//                    ))
+//                }
+//                Command::Export => {
+//                    Ok(println!("{}", collection
+//                        .export(&self.profile)?
+//                    ))
+//                }
+//                Command::Import { key, file } => {
+//                    // Handle file import if a file path is provided
+//                    if let Some(file_path) = file {
+//                        collection.import_file(&self.profile, Path::new(&file_path))?;
+//                        println!("Profile '{}' imported from file: {}", self.profile, file_path);
+//                    } else {
+//                        // Ensure key is available and handle Option<String>
+//                        if let Some(key_str) = key {
+//                            collection.import(&self.profile, &key_str, true)?; // Pass the profile and key directly
+//                            println!("Profile '{}' imported.", &self.profile); // Print profile name safely
+//                        } else {
+//                            eprintln!("No key provided for import.");
+//                        }
+//                    }
+//                    Ok(())
+//                }
+//                Command::List => {
+//                    collection.print(self.format.clone())
+//                }
+//                Command::Nomic { args } => {
+//                    let home_path = collection.home(&self.profile)?;
+//                    // Call nomic and ignore the output by unwrapping it here
+//                    nomic(&home_path, Some(String::new()), args.clone()).map(|_output| ())?;
+//                    Ok(())
+//                }
+//                Command::Nonce { nonce_cmd } => {
+//                    match nonce_cmd {
+//                        NonceCmd::Export => {
+//                            // Handle nonce export logic here
+//                            Ok(println!("{}", collection
+//                                .export_nonce(&self.profile)?
+//                            ))
+//                        }
+//                        NonceCmd::Import { value, dont_overwrite } => {
+//                            collection
+//                                .import_nonce(&self.profile, value, dont_overwrite)
+//                        },
+//                    }
+//                },
+//                Command::Stats { format } => {
+//                    collection
+//                        .profile_by_name_or_address(&self.profile)?
+//                        .print(format.clone())
+//                }
+//            }
+//    }
+//}

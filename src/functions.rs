@@ -1,7 +1,31 @@
-use std::path::{Path, PathBuf};
 use dirs::home_dir;
 use eyre::{ContextCompat, eyre, Result};
+use regex::Regex;
+use std::io::{self, Write};
+use std::path::Path;
+use std::path::PathBuf;
+use std::str::FromStr;
 
+pub fn validate_positive<T>(value: &str) -> Result<T, String>
+where
+    T: FromStr + PartialOrd + std::fmt::Display,
+    T::Err: std::fmt::Display,
+{
+    match value.parse::<T>() {
+        Ok(v) => {
+            if let Ok(zero) = T::from_str("0") {
+                if v > zero {
+                    Ok(v)
+                } else {
+                    Err(format!("Value must be greater than 0, but got {}", v))
+                }
+            } else {
+                Err("Unable to parse '0' for comparison".to_string())
+            }
+        }
+        Err(e) => Err(format!("Invalid number: {}", e)),
+    }
+}
 /// Retrieves a full file path based on the provided options.
 ///
 /// This function checks if a specific file path is given. If so, it returns that path.
@@ -97,4 +121,60 @@ pub fn validate_ratio(value: &str) -> Result<f64, String> {
         Ok(_) => Err(String::from("The minimum balance ratio must be between 0 and 1")),
         Err(_) => Err(String::from("Invalid input: please provide a valid number")),
     }
+}
+
+pub fn prompt_user(question: &str) -> io::Result<String> {
+    print!("{} [y/N]: ", question);      // Print the question
+    io::stdout().flush()?;               // Ensure the prompt is displayed immediately
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;  // Read user input from stdin
+    Ok(input.trim().to_string())         // Return trimmed input
+}
+
+/// Searches for a configuration variable in the provided configuration content.
+///
+/// # Parameters
+/// - `variable_name`: The name of the variable to search for (case-sensitive).
+/// - `config_content`: The configuration content to search within.
+///
+/// # Returns
+/// - `Option<String>`: Returns `Some(String)` if the value is found; otherwise `None`.
+///
+/// # Example
+/// The following examples demonstrate the function's behavior with different configurations:
+///
+/// ```rust
+/// let content = r#"
+/// variable1 = "some value1"
+/// variable2 = value2
+/// variable3=value3
+/// variable4 "some value4"
+/// variable5 value5
+/// "#;
+///
+/// assert_eq!(grep_config("variable1",   content), Some("some value1".to_string()));
+/// assert_eq!(grep_config("variable2",   content), Some("value2".to_string()));
+/// assert_eq!(grep_config("variable3",   content), Some("value3".to_string()));
+/// assert_eq!(grep_config("variable4",   content), Some("some value4".to_string()));
+/// assert_eq!(grep_config("variable5",   content), Some("value5".to_string()));
+/// assert_eq!(grep_config("nonexistent", content), None);
+/// ```
+pub fn grep_config(variable_name: &str, config_content: &str) -> Option<String> {
+    // Construct the regex pattern to capture various types of config values
+    let regex = Regex::new(&(
+        format!(r"(?m)^[[:space:]]*{variable_name}") +   // Match the variable name
+        r"(?:[[:space:]]*=[[:space:]]*|[[:space:]]+)" +  // Match '=' or whitespace
+        r#"(?:(?P<quote1>"[^"]*")|"# +                   // Match quoted values (")
+        r"(?P<quote2>'[^']*')|" +                        // Match quoted values (')
+        r"(?P<unquoted>[^[:space:]]+)).*$"               // Match unquoted values
+    )).unwrap();
+
+    // Capture the value if it matches the pattern
+    regex.captures(config_content).and_then(|captures| {
+        // Return the first matching capture group (quoted or unquoted)
+        captures.get(1).or_else(|| captures.get(2)).or_else(|| captures.get(3)).map(|value| {
+            // Trim surrounding quotes if present and return as String
+            value.as_str().trim_matches('"').trim_matches('\'').to_string()
+        })
+    })
 }
