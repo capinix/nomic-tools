@@ -146,8 +146,7 @@ pub enum Commands {
     },
 
     #[command( about = "Display Delegations",
-        visible_alias = "dn", aliases = ["delegati", "delegatio", "delegation"],
-    )]
+        visible_alias = "dn", aliases = ["delegati", "delegatio", "delegation"])]
     Delegations {
         /// Profile
         #[arg(required = true)]
@@ -155,8 +154,7 @@ pub enum Commands {
     },
 
     #[command( about = "Export Private Key",
-        visible_alias = "ex", aliases = ["exp", "expo", "expor"],
-    )]
+        visible_alias = "ex", aliases = ["exp", "expo", "expor"])]
     Export {
         /// Profile
         #[arg(required = true)]
@@ -165,9 +163,8 @@ pub enum Commands {
 
     Fmt(fmt::cli::Cli),
 
-    #[command( about = "Import Private Key",
-        visible_alias = "im", aliases = ["imp", "impo", "impor"],
-    )]
+    #[command( about = "Import Private Key", visible_alias = "im",
+        aliases = ["imp", "impo", "impor"])]
     Import {
         /// Profile
         #[arg(required = true)]
@@ -184,9 +181,8 @@ pub enum Commands {
 
     Key(key::Cli),
 
-    #[command( about = "Run Nomic commands as Profile",
-        visible_alias = "n", aliases = ["no", "nom", "nomi"],
-    )]
+    #[command(about = "Run Nomic commands as Profile", visible_alias = "n",
+        aliases = ["no", "nom", "nomi"])]
     Nomic {
         /// Profile
         #[arg(required = true)]
@@ -197,18 +193,16 @@ pub enum Commands {
         args: Vec<String>,
     },
 
-    #[command( about = "List Profiles",
-        visible_alias = "pr", aliases = ["pro", "prof", "profi", "profil", "profile"],
-    )]
+    #[command(about = "List Profiles", visible_alias = "pr",
+        aliases = ["pro", "prof", "profi", "profil", "profile"])]
     Profiles {
         /// Specify the output format
         #[arg(long, short)]
         format: Option<CollectionOutputFormat>,
     },
 
-    #[command( about = "Profile Statistics",
-        visible_alias = "st", aliases = ["sta", "stat", "stati", "statis", "statist", "statisti", "statistic", "statistics"],
-    )]
+    #[command(about = "Profile Statistics", visible_alias = "st",
+        aliases = ["sta", "stat", "stati", "statis", "statist", "statisti", "statistic", "statistics"])]
     Stats {
         /// Profile
         #[arg(required = true)]
@@ -221,10 +215,6 @@ pub enum Commands {
     Nonce(nonce::Cli),
     Validators(validators::Cli),
 }
-
-
-
-
 
 impl Cli {
     pub fn run(&self) -> Result<()> {
