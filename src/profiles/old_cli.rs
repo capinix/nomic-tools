@@ -1,33 +1,43 @@
-
 use clap::Parser;
 use clap::Subcommand;
-use crate::key;
-use crate::nonce;
-use crate::profiles;
-use crate::validators;
-use eyre::Result;
+use crate::profiles::CollectionOutputFormat;
+use crate::profiles::nomic;
+use crate::profiles::Profile;
 use crate::profiles::ProfileCollection;
-use fmt;
+use crate::profiles::ProfileOutputFormat;
 use crate::functions::validate_ratio;
 use crate::functions::validate_positive;
+use eyre::Result;
 use std::path::Path;
-use crate::profiles::CollectionOutputFormat;
-use crate::profiles::ProfileOutputFormat;
-use crate::profiles::nomic;
 
+/// Defines the CLI structure for the `profiles` command.
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
-#[command(propagate_version = true)]
+#[command(
+    name  = "Profile", 
+    about = "Manage & use profiles", 
+)]
 pub struct Cli {
+    /// Specify the output format
+    #[arg(long, short)]
+    pub format: Option<CollectionOutputFormat>,
+
+//    /// Profile
+//    #[arg()]
+//    pub profile: String,
+
+    /// Subcommands for the profiles command
     #[command(subcommand)]
-    pub command: Commands,
+    pub cmd: Command,
 }
 
-#[derive(Subcommand)]
-pub enum Commands {
+/// Subcommands for the `profiles` command
+#[derive(Debug, Subcommand)]
+pub enum Command {
 
-    #[command(about = "Display the Address (AccountId) for a profile",
-        visible_alias = "ad", aliases = ["add", "addr"],
+    #[command(
+        about = "Display Address",
+        visible_alias = "a",
+        aliases = ["ad", "add", "addr"],
     )]
     Address {
         /// Profile
@@ -35,9 +45,10 @@ pub enum Commands {
         profile: String,
     },
 
-    /// Display the Balance for a profile
-    #[command(about = "Display the Balance for a profile",
-        visible_alias = "ba", aliases = ["bal"],
+    #[command(
+        about = "Display Balance",
+        visible_alias = "b",
+        aliases = ["ba", "bal"],
     )]
     Balance {
         /// Profile
@@ -45,8 +56,10 @@ pub enum Commands {
         profile: String,
     },
 
-    #[command(about = "Claim staking rewards for a profile",
-        visible_alias = "cl", aliases = ["cla", "clai"],
+    #[command(
+        about = "Claim Staking Rewards",
+        visible_alias = "m",
+        aliases = ["cl", "cla", "clai"],
     )]
     Claim {
         /// Profile
@@ -54,24 +67,26 @@ pub enum Commands {
         profile: String,
     },
 
-    #[command(about = "Manage Profile Configuration",
-        visible_alias = "co", aliases = ["con", "conf", "confi"],
+    #[command(
+        about = "Profile configuration",
+        visible_alias = "c",
+        aliases = ["co", "con", "conf"],
     )]
     Config {
-
         /// Profile
         #[arg(required = true)]
         profile: String,
-
         #[arg(
-            short = 'b', long = "minimum-balance",
+            short = 'b',
+            long = "minimum-balance",
             aliases = ["min-bal", "mb", "bal", "balance"],
             help = "Minimum wallet balance"
         )]
         minimum_balance: Option<f64>,
 
         #[arg(
-            short = 'r', long = "minimum-balance-ratio",
+            short = 'r',
+            long = "minimum-balance-ratio",
             aliases = ["min-bal-ratio", "mbr", "bal-ratio", "balance-ratio"],
             value_parser = validate_ratio,
             help = "Ratio of total staked to leave as wallet balance"
@@ -122,14 +137,15 @@ pub enum Commands {
         add_validator: Option<String>,
     },
 
-    #[command( about = "Delegate",
-        visible_alias = "de",
+    #[command(
+        about = "Delegate",
+        visible_alias = "d",
+        aliases = ["del"],
     )]
     Delegate {
         /// Profile
         #[arg(required = true)]
         profile: String,
-
         /// The validator to delegate to
         #[arg(
             short, long,
@@ -145,8 +161,10 @@ pub enum Commands {
         quantity: Option<f64>,
     },
 
-    #[command( about = "Display Delegations",
-        visible_alias = "dn", aliases = ["delegati", "delegatio", "delegation"],
+    #[command(
+        about = "Display Delegations",
+        visible_alias = "g",
+        aliases = ["delegati", "delegatio", "delegation"],
     )]
     Delegations {
         /// Profile
@@ -154,25 +172,20 @@ pub enum Commands {
         profile: String,
     },
 
-    #[command( about = "Export Private Key",
-        visible_alias = "ex", aliases = ["exp", "expo", "expor"],
-    )]
+    /// Export a profile
+    #[command()]
     Export {
         /// Profile
         #[arg(required = true)]
         profile: String,
     },
 
-    Fmt(fmt::cli::Cli),
-
-    #[command( about = "Import Private Key",
-        visible_alias = "im", aliases = ["imp", "impo", "impor"],
-    )]
+    /// Import a profile
+    #[command(visible_alias = "i")]
     Import {
         /// Profile
         #[arg(required = true)]
         profile: String,
-
         /// Hex string or byte array, if neither key, nor file provided, will attempt to read from stdin
         #[arg(conflicts_with = "file")]
         key: Option<String>,
@@ -182,33 +195,36 @@ pub enum Commands {
         file: Option<String>,
     },
 
-    Key(key::Cli),
-
-    #[command( about = "Run Nomic commands as Profile",
-        visible_alias = "n", aliases = ["no", "nom", "nomi"],
+    #[command(
+        about = "List Profiles",
+        visible_alias = "l",
+        aliases = ["ls"],
     )]
-    Nomic {
+    List,
+
+//    /// Run nomic commands as profile
+//    #[command(visible_aliases = ["r"])]
+//    Nomic {
+//        /// Profile
+//        #[arg(required = true)]
+//        profile: String,
+//        /// Additional arguments to pass through (only if no subcommand is chosen)
+//        #[arg(trailing_var_arg = true)]
+//        args: Vec<String>,
+//    },
+
+    /// Subcommand for nonce operations
+    #[command(visible_aliases = ["n"])]
+    Nonce {
         /// Profile
         #[arg(required = true)]
         profile: String,
-
-        /// Additional arguments to pass through (only if no subcommand is chosen)
-        #[arg(trailing_var_arg = true)]
-        args: Vec<String>,
+        #[command(subcommand)]
+        nonce_cmd: NonceCmd,
     },
 
-    #[command( about = "List Profiles",
-        visible_alias = "pr", aliases = ["pro", "prof", "profi", "profil", "profile"],
-    )]
-    Profiles {
-        /// Specify the output format
-        #[arg(long, short)]
-        format: Option<CollectionOutputFormat>,
-    },
-
-    #[command( about = "Profile Statistics",
-        visible_alias = "st", aliases = ["sta", "stat", "stati", "statis", "statist", "statisti", "statistic", "statistics"],
-    )]
+    /// Show the Stats
+    #[command(visible_aliases = ["s"])]
     Stats {
         /// Profile
         #[arg(required = true)]
@@ -217,34 +233,50 @@ pub enum Commands {
         #[arg(long, short)]
         format: Option<ProfileOutputFormat>,
     },
-
-    Nonce(nonce::Cli),
-    Validators(validators::Cli),
 }
 
+/// Subcommands for the `nonce` command
+#[derive(Debug, Subcommand)]
+pub enum NonceCmd {
+    /// Export nonce from a file associated with a profile
+    Export,
 
+    /// Import nonce into the system
+    Import {
+        #[arg(long, short)]
+        value: u64, // Value to import
+//
+//        #[arg(long, short, conflicts_with = "home")]
+//        file: Option<PathBuf>, // Optional file path to import from
+//
+//        #[arg(long, short = 'H')]
+//        home: Option<PathBuf>, // Optional home path
 
-
+        #[arg(long = "dont-overwrite", short = 'D')]
+        dont_overwrite: bool, // Flag to prevent overwriting
+    },
+}
 
 impl Cli {
     pub fn run(&self) -> Result<()> {
-        match &self.command {
-            Commands::Address { profile } => {
-                let collection = ProfileCollection::new()?;
-                let address = collection.address(profile)?;
-                Ok(println!("{}", address))
+        let collection = ProfileCollection::new()?;
+
+        match &self.cmd {
+            Command::Address { profile } => {
+                println!("{}", collection.address(profile)?);
+                Ok(())
             }
-            Commands::Balance { profile } => {
-                let collection = ProfileCollection::new()?;
-                let balances = collection.balances(profile)?;
-                Ok(println!("{:#?}", balances))
+            Command::Balance { profile } => {
+                println!("{:#?}", collection.balances(profile)?);
+                Ok(())
             }
-            Commands::Claim { profile } => {
-                let collection = ProfileCollection::new()?;
-                let profile = collection.profile_by_name_or_address(profile)?;
-                profile.nomic_claim()
+            Command::Claim { profile } => {
+                collection
+                    .profile_by_name_or_address(profile)?
+                    .nomic_claim()?;
+                Ok(())
             }
-            Commands::Config {
+            Command::Config {
                 profile,
                 minimum_balance,
                 minimum_balance_ratio,
@@ -255,8 +287,9 @@ impl Cli {
                 remove_validator,
                 add_validator,
             } => {
-                let collection = ProfileCollection::new()?;
-                let mut profile = collection.profile_by_name_or_address(profile)?.clone();
+                let mut profile = collection
+                    .profile_by_name_or_address(profile)?
+                    .clone();
 
                 // Check if any options are provided to modify the config
                 if minimum_balance.is_some() || minimum_balance_ratio.is_some()
@@ -278,27 +311,21 @@ impl Cli {
                 println!("{:?}", profile.config()?.clone());
                 Ok(())
             }
-
-            Commands::Delegate { profile, validator, quantity } => {
-                let collection = ProfileCollection::new()?;
-                let profile = collection.profile_by_name_or_address(profile)?;
-                profile.nomic_delegate(validator.clone(), *quantity)
+            Command::Delegate { profile, validator, quantity } => {
+                collection
+                    .profile_by_name_or_address(profile)?
+                    .nomic_delegate(validator.clone(), *quantity)?;
+                Ok(())
             }
-
-            Commands::Delegations { profile } => {
-                let collection = ProfileCollection::new()?;
-                Ok(println!("{:#?}", collection.delegations(profile)?))
+            Command::Delegations { profile } => {
+                println!("{:#?}", collection.delegations(profile)?);
+                Ok(())
             }
-
-            Commands::Export { profile } => {
-                let collection = ProfileCollection::new()?;
-                Ok(println!("{}", collection.export(profile)?))
+            Command::Export { profile } => {
+                println!("{}", collection.export(profile)?);
+                Ok(())
             }
-
-            Commands::Fmt(cli)        => cli.run(),
-
-            Commands::Import { profile, key, file } => {
-                let collection = ProfileCollection::new()?;
+            Command::Import { profile, key, file } => {
                 // Handle file import if a file path is provided
                 if let Some(file_path) = file {
                     collection.import_file(profile, Path::new(&file_path))?;
@@ -311,29 +338,32 @@ impl Cli {
                 }
                 Ok(())
             }
-
-            Commands::Key(cli)        => cli.run(),
-
-            Commands::Nomic { profile, args } => {
-                let collection = ProfileCollection::new()?;
-                let home_path = collection.home(profile)?;
-                nomic(&home_path, Some(String::new()), args.clone())?;
-                Ok(())
+            Command::List => {
+                collection.print(self.format.clone())
             }
-
-            Commands::Profiles { format } => {
-                let collection = ProfileCollection::new()?;
-                collection.print(format.clone())
+//            Command::Nomic { args } => {
+//                let home_path = collection.home(&self.profile)?;
+//                nomic(&home_path, Some(String::new()), args.clone())?;
+//                Ok(())
+//            }
+            Command::Nonce { profile, nonce_cmd } => {
+                match nonce_cmd {
+                    NonceCmd::Export => {
+                        println!("{}", collection.export_nonce(profile)?);
+                        Ok(())
+                    }
+                    NonceCmd::Import { value, dont_overwrite } => {
+                        collection.import_nonce(profile, *value, *dont_overwrite)?;
+                        Ok(())
+                    }
+                }
             }
-
-            Commands::Stats { profile, format } => {
-                let collection = ProfileCollection::new()?;
+            Command::Stats { profile, format } => {
                 collection.profile_by_name_or_address(profile)?
                     .print(format.clone())
             }
-
-            Commands::Nonce(cli)      => cli.run(),
-            Commands::Validators(cli) => cli.run(),
         }
     }
 }
+
+
