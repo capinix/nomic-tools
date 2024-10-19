@@ -1,18 +1,18 @@
 
 use clap::Parser;
 use clap::Subcommand;
-use crate::privkey;
+use crate::functions::validate_positive;
+use crate::functions::validate_ratio;
 use crate::nonce;
+use crate::privkey;
+use crate::profiles::CollectionOutputFormat;
+use crate::profiles::nomic;
+use crate::profiles::ProfileCollection;
+use crate::profiles::ProfileOutputFormat;
 use crate::validators;
 use eyre::Result;
-use crate::profiles::ProfileCollection;
 use fmt;
-use crate::functions::validate_ratio;
-use crate::functions::validate_positive;
 use std::path::Path;
-use crate::profiles::CollectionOutputFormat;
-use crate::profiles::ProfileOutputFormat;
-use crate::profiles::nomic;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -33,6 +33,11 @@ pub enum Commands {
         #[arg()]
         profile: Option<String>,
     },
+
+    #[command(about = "Auto delegate all profiles",
+        visible_alias = "au", aliases = ["auto"],
+    )]
+    AutoDelegate,
 
     /// Display the Balance for a profile
     #[command(about = "Display the Balance for a profile",
@@ -246,6 +251,9 @@ impl Cli {
             Commands::Address { profile } => {
                 let address = ProfileCollection::new()?.address(profile.as_deref())?;
                 Ok(println!("{}", address))
+            }
+            Commands::AutoDelegate => {
+                ProfileCollection::load()?.auto_delegate()
             }
             Commands::Balance { profile } => {
                 let balances = ProfileCollection::new()?.balances(profile.as_deref())?;

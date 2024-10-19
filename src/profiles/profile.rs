@@ -419,10 +419,10 @@ impl Profile {
         nonce::export(Some(&nonce_file), None)
     }
 
-    pub fn import_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
-        let nonce_file = self.nonce_file()?;
-        nonce::import(value, Some(&nonce_file), None, dont_overwrite)
-    }
+//    pub fn import_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
+//        let nonce_file = self.nonce_file()?;
+//        nonce::import(value, Some(&nonce_file), None, dont_overwrite)
+//    }
 
     /// balance -> u64
     /// self.balances()?.nom ->Result<u64>

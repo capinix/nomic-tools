@@ -11,7 +11,6 @@ use fmt::input::Data;
 use crate::functions::construct_path;
 use eyre::eyre;
 use std::io;
-use crate::profiles::ProfileCollection;
 
 
 /// Retrieves the nonce file path.
@@ -69,45 +68,45 @@ pub fn export(file: Option<&Path>, home: Option<&Path>) -> Result<u64> {
 	Ok(nonce)
 }
 
-/// Sets the nonce value in a binary file.
-///
-/// This function converts the provided `u64` value to a byte array in big-endian order and writes it to
-/// the specified nonce file. If the file does not exist, it will be created.
-///
-/// # Parameters
-///
-/// - `value`: The `u64` value to set as the nonce.
-/// - `file`: An optional path to a specific nonce file.
-/// - `home`: An optional base path; the home directory will be used if not provided.
-/// - `dont_overwrite`: A flag indicating whether to prevent overwriting an existing nonce file.
-///
-/// # Returns
-///
-/// - `Ok(())` if the nonce is successfully written to the file.
-/// - `Err(eyre::Error)` if an error occurs while retrieving the nonce file path or writing its contents.
-pub fn import(value: u64, file: Option<&Path>, home: Option<&Path>, dont_overwrite: bool) -> Result<()> {
-
-    let nonce_file = get_nonce_file(file, home)
-        .context("Failed to get nonce file path")?;
-
-    // Check if the nonce file already exists and handle the dont_overwrite flag
-    if dont_overwrite && nonce_file.exists() {
-        return Err(eyre::eyre!(
-			"Nonce file already exists at {:?}. Use --dont-overwrite to prevent overwriting.",
-			nonce_file
-		));
-    }
-
-    // Create or open the nonce file in binary write mode
-    let mut file = File::create(&nonce_file)
-        .with_context(|| format!("Failed to create nonce file at {:?}", nonce_file))?;
-
-    // Write the new nonce value as bytes
-    file.write_all(&value.to_be_bytes())
-        .with_context(|| format!("Failed to write to nonce file at {:?}", nonce_file))?;
-
-    Ok(())
-}
+///// Sets the nonce value in a binary file.
+/////
+///// This function converts the provided `u64` value to a byte array in big-endian order and writes it to
+///// the specified nonce file. If the file does not exist, it will be created.
+/////
+///// # Parameters
+/////
+///// - `value`: The `u64` value to set as the nonce.
+///// - `file`: An optional path to a specific nonce file.
+///// - `home`: An optional base path; the home directory will be used if not provided.
+///// - `dont_overwrite`: A flag indicating whether to prevent overwriting an existing nonce file.
+/////
+///// # Returns
+/////
+///// - `Ok(())` if the nonce is successfully written to the file.
+///// - `Err(eyre::Error)` if an error occurs while retrieving the nonce file path or writing its contents.
+//pub fn import(value: u64, file: Option<&Path>, home: Option<&Path>, dont_overwrite: bool) -> Result<()> {
+//
+//    let nonce_file = get_nonce_file(file, home)
+//        .context("Failed to get nonce file path")?;
+//
+//    // Check if the nonce file already exists and handle the dont_overwrite flag
+//    if dont_overwrite && nonce_file.exists() {
+//        return Err(eyre::eyre!(
+//			"Nonce file already exists at {:?}. Use --dont-overwrite to prevent overwriting.",
+//			nonce_file
+//		));
+//    }
+//
+//    // Create or open the nonce file in binary write mode
+//    let mut file = File::create(&nonce_file)
+//        .with_context(|| format!("Failed to create nonce file at {:?}", nonce_file))?;
+//
+//    // Write the new nonce value as bytes
+//    file.write_all(&value.to_be_bytes())
+//        .with_context(|| format!("Failed to write to nonce file at {:?}", nonce_file))?;
+//
+//    Ok(())
+//}
 
 /// A Nonce struct that holds both the binary (bytes) and decimal representation of the nonce.
 #[derive(Debug, Clone, PartialEq)]
@@ -219,8 +218,8 @@ impl Nonce {
         }
     }
 
-    /// Display the nonce as a string.
-    pub fn display(&self) -> String {
-        format!("Nonce: Decimal = {}, Bytes = {:?}", self.decimal, self.bytes)
-    }
+//    /// Display the nonce as a string.
+//    pub fn display(&self) -> String {
+//        format!("Nonce: Decimal = {}, Bytes = {:?}", self.decimal, self.bytes)
+//    }
 }

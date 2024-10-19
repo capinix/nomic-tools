@@ -6,7 +6,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use crate::globals::PROFILES_DIR;
-use crate::profiles::ProfileCollection;
 
 /// Validates whether a given string is a valid Nomic Bech32 address.
 ///
@@ -114,61 +113,61 @@ pub fn get_file(
 //    Ok((file, home))
 //}
 
-/// Returns a path given an optional profile, home, or file, and an ending path.
-/// 
-/// The structure is assumed as follows:
-/// - `file` is prioritized if provided.
-/// - `home` or `profile` is used to construct the path if `file` is not provided.
-/// - `end` must be provided when using `profile` or `home`.
-///
-/// Example:
-///     - `Option<home> = Some("/home/user/Documents/profile_name")`
-///     - `Option<profile> = Some("profile_name")`
-///     - `Option<file> = Some("/home/user/Documents/profile_name/ending/path.file")`
-///
-///     `path_end = "ending/path.file"`
-pub fn profile_home_file(
-    profile: Option<&str>,
-    home: Option<&Path>, 
-    file: Option<&Path>,
-    end: Option<&Path>,
-) -> Result<PathBuf> {
-    // If all are None, check end
-    if profile.is_none() && home.is_none() && file.is_none() {
-        if end.is_none() {
-            return Err(eyre!("No arguments specified"));
-        } else {
-            // Attempt to get the home directory
-            match home::home_dir() {
-                Some(path) if !path.as_os_str().is_empty() => {
-                    return Ok(path.join(end.unwrap())); // Join home with end
-                }
-                _ => return Err(eyre!("Unable to detect home directory")),
-            }
-        }
-    }
-
-    // If file is provided, return it directly
-    if let Some(file) = file {
-        return Ok(file.to_path_buf());
-    }
-
-    // If end is not provided, we need to check for home or profile
-    let end = end.ok_or_else(|| eyre!("If no file is provided, an end path must be given."))?;
-
-    // Check for home directory
-    if let Some(home) = home {
-        return Ok(home.join(end)); // Join the home path with the end path
-    }
-
-    // If profile is provided, construct the path using PROFILES_DIR
-    if let Some(profile) = profile {
-        return Ok(PROFILES_DIR.join(profile).join(end));
-    }
-
-    // If none of the above conditions matched, return an error
-    Err(eyre!("Insufficient arguments to construct a path."))
-}
+///// Returns a path given an optional profile, home, or file, and an ending path.
+///// 
+///// The structure is assumed as follows:
+///// - `file` is prioritized if provided.
+///// - `home` or `profile` is used to construct the path if `file` is not provided.
+///// - `end` must be provided when using `profile` or `home`.
+/////
+///// Example:
+/////     - `Option<home> = Some("/home/user/Documents/profile_name")`
+/////     - `Option<profile> = Some("profile_name")`
+/////     - `Option<file> = Some("/home/user/Documents/profile_name/ending/path.file")`
+/////
+/////     `path_end = "ending/path.file"`
+//pub fn profile_home_file(
+//    profile: Option<&str>,
+//    home: Option<&Path>, 
+//    file: Option<&Path>,
+//    end: Option<&Path>,
+//) -> Result<PathBuf> {
+//    // If all are None, check end
+//    if profile.is_none() && home.is_none() && file.is_none() {
+//        if end.is_none() {
+//            return Err(eyre!("No arguments specified"));
+//        } else {
+//            // Attempt to get the home directory
+//            match home::home_dir() {
+//                Some(path) if !path.as_os_str().is_empty() => {
+//                    return Ok(path.join(end.unwrap())); // Join home with end
+//                }
+//                _ => return Err(eyre!("Unable to detect home directory")),
+//            }
+//        }
+//    }
+//
+//    // If file is provided, return it directly
+//    if let Some(file) = file {
+//        return Ok(file.to_path_buf());
+//    }
+//
+//    // If end is not provided, we need to check for home or profile
+//    let end = end.ok_or_else(|| eyre!("If no file is provided, an end path must be given."))?;
+//
+//    // Check for home directory
+//    if let Some(home) = home {
+//        return Ok(home.join(end)); // Join the home path with the end path
+//    }
+//
+//    // If profile is provided, construct the path using PROFILES_DIR
+//    if let Some(profile) = profile {
+//        return Ok(PROFILES_DIR.join(profile).join(end));
+//    }
+//
+//    // If none of the above conditions matched, return an error
+//    Err(eyre!("Insufficient arguments to construct a path."))
+//}
 
 /// Constructs a file path based on the provided input and relative path.
 ///
@@ -202,51 +201,6 @@ pub fn profile_home_file(
 /// let path = construct_path(Some("example_profile"), Some(Path::new("subdir/file.txt")));
 /// ```
 /// 
-pub fn construct_path1(
-    input: Option<&str>,
-    sub_path: Option<&Path>,
-) -> Result<PathBuf> {
-    // Check if input is provided
-    if let Some(input_str) = input {
-
-    ProfileCollection::new();
-
-
-
-
-        // Create a Path from the input string
-        let input_path = Path::new(input_str);
-
-        // Check if it's a file
-        if input_path.is_file() {
-            return Ok(input_path.to_path_buf());
-        }
-
-        // Check if it's a directory
-        if input_path.is_dir() {
-            let end_path = sub_path.ok_or_else(|| eyre!(
-                "Relative path must be provided if input is a directory."
-            ))?;
-            return Ok(input_path.join(end_path));
-        }
-
-        // Handle profile (assume it's a profile name)
-        let end_path = sub_path.ok_or_else(|| eyre!(
-            "Relative path must be provided if input is a profile."
-        ))?;
-        return Ok(PROFILES_DIR.join(input_path).join(end_path));
-
-    } else {
-        // If no input is provided, try to get home directory
-        let home_dir = home::home_dir().ok_or_else(|| eyre!(
-            "Unable to detect home directory."
-        ))?;
-        let end_path = sub_path.ok_or_else(|| eyre!(
-            "Relative path must be provided when using home directory."
-        ))?;
-        return Ok(home_dir.join(end_path));
-    }
-}
 pub fn construct_path(
     input: Option<&str>,
     sub_path: Option<&Path>,

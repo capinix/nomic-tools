@@ -250,15 +250,15 @@ impl ProfileCollection {
     }
 
     /// Finds a profile by its name or address.
-    pub fn profile_by_name_or_address(&self, name_or_address: &str) -> Result<&Profile> {
-        // First try to find the profile by name
-        if let Ok(profile) = self.profile_by_name(name_or_address) {
-            return Ok(profile);
-        }
-
-        // If not found by name, try to find by address
-        self.profile_by_address(name_or_address)
-    }
+//    pub fn profile_by_name_or_address(&self, name_or_address: &str) -> Result<&Profile> {
+//        // First try to find the profile by name
+//        if let Ok(profile) = self.profile_by_name(name_or_address) {
+//            return Ok(profile);
+//        }
+//
+//        // If not found by name, try to find by address
+//        self.profile_by_address(name_or_address)
+//    }
 
     /// Retrieves the home directory path based on the provided name or address.
     ///
@@ -295,11 +295,11 @@ impl ProfileCollection {
         Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.export()?.to_string())
     }
 
-    /// verifies the profile name or retrieves it from an address or home directory
-    /// if no name is given return default
-    pub fn name(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
-        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.name().to_string())
-    }
+//    /// verifies the profile name or retrieves it from an address or home directory
+//    /// if no name is given return default
+//    pub fn name(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
+//        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.name().to_string())
+//    }
 
     /// Retrieves the address of a profile by its name or address.
     pub fn balances(&self, name_or_address_or_home: Option<&str>) -> Result<Balance, eyre::Error> {
@@ -316,18 +316,25 @@ impl ProfileCollection {
             .nomic_send(self.validate_address(destination)?, quantity)
     }
 
-    pub fn export_nonce(&self, name_or_address: &str) -> Result<u64> {
-        self.profile_by_name_or_address(name_or_address)?.export_nonce()
+    pub fn auto_delegate(&self) -> Result<()> {
+        for profile in &self.profiles {
+            profile.nomic_delegate(None, None)?;
+        }
+        Ok(())
     }
 
-    pub fn import_nonce(&self,
-        name_or_address: &str,
-        value: u64,
-        dont_overwrite: bool,
-    ) -> Result<()> {
-        self.profile_by_name_or_address(name_or_address)?
-            .import_nonce(value, dont_overwrite)
-    }
+//    pub fn export_nonce(&self, name_or_address: &str) -> Result<u64> {
+//        self.profile_by_name_or_address(name_or_address)?.export_nonce()
+//    }
+
+//    pub fn import_nonce(&self,
+//        name_or_address: &str,
+//        value: u64,
+//        dont_overwrite: bool,
+//    ) -> Result<()> {
+//        self.profile_by_name_or_address(name_or_address)?
+//            .import_nonce(value, dont_overwrite)
+//    }
 
     pub fn import(&self,
         name_or_address_or_home: &str,
