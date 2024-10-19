@@ -1,9 +1,8 @@
 
 use clap::Parser;
 use clap::Subcommand;
-use crate::key;
+use crate::privkey;
 use crate::nonce;
-use crate::profiles;
 use crate::validators;
 use eyre::Result;
 use crate::profiles::ProfileCollection;
@@ -31,8 +30,8 @@ pub enum Commands {
     )]
     Address {
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
     },
 
     /// Display the Balance for a profile
@@ -41,8 +40,8 @@ pub enum Commands {
     )]
     Balance {
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
     },
 
     #[command(about = "Claim staking rewards for a profile",
@@ -50,8 +49,8 @@ pub enum Commands {
     )]
     Claim {
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
     },
 
     #[command(about = "Manage Profile Configuration",
@@ -60,8 +59,8 @@ pub enum Commands {
     Config {
 
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
 
         #[arg(
             short = 'b', long = "minimum-balance",
@@ -132,14 +131,15 @@ pub enum Commands {
 
         /// The validator to delegate to
         #[arg(
-            short, long,
+            // short, long,
             help = "validator address or moniker"
         )]
         validator: Option<String>,
 
         /// The amount to delegate
         #[arg(
-            short, long, help = "Quantity to stake", 
+            // short, long, 
+            help = "Quantity to stake", 
             value_parser = validate_positive::<f64>,
         )]
         quantity: Option<f64>,
@@ -149,16 +149,16 @@ pub enum Commands {
         visible_alias = "dn", aliases = ["delegati", "delegatio", "delegation"])]
     Delegations {
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
     },
 
     #[command( about = "Export Private Key",
         visible_alias = "ex", aliases = ["exp", "expo", "expor"])]
     Export {
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
     },
 
     Fmt(fmt::cli::Cli),
@@ -179,10 +179,9 @@ pub enum Commands {
         file: Option<String>,
     },
 
-    Key(key::Cli),
+    Key(privkey::Cli),
 
-    #[command(about = "Run Nomic commands as Profile", visible_alias = "n",
-        aliases = ["no", "nom", "nomi"])]
+    #[command(about = "Run Nomic commands as Profile", visible_alias = "n", aliases = ["no", "nom", "nomi"])]
     Nomic {
         /// Profile
         #[arg(required = true)]
@@ -193,6 +192,8 @@ pub enum Commands {
         args: Vec<String>,
     },
 
+    Nonce(nonce::Cli),
+
     #[command(about = "List Profiles", visible_alias = "pr",
         aliases = ["pro", "prof", "profi", "profil", "profile"])]
     Profiles {
@@ -201,18 +202,41 @@ pub enum Commands {
         format: Option<CollectionOutputFormat>,
     },
 
+    #[command( about = "Send",
+        visible_alias = "se",
+    )]
+    Send {
+        /// Profile
+        #[arg(required = true)]
+        profile: String,
+
+        /// The validator to delegate to
+        #[arg(
+            // short, long,
+            help = "destination address"
+        )]
+        destination: Option<String>,
+
+        /// The quantity to send
+        #[arg(
+            // short, long, 
+            help = "Quantity to send", 
+            value_parser = validate_positive::<f64>,
+        )]
+        quantity: Option<f64>,
+    },
+
     #[command(about = "Profile Statistics", visible_alias = "st",
         aliases = ["sta", "stat", "stati", "statis", "statist", "statisti", "statistic", "statistics"])]
     Stats {
         /// Profile
-        #[arg(required = true)]
-        profile: String,
+        #[arg()]
+        profile: Option<String>,
         /// Specify the output format
         #[arg(long, short)]
         format: Option<ProfileOutputFormat>,
     },
 
-    Nonce(nonce::Cli),
     Validators(validators::Cli),
 }
 
@@ -220,19 +244,17 @@ impl Cli {
     pub fn run(&self) -> Result<()> {
         match &self.command {
             Commands::Address { profile } => {
-                let collection = ProfileCollection::new()?;
-                let address = collection.address(profile)?;
+                let address = ProfileCollection::new()?.address(profile.as_deref())?;
                 Ok(println!("{}", address))
             }
             Commands::Balance { profile } => {
-                let collection = ProfileCollection::new()?;
-                let balances = collection.balances(profile)?;
+                let balances = ProfileCollection::new()?.balances(profile.as_deref())?;
                 Ok(println!("{:#?}", balances))
             }
             Commands::Claim { profile } => {
-                let collection = ProfileCollection::new()?;
-                let profile = collection.profile_by_name_or_address(profile)?;
-                profile.nomic_claim()
+                ProfileCollection::new()?
+                    .profile_by_name_or_address_or_home_or_default(profile.as_deref())?
+                    .nomic_claim()
             }
             Commands::Config {
                 profile,
@@ -245,8 +267,8 @@ impl Cli {
                 remove_validator,
                 add_validator,
             } => {
-                let collection = ProfileCollection::new()?;
-                let mut profile = collection.profile_by_name_or_address(profile)?.clone();
+                let mut profile = ProfileCollection::new()?
+                    .profile_by_name_or_address_or_home_or_default(profile.as_deref())?;
 
                 // Check if any options are provided to modify the config
                 if minimum_balance.is_some() || minimum_balance_ratio.is_some()
@@ -270,19 +292,19 @@ impl Cli {
             }
 
             Commands::Delegate { profile, validator, quantity } => {
-                let collection = ProfileCollection::new()?;
-                let profile = collection.profile_by_name_or_address(profile)?;
-                profile.nomic_delegate(validator.clone(), *quantity)
+                ProfileCollection::new()?
+                    .profile_by_name_or_address_or_home_or_default(Some(profile))?
+                    .nomic_delegate(validator.clone(), *quantity)
             }
 
             Commands::Delegations { profile } => {
-                let collection = ProfileCollection::new()?;
-                Ok(println!("{:#?}", collection.delegations(profile)?))
+                let delegations = ProfileCollection::new()?.delegations(profile.as_deref())?;
+                Ok(println!("{:#?}", delegations))
             }
 
             Commands::Export { profile } => {
-                let collection = ProfileCollection::new()?;
-                Ok(println!("{}", collection.export(profile)?))
+                let export = ProfileCollection::new()?.export(profile.as_deref())?;
+                Ok(println!("{}", export))
             }
 
             Commands::Fmt(cli)        => cli.run(),
@@ -306,23 +328,27 @@ impl Cli {
 
             Commands::Nomic { profile, args } => {
                 let collection = ProfileCollection::new()?;
-                let home_path = collection.home(profile)?;
+                let home_path = collection.home(Some(profile))?;
                 nomic(&home_path, Some(String::new()), args.clone())?;
                 Ok(())
             }
 
+            Commands::Nonce(cli)      => cli.run(),
+
             Commands::Profiles { format } => {
-                let collection = ProfileCollection::new()?;
-                collection.print(format.clone())
+                ProfileCollection::new()?.print(format.clone())
+            }
+
+            Commands::Send { profile, destination, quantity } => {
+                ProfileCollection::new()?.send(Some(profile), destination.as_deref(), *quantity)
             }
 
             Commands::Stats { profile, format } => {
                 let collection = ProfileCollection::new()?;
-                collection.profile_by_name_or_address(profile)?
+                collection.profile_by_name_or_address_or_home_or_default(profile.as_deref())?
                     .print(format.clone())
             }
 
-            Commands::Nonce(cli)      => cli.run(),
             Commands::Validators(cli) => cli.run(),
         }
     }

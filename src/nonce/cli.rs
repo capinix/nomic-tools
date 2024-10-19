@@ -1,93 +1,111 @@
-use clap::{Parser, Subcommand};
-use std::path::PathBuf;
-use eyre::{Context, Result};
-use crate::functions::resolve_file_home;
-use crate::nonce::{export, import};
 
+// use clap::Args;
+use clap::Parser;
+use clap::Subcommand;
+use crate::nonce::Nonce;
+use eyre::Result;
 
-/// CLI structure for the `nonce` command.
-///
-/// This struct defines the command-line interface for managing the nonce file,
-/// allowing users to specify the nonce file and optional home directory.
 #[derive(Parser)]
 #[command(
     name = "Nonce", 
     about = "Manage Nonce File",
-    visible_alias = "n",
 )]
 pub struct Cli {
-    #[arg(long, short, conflicts_with = "home")]
-    pub file: Option<PathBuf>,
-
-    #[arg(long, short = 'H')]
-    pub home: Option<PathBuf>,
-
     #[command(subcommand)]
     pub command: Option<CliCommand>,
+}
+
+#[derive(Parser, Debug)]
+pub struct StdinArgs {
+    /// Read decimal or binary from stdin
+    #[arg(long, short)]
+    pub stdin: bool,
+
+    /// Maximum attempts to read from stdin (default: 5)
+    #[arg(long, default_value = "5", requires = "stdin")]
+    pub max_attempts: usize,
+
+    /// Timeout for reading from stdin, in milliseconds (default: 500 ms)
+    #[arg(long, default_value = "500", requires = "stdin")]
+    pub timeout: u64,
+}
+
+#[derive(Parser, Debug)]
+pub struct InputArgs {
+    /// decimal, Profile, Home or File
+    pub input: Option<String>,
+
+    /// Read decimal or binary from stdin
+    #[command(flatten)]
+    pub stdin_args: StdinArgs,
+
 }
 
 /// Subcommands for the `nonce` command
 #[derive(Subcommand)]
 pub enum CliCommand {
     #[command(
-        name = "Import", 
-        about = "Write decimal value to nonce file",
-        visible_alias = "i",
-    )]
-    Import {
-        #[arg(long, short)]
-        value: u64,
-
-        #[arg(long, short, conflicts_with = "home")]
-        file: Option<PathBuf>,
-
-        #[arg(long, short = 'H')]
-        home: Option<PathBuf>,
-
-        #[arg(long = "dont-overwrite", short = 'D')]
-        dont_overwrite: bool,
-    },
-    #[command(
-        name = "Export", 
+        name = "read", 
         about = "Display decimal value of the contents of nonce file",
-        visible_alias = "x",
+        visible_alias = "r",
     )]
-    Export {
-        #[arg(long, short, conflicts_with = "home")]
-        file: Option<PathBuf>,
+    Read {
+        #[command(flatten)]
+        input_args: InputArgs,
+    },
 
-        #[arg(long, short = 'H')]
-        home: Option<PathBuf>,
+    #[command(
+        name = "write", 
+        about = "Write decimal value to nonce file",
+        visible_alias = "w",
+    )]
+    Write {
+
+        /// decimal, Profile, Home or File
+        #[arg(long, short,)]
+        input: Option<String>,
+
+        /// Read decimal or binary from stdin
+        #[command(flatten)]
+        stdin_args: StdinArgs,
+
+        /// Profile, Home or File
+        #[arg()]
+        output: Option<String>,
+
+        /// Don't overwrite, if file exists.
+        #[arg(long = "dont-overwrite", short = 'D',)]
+        dont_overwrite: bool,
+
     },
 }
 
 impl Cli {
-    /// Executes the appropriate subcommand based on the user input.
-    ///
-    /// This method checks for mutual exclusivity between the `file` and `home` options,
-    /// executes the specified subcommand, and handles any errors that arise during the process.
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(())` if the command executes successfully.
     pub fn run(&self) -> Result<()> {
         match &self.command {
-            Some(CliCommand::Export { file, home }) => {
-                let (resolved_file, resolved_home) = resolve_file_home(
-                    file.clone(), home.clone(), self.file.clone(), self.home.clone()
-                )?;
-                let nonce = export(resolved_file.as_deref(), resolved_home.as_deref())
-                    .context("Failed to retrieve nonce")?;
-                println!("Current nonce: {}", nonce);
+            Some(CliCommand::Read { input_args }) => {
+                let nonce = if input_args.stdin_args.stdin {
+                    Nonce::from_stdin(
+                        input_args.stdin_args.max_attempts, 
+                        input_args.stdin_args.timeout,
+                    )?
+                } else {
+                    Nonce::from_input(input_args.input.as_deref(), None)?
+                };
+                println!("{}", nonce.decimal());
                 Ok(())
             },
-            Some(CliCommand::Import { value, file, home, dont_overwrite }) => {
-                let (resolved_file, resolved_home) = resolve_file_home(
-                    file.clone(), home.clone(), self.file.clone(), self.home.clone()
-                )?;
-                import(*value, resolved_file.as_deref(), resolved_home.as_deref(), *dont_overwrite)
-                    .context("Failed to set nonce")?;
-                println!("Nonce set to: {}", value);
+            Some(CliCommand::Write { input, stdin_args, output, dont_overwrite }) => {
+                let nonce = if stdin_args.stdin {
+                    Nonce::from_stdin(
+                        stdin_args.max_attempts, 
+                        stdin_args.timeout,
+                    )?
+                } else {
+                    Nonce::from_input(input.as_deref(), None)?
+                };
+
+                nonce.to_output(output.as_deref(), *dont_overwrite)?;
                 Ok(())
             },
             None => {

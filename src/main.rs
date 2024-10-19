@@ -1,6 +1,6 @@
 mod cli;
 mod functions;
-mod key;
+mod privkey;
 mod nonce;
 mod profiles;
 mod globals;

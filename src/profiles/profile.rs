@@ -8,8 +8,9 @@ use crate::globals::{
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use crate::functions::prompt_user;
+use crate::functions::is_valid_nomic_address;
 use crate::globals::PROFILES_DIR;
-use crate::key::PrivKey;
+use crate::privkey::PrivKey;
 use crate::nonce;
 use crate::profiles::Balance;
 use crate::profiles::Config;
@@ -267,9 +268,6 @@ impl Profile {
                 .to_string_lossy()
                 .to_string();
             let profile_home_path = profiles_dir.join(&home_name);
-
-            // Perform overwrite checks and file copying
-//          Self::check_and_copy_data(&profile_home_path, &home_path, overwrite)?;
 
             return Ok(Self::create_profile(
                 timestamp,          // timestamp
@@ -877,6 +875,61 @@ impl Profile {
 
         // Save config to disk
         config.save(self.config_file()?, true)?;
+        Ok(())
+
+    }
+
+    pub fn nomic_send(
+        &self,
+        destination_address: String,
+        quantity: Option<f64>,
+    ) -> eyre::Result<()> {
+
+        if !is_valid_nomic_address(&destination_address) {
+            return Err(eyre!("Invalid address: {}", &destination_address));
+        }
+
+        let available = self.balances()?.nom
+            .saturating_sub(self.stake_fee().saturating_mul(10));
+
+        let quantity = match quantity {
+            Some(q) => (q * 1_000_000.0) as u64,
+            None => available,
+        };
+
+        if quantity > available {
+            return Err(eyre!("Not enough to send"));
+        }
+
+        // let validator = self.config_validator_address();
+        // Create and configure the Command for running "nomic delegate"
+        let mut cmd = Command::new(&*NOMIC);
+
+        // Set the environment variables for NOMIC_LEGACY_VERSION
+        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+
+        // Assuming `self.home()` returns a &Path
+        let home_path: &OsStr = self.home().as_os_str();
+        cmd.env("HOME", home_path);
+
+        // Add the "delegate" argument, validator, and quantity
+        cmd.arg("send");
+        cmd.arg(destination_address);
+        cmd.arg(quantity.to_string());
+
+        // Execute the command and collect the output
+        let output = cmd.output()?;
+
+        // Check if the command was successful
+        if !output.status.success() {
+            let error_msg = format!(
+                "Command `{}` failed with output: {:?}",
+                &*NOMIC,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            return Err(eyre!(error_msg));
+        }
+
         Ok(())
 
     }

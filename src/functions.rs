@@ -5,6 +5,24 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use crate::globals::PROFILES_DIR;
+use crate::profiles::ProfileCollection;
+
+/// Validates whether a given string is a valid Nomic Bech32 address.
+///
+/// This function checks if the provided address starts with `nomic1` 
+/// and is followed by exactly 38 alphanumeric lowercase characters (a-z, 0-9).
+/// The address is converted to lowercase before validation to ensure case insensitivity.
+///
+/// # Parameters
+/// - `address`: A string slice representing the address to validate.
+///
+/// # Returns
+/// - `true` if the address is valid according to the specified pattern; otherwise, `false`.
+pub fn is_valid_nomic_address(address: &str) -> bool {
+    let re = Regex::new(r"^nomic1[a-z0-9]{38}$").unwrap();
+    re.is_match(&address.to_lowercase())
+}
 
 pub fn validate_positive<T>(value: &str) -> Result<T, String>
 where
@@ -77,24 +95,199 @@ pub fn get_file(
     }
 }
 
-/// Resolves file and home options with mutual exclusivity.
-/// Prioritizes subcommand-level options over the top-level options.
-pub fn resolve_file_home(
-    cmd_file: Option<PathBuf>, cmd_home: Option<PathBuf>, 
-    global_file: Option<PathBuf>, global_home: Option<PathBuf>
-) -> Result<(Option<PathBuf>, Option<PathBuf>)> {
+///// Resolves file and home options with mutual exclusivity.
+///// Prioritizes subcommand-level options over the top-level options.
+//pub fn resolve_file_home(
+//    cmd_file: Option<PathBuf>, cmd_home: Option<PathBuf>, 
+//    global_file: Option<PathBuf>, global_home: Option<PathBuf>
+//) -> Result<(Option<PathBuf>, Option<PathBuf>)> {
+//
+//    // Subcommand options take precedence over the top-level options.
+//    let file = cmd_file.or(global_file);
+//    let home = cmd_home.or(global_home);
+//
+//    // Check mutual exclusivity of the resolved options.
+//    if file.is_some() && home.is_some() {
+//        return Err(eyre!("You cannot provide both --file and --home at the same time."));
+//    }
+//
+//    Ok((file, home))
+//}
 
-    // Subcommand options take precedence over the top-level options.
-    let file = cmd_file.or(global_file);
-    let home = cmd_home.or(global_home);
-
-    // Check mutual exclusivity of the resolved options.
-    if file.is_some() && home.is_some() {
-        return Err(eyre!("You cannot provide both --file and --home at the same time."));
+/// Returns a path given an optional profile, home, or file, and an ending path.
+/// 
+/// The structure is assumed as follows:
+/// - `file` is prioritized if provided.
+/// - `home` or `profile` is used to construct the path if `file` is not provided.
+/// - `end` must be provided when using `profile` or `home`.
+///
+/// Example:
+///     - `Option<home> = Some("/home/user/Documents/profile_name")`
+///     - `Option<profile> = Some("profile_name")`
+///     - `Option<file> = Some("/home/user/Documents/profile_name/ending/path.file")`
+///
+///     `path_end = "ending/path.file"`
+pub fn profile_home_file(
+    profile: Option<&str>,
+    home: Option<&Path>, 
+    file: Option<&Path>,
+    end: Option<&Path>,
+) -> Result<PathBuf> {
+    // If all are None, check end
+    if profile.is_none() && home.is_none() && file.is_none() {
+        if end.is_none() {
+            return Err(eyre!("No arguments specified"));
+        } else {
+            // Attempt to get the home directory
+            match home::home_dir() {
+                Some(path) if !path.as_os_str().is_empty() => {
+                    return Ok(path.join(end.unwrap())); // Join home with end
+                }
+                _ => return Err(eyre!("Unable to detect home directory")),
+            }
+        }
     }
 
-    Ok((file, home))
+    // If file is provided, return it directly
+    if let Some(file) = file {
+        return Ok(file.to_path_buf());
+    }
+
+    // If end is not provided, we need to check for home or profile
+    let end = end.ok_or_else(|| eyre!("If no file is provided, an end path must be given."))?;
+
+    // Check for home directory
+    if let Some(home) = home {
+        return Ok(home.join(end)); // Join the home path with the end path
+    }
+
+    // If profile is provided, construct the path using PROFILES_DIR
+    if let Some(profile) = profile {
+        return Ok(PROFILES_DIR.join(profile).join(end));
+    }
+
+    // If none of the above conditions matched, return an error
+    Err(eyre!("Insufficient arguments to construct a path."))
 }
+
+/// Constructs a file path based on the provided input and relative path.
+///
+/// This function first checks if the `input` string represents a valid file or directory.
+/// - If `input` is a valid file path, it returns the path as a `PathBuf`.
+/// - If `input` is a directory, it combines it with the `sub_path` to create the full path.
+/// - If `input` does not correspond to a file or directory, it treats it as a profile name
+///   and combines it with the `PROFILES_DIR` and `sub_path`.
+/// - If no `input` is provided, it attempts to use the user's home directory,
+///   combining it with the `sub_path`.
+///
+/// # Arguments
+/// 
+/// * `input` - An optional string slice that represents the input path or profile name.
+/// * `sub_path` - An optional reference to a `Path` that is used to extend the input path.
+///
+/// # Returns
+/// 
+/// * `Result<PathBuf>` - Returns the constructed path as a `PathBuf` if successful, or an error if any checks fail.
+///
+/// # Errors
+/// 
+/// This function returns an error if:
+/// - The `input` string cannot be converted to a valid path.
+/// - The `sub_path` is required but not provided when dealing with directories or profiles.
+/// - The home directory cannot be detected.
+///
+/// # Example
+///
+/// ```
+/// let path = construct_path(Some("example_profile"), Some(Path::new("subdir/file.txt")));
+/// ```
+/// 
+pub fn construct_path1(
+    input: Option<&str>,
+    sub_path: Option<&Path>,
+) -> Result<PathBuf> {
+    // Check if input is provided
+    if let Some(input_str) = input {
+
+    ProfileCollection::new();
+
+
+
+
+        // Create a Path from the input string
+        let input_path = Path::new(input_str);
+
+        // Check if it's a file
+        if input_path.is_file() {
+            return Ok(input_path.to_path_buf());
+        }
+
+        // Check if it's a directory
+        if input_path.is_dir() {
+            let end_path = sub_path.ok_or_else(|| eyre!(
+                "Relative path must be provided if input is a directory."
+            ))?;
+            return Ok(input_path.join(end_path));
+        }
+
+        // Handle profile (assume it's a profile name)
+        let end_path = sub_path.ok_or_else(|| eyre!(
+            "Relative path must be provided if input is a profile."
+        ))?;
+        return Ok(PROFILES_DIR.join(input_path).join(end_path));
+
+    } else {
+        // If no input is provided, try to get home directory
+        let home_dir = home::home_dir().ok_or_else(|| eyre!(
+            "Unable to detect home directory."
+        ))?;
+        let end_path = sub_path.ok_or_else(|| eyre!(
+            "Relative path must be provided when using home directory."
+        ))?;
+        return Ok(home_dir.join(end_path));
+    }
+}
+pub fn construct_path(
+    input: Option<&str>,
+    sub_path: Option<&Path>,
+) -> Result<PathBuf> {
+    // Check if input is provided
+    if let Some(input_str) = input {
+        // Create a Path from the input string
+        let input_path = Path::new(input_str);
+
+        // Check if it's a file
+        if input_path.is_file() {
+            return Ok(input_path.to_path_buf());
+        }
+
+        // Check if it's a directory
+        if input_path.is_dir() {
+            let end_path = sub_path.ok_or_else(|| eyre!(
+                "Relative path must be provided if input is a directory."
+            ))?;
+            return Ok(input_path.join(end_path));
+        }
+
+        // Handle profile (assume it's a profile name)
+        let end_path = sub_path.ok_or_else(|| eyre!(
+            "Relative path must be provided if input is a profile."
+        ))?;
+        return Ok(PROFILES_DIR.join(input_path).join(end_path));
+
+    } else {
+        // If no input is provided, try to get home directory
+        let home_dir = home::home_dir().ok_or_else(|| eyre!(
+            "Unable to detect home directory."
+        ))?;
+        let end_path = sub_path.ok_or_else(|| eyre!(
+            "Relative path must be provided when using home directory."
+        ))?;
+        return Ok(home_dir.join(end_path));
+    }
+}
+
+
 
 pub fn to_bool(val: String) -> Option<bool> {
     match val.trim().to_lowercase().as_str() {
