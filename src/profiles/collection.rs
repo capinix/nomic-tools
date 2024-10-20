@@ -316,10 +316,11 @@ impl ProfileCollection {
             .nomic_send(self.validate_address(destination)?, quantity)
     }
 
-    pub fn auto_delegate(&self) -> Result<()> {
-        for profile in &self.profiles {
-            profile.nomic_delegate(None, None)?;
-        }
+    pub fn auto_delegate(&mut self) -> Result<()> {
+        self.profiles.iter_mut().for_each(|profile| {
+            // Call nomic_delegate and ignore any errors
+            let _ = profile.nomic_delegate(None, None);
+        });
         Ok(())
     }
 

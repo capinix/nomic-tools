@@ -9,6 +9,7 @@ use crate::globals::{
     MINIMUM_STAKE_ROUNDING, 
 };
 use crate::validators::ValidatorCollection;
+use crate::validators::initialize_validators;
 use eyre::WrapErr;
 use eyre::Result;
 use once_cell::sync::OnceCell;
@@ -93,15 +94,6 @@ impl Config {
                 String::new() // Return an empty string if reading fails
             });
 
-        // Initialize OnceCell<ValidatorCollection>
-        let validators = validators
-            .map(|v| {
-                let cell = OnceCell::new();
-                cell.set(v).unwrap(); // Ensure OnceCell is initialized with the provided collection
-                cell
-            })
-            .unwrap_or_else(OnceCell::new); // Initialize as an empty OnceCell if None
-
         Ok(Self {
             profile: profile.map(|p| p.to_string()),
             content,
@@ -112,7 +104,7 @@ impl Config {
             minimum_stake_rounding: OnceCell::new(),
             daily_reward:           OnceCell::new(),
             config_validators:      OnceCell::new(),
-            validators,
+            validators:             initialize_validators(validators),
             timestamp,
         })
     }

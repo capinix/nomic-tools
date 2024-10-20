@@ -9,14 +9,17 @@ use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use crate::functions::prompt_user;
 use crate::functions::is_valid_nomic_address;
+use crate::functions::TaskStatus;
 use crate::globals::PROFILES_DIR;
 use crate::privkey::PrivKey;
 use crate::nonce;
 use crate::profiles::Balance;
 use crate::profiles::Config;
 use crate::profiles::Delegations;
+use crate::profiles::ProfileCollection;
 use crate::validators::Validator;
 use crate::validators::ValidatorCollection;
+use crate::validators::initialize_validators;
 use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
@@ -75,25 +78,14 @@ pub struct Profile {
     can_stake_after_claim:         OnceCell<bool>,
     needs_claim:                   OnceCell<bool>,
     quantity_to_stake:             OnceCell<u64>,
+    staked:                        bool,
+    claimed:                       bool,
 }
 
 // Static zero for use when there is an error
 static ZERO: u64 = 0;
 
 impl Profile {
-
-    // Helper function to initialize the ValidatorCollection
-    fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
-        match validators {
-            Some(v) => {
-                let cell = OnceCell::new();
-                cell.set(v).unwrap();
-                cell
-            },
-            None => OnceCell::new(),
-        }
-    }
-
 
     fn create_profile(
         timestamp:  DateTime<Utc>,
@@ -105,7 +97,7 @@ impl Profile {
             timestamp,
             name,
             home,
-            validators:                    Self::initialize_validators(validators),
+            validators:                    initialize_validators(validators),
             key:                           OnceCell::new(),
             config:                        OnceCell::new(),
             balances:                      OnceCell::new(),
@@ -142,6 +134,8 @@ impl Profile {
             can_stake_after_claim:         OnceCell::new(),
             needs_claim:                   OnceCell::new(),
             quantity_to_stake:             OnceCell::new(),
+            claimed:                       false,
+            staked:                        false,
         }
     }
 
@@ -419,11 +413,6 @@ impl Profile {
         nonce::export(Some(&nonce_file), None)
     }
 
-//    pub fn import_nonce(&self, value: u64, dont_overwrite: bool) -> Result<()> {
-//        let nonce_file = self.nonce_file()?;
-//        nonce::import(value, Some(&nonce_file), None, dont_overwrite)
-//    }
-
     /// balance -> u64
     /// self.balances()?.nom ->Result<u64>
     fn balance_result(&self) -> Result<&u64> {
@@ -609,14 +598,72 @@ impl Profile {
         (*STAKE_FEE * 1_000_000.0) as u64
     }
 
-    fn search_validator(&self, search: &str) -> Result<&str> {
-        Ok(match self.config()?.search_validator(&search) {
-            Ok(a) => a,
+    /// Retrieves the validator address based on an optional search string.
+    /// 
+    /// This function attempts to resolve a validator address by searching through:
+    /// 1. A provided search string, which could be a validator moniker or an address.
+    /// 2. The config file, assuming the last validator listed as the active one if no search string is provided.
+    /// 3. Profiles or other address sources, falling back to checking if the search string is directly a validator or address.
+    /// 
+    /// # Parameters
+    /// 
+    /// - `search_str`: An optional search string, which can be a validator moniker or address.
+    ///     - If `Some(search_str)` is provided, it will attempt to resolve the address based on the input.
+    ///     - If `None`, the function defaults to using the last validator listed in the config (assumed to be the active validator).
+    /// 
+    /// # Returns
+    /// 
+    /// - Returns the resolved validator address as a `Result<&str>`.
+    ///     - On success, the address of the validator is returned.
+    ///     - On failure, an error is returned if no valid validator can be found.
+    /// 
+    /// # Errors
+    /// 
+    /// - Returns an error if the search string does not resolve to a valid validator address.
+    /// - Propagates errors if the config, profile, or validators cannot be accessed or contain invalid data.
+    /// 
+    /// # Example
+    /// 
+    /// ```rust
+    /// // Retrieve the validator address based on a specific search string
+    /// let address = instance.validator_address(Some("validator_moniker"))?;
+    /// 
+    /// // Retrieve the active validator's address from the config when no search string is provided
+    /// let address = instance.validator_address(None)?;
+    /// ```
+    /// 
+    /// This method handles both cases where a search string is provided and where the active validator is used by default.
+    fn validator_address(&self, search_str: Option<&str>) -> eyre::Result<String> {
+        // Handle the optional search string
+        let search = match search_str {
+            Some(v) => v,
+            None => self.config_validator_address(),
+        };
+
+        // Assume search is a config file moniker and get the associated address from the config
+        let address = match self.config()?.search_validator(&search) {
+            Ok(a) => {
+                // If we get an address, confirm it's actually a validator
+                self.validators()?.validator(a)?.address().to_string()
+            },
             Err(_) => {
-                self.validators()?.validator(&search)?.address()
-            }
-        })
+                // Search didn't match a config moniker, assume it's a profile, address, or home folder
+                match ProfileCollection::new()?.address(Some(search)) {
+                    Ok(a) => {
+                        // If we get an address, confirm it's actually a validator
+                        self.validators()?.validator(&a)?.address().to_string()
+                    },
+                    Err(_) => {
+                        // Final fallback: assume it's either a validator moniker or address
+                        self.validators()?.validator(&search)?.address().to_string()
+                    }
+                }
+            },
+        };
+
+        Ok(address)
     }
+
 
     pub fn minimum_balance_result(&self) -> Result<u64> {
         // Calculate the minimum required balance based on the ratio
@@ -730,26 +777,44 @@ impl Profile {
 
     pub fn quantity_to_stake(&self) -> &u64 {
         self.quantity_to_stake.get_or_init(|| {
-            let can_stake_without_claim    = *self.can_stake_without_claim();
-            let can_stake_after_claim      = *self.can_stake_after_claim();
-            let available_without_claim    = *self.available_without_claim();
-            let available_after_claim      = *self.available_after_claim();
-            let stake_factor               = *self.stake_factor();
+            let can_stake_without_claim = *self.can_stake_without_claim();
+            let can_stake_after_claim = *self.can_stake_after_claim();
+            let available_without_claim = *self.available_without_claim();
+            let available_after_claim = *self.available_after_claim();
+            let stake_factor = *self.stake_factor();
             let validator_staked_remainder = *self.validator_staked_remainder();
 
-            (can_stake_without_claim || can_stake_after_claim)
-                .then_some(
-                    can_stake_without_claim
-                        .then_some(available_without_claim)
-                        .unwrap_or(available_after_claim)
-                )
-                .unwrap_or(ZERO) // Return ZERO if neither condition is met
-                .saturating_add(validator_staked_remainder)
-                .saturating_sub(stake_factor)
-                .saturating_div(stake_factor)
-                .saturating_mul(stake_factor)
-                .saturating_sub(validator_staked_remainder)
+            // Determine the available amount to stake based on conditions
+            let available_to_stake = if can_stake_without_claim {
+                available_without_claim
+            } else if can_stake_after_claim {
+                available_after_claim
+            } else {
+                // If neither staking condition is met, return 0 for staking
+                return ZERO;
+            };
 
+            // Calculate how much is needed to round `validator_staked` to a multiple of `stake_factor`
+            let needed_to_round = if validator_staked_remainder == 0 {
+                0
+            } else {
+                stake_factor.saturating_sub(validator_staked_remainder)
+            };
+
+            // Check if there's enough available to cover the rounding amount
+            if available_to_stake >= needed_to_round {
+                // Calculate how much remains after rounding the validator stake
+                let remaining_after_round = available_to_stake.saturating_sub(needed_to_round);
+
+                // Determine how many full stake_factor multiples can be staked after rounding
+                let multiples_of_stake_factor = remaining_after_round.saturating_div(stake_factor);
+
+                // The final stake amount is `needed_to_round` plus the maximum multiples of `stake_factor`
+                needed_to_round.saturating_add(multiples_of_stake_factor.saturating_mul(stake_factor))
+            } else {
+                // Not enough to cover rounding, return zero
+                ZERO
+            }
         })
     }
 }
@@ -777,7 +842,7 @@ impl PartialEq for Profile {
 
 impl Profile {
 
-    pub fn nomic_claim(&self) -> eyre::Result<()> {
+    pub fn nomic_claim(&mut self) -> eyre::Result<()> {
 
         // Create and configure the Command for running "nomic claim"
         let mut cmd = Command::new(&*NOMIC);
@@ -802,19 +867,23 @@ impl Profile {
             );
             return Err(eyre!(error_msg));
         }
+        self.claimed = true;
 
         Ok(())
     }
 
     pub fn nomic_delegate(
-        &self,
+        &mut self,
         validator: Option<String>,
         quantity: Option<f64>,
     ) -> eyre::Result<()> {
 
-        let validator = match validator {
-            Some(v) => self.search_validator(&v).map_err(|_| eyre!("Validator not found"))?,
-            None => self.config_validator_address(),
+        let validator_address = match self.validator_address(validator.as_deref()) {
+            Ok(address) => address,
+            Err(e) => {
+                self.print(Some(OutputFormat::Json))?;
+                return Err(eyre!("Failed to resolve validator address: {}", e));
+            }
         };
 
         let calc_qty = self.quantity_to_stake();
@@ -825,17 +894,23 @@ impl Profile {
         };
 
         if quantity <= 0 {
+            self.print(Some(OutputFormat::Json))?;
             return Err(eyre!("Quantity to stake must be greater than 0."));
         }
 
         if quantity > *self.available_without_claim() &&
            quantity > *self.available_after_claim()
         {
+            self.print(Some(OutputFormat::Json))?;
             return Err(eyre!("Not enough balance to stake that quantity."));
         }
 
         if quantity > *self.available_without_claim() {
-            self.nomic_claim()?;
+            if let Err(e) = self.nomic_claim() {
+                self.print(Some(OutputFormat::Json))?;
+                return Err(eyre!("Failed to claim: {:?}", e));
+            }
+            self.claimed = true;
         }
 
         // let validator = self.config_validator_address();
@@ -851,7 +926,65 @@ impl Profile {
 
         // Add the "delegate" argument, validator, and quantity
         cmd.arg("delegate");
-        cmd.arg(validator);
+        cmd.arg(validator_address);
+        cmd.arg(quantity.to_string());
+
+        // Execute the command and collect the output
+        let output = cmd.output()?;
+
+        // Check if the command was successful
+        if !output.status.success() {
+            let error_msg = format!(
+                "Command `{}` failed with output: {:?}",
+                &*NOMIC,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            self.print(Some(OutputFormat::Json))?;
+            return Err(eyre!(error_msg));
+        }
+        self.staked = true;
+
+        // Clone the config
+        let mut config = self.config()?.clone();
+
+        // Rotate the config validators
+        let _ = config.rotate_validators()?;
+
+        // Save config to disk
+        config.save(self.config_file()?, true)?;
+
+        self.print(Some(OutputFormat::Json))?;
+        Ok(())
+
+    }
+
+    pub fn redelegate(
+        &self,
+        source: &str,
+        destination: &str,
+        quantity: f64,
+    ) -> eyre::Result<()> {
+
+        let source_address = self.validator_address(Some(source))?;
+        let destination_address = self.validator_address(Some(destination))?;
+
+        let quantity = (quantity * 1_000_000.0) as u64;
+
+        // let validator = self.config_validator_address();
+        // Create and configure the Command for running "nomic delegate"
+        let mut cmd = Command::new(&*NOMIC);
+
+        // Set the environment variables for NOMIC_LEGACY_VERSION
+        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+
+        // Assuming `self.home()` returns a &Path
+        let home_path: &OsStr = self.home().as_os_str();
+        cmd.env("HOME", home_path);
+
+        // Add the "delegate" argument, validator, and quantity
+        cmd.arg("redelegate");
+        cmd.arg(source_address);
+        cmd.arg(destination_address);
         cmd.arg(quantity.to_string());
 
         // Execute the command and collect the output
@@ -867,14 +1000,6 @@ impl Profile {
             return Err(eyre!(error_msg));
         }
 
-        // Clone the config
-        let mut config = self.config()?.clone();
-
-        // Rotate the config validators
-        let _ = config.rotate_validators()?;
-
-        // Save config to disk
-        config.save(self.config_file()?, true)?;
         Ok(())
 
     }
@@ -998,6 +1123,8 @@ impl Profile {
             "daily_reward":                  self.config_daily_reward(),
             "needs_claim":                   self.needs_claim(),
             "quantity_to_stake":             self.quantity_to_stake(),
+            "claimed":                       TaskStatus::from_bool(self.claimed).to_symbol(),
+            "staked":                        TaskStatus::from_bool(self.staked).to_symbol(),
         });
 
         Ok(json_output)

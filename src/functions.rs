@@ -7,6 +7,43 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use crate::globals::PROFILES_DIR;
 
+
+
+#[derive(Clone)]
+pub enum TaskStatus {
+    Done,    // ✅
+    NotDone, // ❌
+}
+
+impl TaskStatus {
+    pub fn to_symbol(&self) -> &'static str {
+        match self {
+            TaskStatus::Done    => "✅",
+            TaskStatus::NotDone => "❌",
+        }
+    }
+
+    // Convert from a boolean to TaskStatus
+    pub fn from_bool(value: bool) -> Self {
+        if value {
+            TaskStatus::Done
+        } else {
+            TaskStatus::NotDone
+        }
+    }
+
+    // Convert from TaskStatus to boolean
+    // we will use this whn reading the logs
+    #[allow(dead_code)]
+    pub fn to_bool(&self) -> bool {
+        match self {
+            TaskStatus::Done => true,
+            TaskStatus::NotDone => false,
+        }
+    }
+}
+
+
 /// Validates whether a given string is a valid Nomic Bech32 address.
 ///
 /// This function checks if the provided address starts with `nomic1` 

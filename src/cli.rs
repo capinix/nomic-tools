@@ -126,9 +126,7 @@ pub enum Commands {
         add_validator: Option<String>,
     },
 
-    #[command( about = "Delegate",
-        visible_alias = "de",
-    )]
+    #[command( about = "Delegate", visible_alias = "de",)]
     Delegate {
         /// Profile
         #[arg(required = true)]
@@ -207,9 +205,29 @@ pub enum Commands {
         format: Option<CollectionOutputFormat>,
     },
 
-    #[command( about = "Send",
-        visible_alias = "se",
-    )]
+    #[command( about = "Redelegate", visible_alias = "re",)]
+    Redelegate {
+        /// Profile
+        #[arg(required = true)]
+        profile: String,
+
+        /// The validator to redelegate from
+        #[arg(help = "redelegate from ..")]
+        from: String,
+
+        /// The validator to redelegate to
+        #[arg(help = "redelegate to ..")]
+        to: String,
+
+        /// The quantity to redelegate in nom
+        #[arg(
+            help = "Quantity to Redelegate (NOM)", 
+            value_parser = validate_positive::<f64>,
+        )]
+        quantity: f64,
+    },
+
+    #[command( about = "Send", visible_alias = "se",)]
     Send {
         /// Profile
         #[arg(required = true)]
@@ -345,6 +363,12 @@ impl Cli {
 
             Commands::Profiles { format } => {
                 ProfileCollection::new()?.print(format.clone())
+            }
+
+            Commands::Redelegate { profile, from, to, quantity } => {
+                ProfileCollection::new()?
+                    .profile_by_name_or_address_or_home_or_default(Some(profile))?
+                    .redelegate(from, to, *quantity)
             }
 
             Commands::Send { profile, destination, quantity } => {

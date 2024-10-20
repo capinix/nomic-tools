@@ -16,6 +16,19 @@ use std::iter::FromIterator;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
+use once_cell::sync::OnceCell;
+
+// Helper function to initialize the ValidatorCollection
+pub fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
+    match validators {
+        Some(v) => {
+            let cell = OnceCell::new();
+            cell.set(v).unwrap();
+            cell
+        },
+        None => OnceCell::new(),
+    }
+}
 
 /// Enum to represent output formats
 #[derive(Debug, Clone, ValueEnum)]
