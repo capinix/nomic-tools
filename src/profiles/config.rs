@@ -78,6 +78,11 @@ impl Config {
         self
     }
 
+    pub fn set_daily_reward(&mut self, reward: f64) -> &mut Self {
+        self.daily_reward = OnceCell::from(reward);
+        self
+    }
+
     pub fn new<P: AsRef<Path>>(
         profile: Option<&str>,
         path: P,
@@ -217,7 +222,7 @@ impl Config {
             // Check the configuration file
             if let Some(matched_value) = grep_config("DAILY_REWARD", &self.content) {
                 if let Ok(reward) = matched_value.parse::<f64>() {
-                    return reward;
+                    return reward * 1_000_000.0;
                 }
             }
 

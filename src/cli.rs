@@ -182,7 +182,25 @@ pub enum Commands {
         file: Option<String>,
     },
 
+    #[command(about = "Profile Journal", visible_alias = "jo",
+        aliases = ["jou", "jour", "journ", "journa"])]
+    Journal {
+        /// Profile
+        #[arg()]
+        profile: Option<String>,
+        /// Specify the output format
+        #[arg(long, short)]
+        format: Option<ProfileOutputFormat>,
+    },
+
     Key(privkey::Cli),
+
+    #[command( about = "Last Journal", visible_alias = "lj", aliases = ["lastj"])]
+    LastJournal {
+        /// Profile
+        #[arg(required = true)]
+        profile: String,
+    },
 
     #[command(about = "Run Nomic commands as Profile", visible_alias = "n", aliases = ["no", "nom", "nomi"])]
     Nomic {
@@ -247,17 +265,6 @@ pub enum Commands {
             value_parser = validate_positive::<f64>,
         )]
         quantity: Option<f64>,
-    },
-
-    #[command(about = "Profile Statistics", visible_alias = "st",
-        aliases = ["sta", "stat", "stati", "statis", "statist", "statisti", "statistic", "statistics"])]
-    Stats {
-        /// Profile
-        #[arg()]
-        profile: Option<String>,
-        /// Specify the output format
-        #[arg(long, short)]
-        format: Option<ProfileOutputFormat>,
     },
 
     Validators(validators::Cli),
@@ -350,7 +357,21 @@ impl Cli {
                 Ok(())
             }
 
+            Commands::Journal { profile, format } => {
+                let collection = ProfileCollection::new()?;
+                collection.profile_by_name_or_address_or_home_or_default(profile.as_deref())?
+                    .print(format.clone())
+            }
+
             Commands::Key(cli)        => cli.run(),
+
+            Commands::LastJournal { profile } => {
+                // Store ProfileCollection in a variable so it lives long enough
+                let collection = ProfileCollection::new()?;  // ProfileCollection persists beyond this line
+                let profile = collection.profile_by_name_or_address_or_home_or_default(Some(profile))?;
+                let journal = profile.last_journal()?;       // Now we can safely use it
+                Ok(println!("{:#?}", journal))
+            }
 
             Commands::Nomic { profile, args } => {
                 let collection = ProfileCollection::new()?;
@@ -373,12 +394,6 @@ impl Cli {
 
             Commands::Send { profile, destination, quantity } => {
                 ProfileCollection::new()?.send(Some(profile), destination.as_deref(), *quantity)
-            }
-
-            Commands::Stats { profile, format } => {
-                let collection = ProfileCollection::new()?;
-                collection.profile_by_name_or_address_or_home_or_default(profile.as_deref())?
-                    .print(format.clone())
             }
 
             Commands::Validators(cli) => cli.run(),

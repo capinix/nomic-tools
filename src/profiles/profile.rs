@@ -33,6 +33,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
+use std::env;
 
 
 #[derive(Clone)]
@@ -78,6 +79,8 @@ pub struct Profile {
     can_stake_after_claim:         OnceCell<bool>,
     needs_claim:                   OnceCell<bool>,
     quantity_to_stake:             OnceCell<u64>,
+    daily_reward:                  OnceCell<f64>,
+    last_journal:                  OnceCell<serde_json::Value>,
     staked:                        bool,
     claimed:                       bool,
 }
@@ -134,6 +137,8 @@ impl Profile {
             can_stake_after_claim:         OnceCell::new(),
             needs_claim:                   OnceCell::new(),
             quantity_to_stake:             OnceCell::new(),
+            daily_reward:                  OnceCell::new(),
+            last_journal:                  OnceCell::new(),
             claimed:                       false,
             staked:                        false,
         }
@@ -738,6 +743,148 @@ impl Profile {
         })
     }
 
+    /// Fetch the last journal entry for the current executable related to a specific address.
+    ///
+    /// This function executes the `journalctl` command to retrieve the last log entry
+    /// associated with the given address and the running instance of the executable.
+    /// It returns the parsed JSON representation of the log entry.
+    pub fn last_journal(&self) -> Result<&serde_json::Value> {
+        self.last_journal.get_or_try_init(|| {
+            let address = self.address()?;
+
+            // Prepare the grep expression, escaping necessary characters
+            let grep_expr = format!(r#"{{.*"address"[[:space:]]*:[[:space:]]*"{}".*}}"#, address);
+
+            // Get the current executable path
+            let exe_path = env::current_exe()
+               .wrap_err("Failed to get the current executable path")?;
+
+            // Convert the path to a string
+            let exe_path_str = exe_path.to_string_lossy();
+            //let exe_path_str = "/usr/local/bin/nomic-tools".to_string();
+
+            // println!("{}", &exe_path_str);
+            // println!("{}", &grep_expr);
+
+            // Use the executable path with journalctl
+            let output = Command::new("journalctl")
+                .args(&[
+                    &format!("_EXE={}", exe_path_str),
+                    &format!("--grep={}", &grep_expr),
+                    "--output=cat",
+                    "--no-pager",
+                    "--reverse",
+                    "--lines=1",
+                ])
+                .output()
+                .wrap_err("Failed to execute journalctl command")?;
+
+            // Check if the command executed successfully and has output
+            if !output.status.success() {
+                return Err(eyre::eyre!("journalctl command failed with status: {}", output.status));
+            }
+
+            // Check if there's output
+            if output.stdout.is_empty() {
+                return Err(eyre::eyre!("No output from journalctl command"));
+            }
+
+            // Convert the output to a string and parse it as JSON
+            let output_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let json: Value = serde_json::from_str(&output_str)
+                .wrap_err("Failed to parse output as JSON")?;
+
+            Ok(json)
+        })
+    }
+
+    pub fn daily_reward_result(&self) -> Result<f64> {
+        self.daily_reward.get_or_try_init(|| {
+            // Fetch the last journal entry
+            let last_journal = self.last_journal()?;
+
+            // Extract and validate data from the journal
+            let last_total_staked = last_journal
+                .get("total_staked")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_staked' in journal"))?;
+
+            let last_total_liquid = last_journal
+                .get("total_liquid")
+                .and_then(|v| v.as_u64())
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_liquid' in journal"))?;
+
+            let last_timestamp_str = last_journal
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'timestamp' in journal"))?;
+
+            // Parse the last timestamp from string to DateTime
+            let last_timestamp = DateTime::parse_from_rfc3339(last_timestamp_str)
+                .map_err(|_| eyre::eyre!("Failed to parse 'timestamp' as RFC3339"))?
+                .timestamp();
+
+            // Extract current data
+            let current_total_staked = self.total_staked_result()?;
+            let current_total_liquid = self.total_liquid_result()?;
+            let current_timestamp = self.delegations_timestamp()?.timestamp();
+
+            // Check conditions and return descriptive errors if they fail
+            if last_total_staked != current_total_staked {
+                return Err(eyre::eyre!(
+                    "Total staked mismatch: last={}, current={}",
+                    last_total_staked,
+                    current_total_staked
+                ));
+            }
+            if last_total_liquid >= current_total_liquid {
+                return Err(eyre::eyre!(
+                    "No liquid increase: last={}, current={}",
+                    last_total_liquid,
+                    current_total_liquid
+                ));
+            }
+            if last_timestamp >= current_timestamp {
+                return Err(eyre::eyre!(
+                    "Invalid timestamp: last={}, current={}",
+                    last_timestamp,
+                    current_timestamp
+                ));
+            }
+
+            // Calculate the deltas
+            let reward_delta = current_total_liquid - last_total_liquid;
+            let time_delta = current_timestamp - last_timestamp;
+
+            // Calculate the daily reward
+            let daily_reward = (reward_delta as f64 / time_delta as f64 * 86400.0).round();
+
+            let mut config = self.config()?.clone();
+            config.set_daily_reward(daily_reward);
+
+
+            Ok(daily_reward)
+        }).cloned()
+    }
+
+    pub fn daily_reward(&self) -> f64 {
+        match self.daily_reward_result() {
+            Ok(v) => v,
+            Err(_e) => {
+                // eprintln!("Failed to calculate daily reward: {:?}", e); // Logging the error
+                0.0
+            }
+        }
+    }
+
+    pub fn set_daily_reward(&mut self) -> Result<()> {
+        let daily_reward = self.daily_reward_result()?;
+        let mut config = self.config()?.clone();
+        config.set_daily_reward(daily_reward);
+        self.config = OnceCell::from(config.clone());
+        Ok(())
+    }
+
     pub fn can_stake_without_claim(&self) -> &bool {
         self.can_stake_without_claim.get_or_init(|| {
             let factor    = *self.stake_factor();
@@ -844,6 +991,8 @@ impl Profile {
 
     pub fn nomic_claim(&mut self) -> eyre::Result<()> {
 
+        let _ = self.set_daily_reward();
+
         // Create and configure the Command for running "nomic claim"
         let mut cmd = Command::new(&*NOMIC);
         cmd.arg("claim");
@@ -877,6 +1026,8 @@ impl Profile {
         validator: Option<String>,
         quantity: Option<f64>,
     ) -> eyre::Result<()> {
+
+        let _ = self.set_daily_reward();
 
         let validator_address = match self.validator_address(validator.as_deref()) {
             Ok(address) => address,
@@ -1120,7 +1271,7 @@ impl Profile {
             "validator_staked_remainder":    self.validator_staked_remainder(),
             "can_stake_without_claim":       self.can_stake_without_claim(),
             "can_stake_after_claim":         self.can_stake_after_claim(),
-            "daily_reward":                  self.config_daily_reward(),
+            "daily_reward":                  self.daily_reward(),
             "needs_claim":                   self.needs_claim(),
             "quantity_to_stake":             self.quantity_to_stake(),
             "claimed":                       TaskStatus::from_bool(self.claimed).to_symbol(),
