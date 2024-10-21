@@ -1,8 +1,10 @@
 
+use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use crate::functions::validate_positive;
 use crate::functions::validate_ratio;
+use crate::log::tail_journalctl;
 use crate::nonce;
 use crate::privkey;
 use crate::profiles::CollectionOutputFormat;
@@ -13,7 +15,9 @@ use crate::validators;
 use eyre::Result;
 use fmt;
 use std::path::Path;
-use crate::log::tail_journalctl;
+
+
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -21,6 +25,19 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 }
+
+#[derive(Args, Debug)]
+struct StakedGroup {
+    #[arg(long)]
+    staked: bool,
+
+    #[arg(long)]
+    not_staked: bool,
+}
+
+
+
+
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -201,7 +218,16 @@ pub enum Commands {
     },
 
     #[command(about = "Log", visible_alias = "lo")]
-    Log,
+    Log {
+        /// Staked group options
+        #[arg(group = "stake_group")]
+        #[arg(long)]
+        staked: bool,
+
+        #[arg(group = "stake_group")]
+        #[arg(long)]
+        not_staked: bool,
+    },
 
     #[command(about = "Run Nomic commands as Profile", visible_alias = "n", aliases = ["no", "nom", "nomi"])]
     Nomic {
@@ -374,8 +400,14 @@ impl Cli {
                 Ok(println!("{:#?}", journal))
             }
 
-            Commands::Log => {
-                tail_journalctl()
+            Commands::Log { staked, not_staked } => {
+                if *staked {
+                    tail_journalctl(Some(true))
+                } else if *not_staked {
+                    tail_journalctl(Some(false))
+                } else {
+                    tail_journalctl(None)
+                }
                 //Ok(())
             }
 
