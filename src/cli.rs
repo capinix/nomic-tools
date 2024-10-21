@@ -13,7 +13,7 @@ use crate::validators;
 use eyre::Result;
 use fmt;
 use std::path::Path;
-
+use crate::log::tail_journalctl;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -166,8 +166,7 @@ pub enum Commands {
 
     Fmt(fmt::cli::Cli),
 
-    #[command( about = "Import Private Key", visible_alias = "im",
-        aliases = ["imp", "impo", "impor"])]
+    #[command( about = "Import Private Key", visible_alias = "im", aliases = ["imp", "impo", "impor"])]
     Import {
         /// Profile
         #[arg(required = true)]
@@ -182,8 +181,7 @@ pub enum Commands {
         file: Option<String>,
     },
 
-    #[command(about = "Profile Journal", visible_alias = "jo",
-        aliases = ["jou", "jour", "journ", "journa"])]
+    #[command(about = "Profile Journal", visible_alias = "jo", aliases = ["jou", "jour", "journ", "journa"])]
     Journal {
         /// Profile
         #[arg()]
@@ -201,6 +199,9 @@ pub enum Commands {
         #[arg(required = true)]
         profile: String,
     },
+
+    #[command(about = "Log", visible_alias = "lo")]
+    Log,
 
     #[command(about = "Run Nomic commands as Profile", visible_alias = "n", aliases = ["no", "nom", "nomi"])]
     Nomic {
@@ -371,6 +372,11 @@ impl Cli {
                 let profile = collection.profile_by_name_or_address_or_home_or_default(Some(profile))?;
                 let journal = profile.last_journal()?;       // Now we can safely use it
                 Ok(println!("{:#?}", journal))
+            }
+
+            Commands::Log => {
+                tail_journalctl()
+                //Ok(())
             }
 
             Commands::Nomic { profile, args } => {

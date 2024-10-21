@@ -316,7 +316,13 @@ impl ProfileCollection {
             .nomic_send(self.validate_address(destination)?, quantity)
     }
 
+    pub fn sort_by_name(&mut self) {
+        self.profiles.sort_by(|a, b| a.name().cmp(&b.name()));
+    }
+
+
     pub fn auto_delegate(&mut self) -> Result<()> {
+        self.sort_by_name();
         self.profiles.iter_mut().for_each(|profile| {
             // Call nomic_delegate and ignore any errors
             let _ = profile.nomic_delegate(None, None);

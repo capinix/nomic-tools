@@ -10,6 +10,7 @@ use clap::ValueEnum;
 use crate::functions::prompt_user;
 use crate::functions::is_valid_nomic_address;
 use crate::functions::TaskStatus;
+use crate::functions::json_table;
 use crate::globals::PROFILES_DIR;
 use crate::privkey::PrivKey;
 use crate::nonce;
@@ -1281,23 +1282,6 @@ impl Profile {
         Ok(json_output)
     }
 
-    fn print_aligned_json(&self) -> eyre::Result<()> {
-        // Convert JSON value to a HashMap for easier handling
-        let json = self.json()?;
-        let map = json.as_object().unwrap();
-
-        // Calculate the maximum length of the keys
-        let max_key_length = map.keys().map(|k| k.len()).max().unwrap_or(0);
-
-        // Print the JSON with aligned values
-        for (key, value) in map {
-            // Align the key with padding
-            let padded_key = format!("{:width$}", key, width = max_key_length);
-            println!("{}: {}", padded_key, value);
-        }
-        Ok(())
-    }
-
 }
 
 /// Enum to represent output formats
@@ -1353,7 +1337,7 @@ impl Profile {
                 println!("{}", pretty_json);
             },
             OutputFormat::Table => {
-                self.print_aligned_json()?;
+                json_table(self.json()?)?.printstd();
             },
         }
 

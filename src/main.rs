@@ -2,6 +2,7 @@ mod cli;
 mod functions;
 mod privkey;
 mod nonce;
+mod log;
 mod profiles;
 mod globals;
 mod validators;

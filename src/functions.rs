@@ -6,6 +6,32 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use crate::globals::PROFILES_DIR;
+use fmt::table::{Table, TableBuilder};
+use serde_json::Value;
+
+pub fn json_table(json: Value) -> Result<Table> {
+    if let Value::Object(map) = json {
+        let mut output = String::new();
+        // Construct the header
+        output.push_str(&format!("{}\x1C{}\n", "Key", "Value"));
+
+        for (key, value) in map.iter() {
+            output.push_str(&format!("{}\x1C{}\n", key, value.to_string().trim()));
+        }
+        // Build and return the Table
+        Ok(TableBuilder::new(Some(output))
+            .set_ifs("\x1C".to_string())
+            .set_ofs("  ".to_string())
+            .set_header_index(1)
+            .set_frame(fmt::text::Frame::NONE)
+            .set_alignment(fmt::text::Alignment::LEFT)
+            .set_column_width_limits_index(80)
+            .build()
+            .clone())
+    } else {
+        Err(eyre::eyre!("Expected JSON object.")) // Return an eyre error
+    }
+}
 
 
 
