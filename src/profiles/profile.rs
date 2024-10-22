@@ -16,6 +16,7 @@ use crate::privkey::PrivKey;
 use crate::nonce;
 use crate::profiles::Balance;
 use crate::profiles::Config;
+use crate::profiles::Delegation;
 use crate::profiles::Delegations;
 use crate::profiles::ProfileCollection;
 use crate::validators::Validator;
@@ -43,38 +44,20 @@ pub struct Profile {
     timestamp:                     DateTime<Utc>,
     name:                          String,
     home:                          PathBuf,
-    key:                           OnceCell<PrivKey>,
-    config:                        OnceCell<Config>,
-    balances:                      OnceCell<Balance>,
-    delegations:                   OnceCell<Delegations>,
-    validators:                    OnceCell<ValidatorCollection>,
-    validator:                     OnceCell<Validator>,
     config_file:                   OnceCell<PathBuf>,
     wallet_path:                   OnceCell<PathBuf>,
     nonce_file:                    OnceCell<PathBuf>,
     key_file:                      OnceCell<PathBuf>,
-    address:                       OnceCell<String>,
-    export:                        OnceCell<String>,
-    balance:                       OnceCell<u64>,
-    delegations_timestamp:         OnceCell<DateTime<Utc>>,
-    total_staked:                  OnceCell<u64>,
-    total_liquid:                  OnceCell<u64>,
-    config_minimum_balance:        OnceCell<u64>,
-    config_minimum_balance_ratio:  OnceCell<f64>,
-    config_minimum_stake:          OnceCell<u64>,
-    config_adjust_minimum_stake:   OnceCell<bool>,
-    config_minimum_stake_rounding: OnceCell<u64>,
-    config_daily_reward:           OnceCell<f64>,
-    config_validator_address:      OnceCell<String>,
-    config_validator_moniker:      OnceCell<String>,
-    moniker:                       OnceCell<String>,
-    voting_power:                  OnceCell<u64>,
-    rank:                          OnceCell<u64>,
-    validator_staked:              OnceCell<u64>,
+    key:                           OnceCell<PrivKey>,
+    config:                        OnceCell<Config>,
+    balances:                      OnceCell<Balance>,
+    validators:                    OnceCell<ValidatorCollection>,
+    validator:                     OnceCell<Validator>,
+    delegations:                   OnceCell<Delegations>,
+    delegation:                    OnceCell<Delegation>,
     minimum_balance:               OnceCell<u64>,
-    available_without_claim:       OnceCell<u64>,
+    minimum_stake:                 OnceCell<u64>,
     available_after_claim:         OnceCell<u64>,
-    stake_factor:                  OnceCell<u64>,
     validator_staked_remainder:    OnceCell<u64>,
     can_stake_without_claim:       OnceCell<bool>,
     can_stake_after_claim:         OnceCell<bool>,
@@ -101,38 +84,20 @@ impl Profile {
             timestamp,
             name,
             home,
-            validators:                    initialize_validators(validators),
-            key:                           OnceCell::new(),
-            config:                        OnceCell::new(),
-            balances:                      OnceCell::new(),
-            delegations:                   OnceCell::new(),
-            validator:                     OnceCell::new(),
             config_file:                   OnceCell::new(),
             wallet_path:                   OnceCell::new(),
             nonce_file:                    OnceCell::new(),
             key_file:                      OnceCell::new(),
-            address:                       OnceCell::new(),
-            export:                        OnceCell::new(),
-            balance:                       OnceCell::new(),
-            delegations_timestamp:         OnceCell::new(),
-            total_staked:                  OnceCell::new(),
-            total_liquid:                  OnceCell::new(),
-            config_minimum_balance:        OnceCell::new(),
-            config_minimum_balance_ratio:  OnceCell::new(),
-            config_minimum_stake:          OnceCell::new(),
-            config_adjust_minimum_stake:   OnceCell::new(),
-            config_minimum_stake_rounding: OnceCell::new(),
-            config_daily_reward:           OnceCell::new(),
-            config_validator_address:      OnceCell::new(),
-            config_validator_moniker:      OnceCell::new(),
-            moniker:                       OnceCell::new(),
-            voting_power:                  OnceCell::new(),
-            rank:                          OnceCell::new(),
-            validator_staked:              OnceCell::new(),
+            key:                           OnceCell::new(),
+            config:                        OnceCell::new(),
+            balances:                      OnceCell::new(),
+            validators:                    initialize_validators(validators),
+            validator:                     OnceCell::new(),
+            delegations:                   OnceCell::new(),
+            delegation:                    OnceCell::new(),
             minimum_balance:               OnceCell::new(),
-            available_without_claim:       OnceCell::new(),
+            minimum_stake:                 OnceCell::new(),
             available_after_claim:         OnceCell::new(),
-            stake_factor:                  OnceCell::new(),
             validator_staked_remainder:    OnceCell::new(),
             can_stake_without_claim:       OnceCell::new(),
             can_stake_after_claim:         OnceCell::new(),
@@ -153,7 +118,10 @@ impl Profile {
 
         if home_config.exists() {
             fs::copy(&home_config, &profile_config)
-                .with_context(|| format!("Failed to copy config file from {:?} to {:?}", home_config, profile_config))?;
+                .with_context(|| format!(
+                        "Failed to copy config file from {:?} to {:?}", 
+                        home_config, profile_config
+                ))?;
         }
 
         // Copy home/.orga-wallet to profiles_dir/name/.orga-wallet
@@ -335,26 +303,11 @@ impl Profile {
         })
     }
 
-    /// Get the address
-    /// Operation by cosmrs cache with OnceCell
-    /// cached in OnceCell as self.key.address() -> Result<&str>
-    /// use self.key.address() to propagate errors
-    /// this for display purposes
-    pub fn address(&self) -> eyre::Result<&str> {
-        self.address.get_or_try_init(|| {
-            Ok(self.key()?.address()?.to_string())
-        }).map(|s| s.as_str())
-    }
-
-    /// Get the export
-    /// Operation by cosmrs cache with OnceCell
-    /// cached in OnceCell as self.key.export() -> Result<&str>
-    /// use self.key.export() to propagate errors
-    /// this for display purposes
-    pub fn export(&self) -> eyre::Result<&str> {
-        self.export.get_or_try_init(|| {
-            Ok(self.key()?.export()?.to_string())
-        }).map(|s| s.as_str())
+    /// self.key()?.address()? -> Result<&str>
+    pub fn address(&self) -> &str {
+        self.key()
+            .and_then(|key| key.address())
+            .unwrap_or("N/A")
     }
 
     /// Retrieves the balance, initializing it if necessary.
@@ -419,181 +372,135 @@ impl Profile {
         nonce::export(Some(&nonce_file), None)
     }
 
-    /// balance -> u64
-    /// self.balances()?.nom ->Result<u64>
-    fn balance_result(&self) -> Result<&u64> {
-            Ok(&self.balances()?.nom)
-    }
-    pub fn balance(&self) -> &u64 {
-        self.balance.get_or_init(|| {
-            *self.balance_result().unwrap_or(&ZERO)
-        })
+    /// self.balances()?.nom ->Result<&u64>
+    pub fn balance(&self) -> u64 {
+        self.balances()
+            .map(|balances| balances.nom)
+            .unwrap_or(0)
     }
 
-    /// delegations_timestamp -> DateTime<Utc>
     /// self.delegations()?.timestamp -> Result<DateTime<Utc>>
-    pub fn delegations_timestamp(&self) -> Result<&DateTime<Utc>> {
-        self.delegations_timestamp.get_or_try_init(|| {
-            Ok(self.delegations()?.timestamp)
-        })
+    pub fn delegations_timestamp_rfc3339(&self) -> String {
+        self.delegations()
+            .map(|delegations| delegations.timestamp.to_rfc3339())
+            .unwrap_or("N/A".to_string())
     }
 
-    /// total_staked -> u64
     /// self.delegations()?.total().staked -> Result<u64>
-    fn total_staked_result(&self) -> Result<u64> {
-        Ok(self.delegations()?.total().staked)
-    }
-    pub fn total_staked(&self) -> &u64 {
-        self.total_staked.get_or_init(|| {
-            self.total_staked_result().unwrap_or(ZERO)
-        })
+    pub fn total_staked(&self) -> u64 {
+        self.delegations()
+            .map(|delegations| delegations.total().staked)
+            .unwrap_or(0)
     }
 
-    /// total_liquid -> u64
     /// self.delegations()?.total().liquid -> Result<u64>
-    fn total_liquid_result(&self) -> Result<u64> {
-        Ok(self.delegations()?.total().liquid)
-    }
-    pub fn total_liquid(&self) -> &u64 {
-        self.total_liquid.get_or_init(|| {
-            self.total_liquid_result().unwrap_or(ZERO)
-        })
+    pub fn total_liquid(&self) -> u64 {
+        self.delegations()
+            .map(|delegations| delegations.total().liquid)
+            .unwrap_or(0)
     }
 
-    /// config_minimum_balance -> u64
-    /// self.config()?.minimum_balance -> Result<u64>
-    pub fn config_minimum_balance_result(&self) -> Result<u64> {
-        Ok(*self.config()?.minimum_balance())
-    }
-    pub fn config_minimum_balance(&self) -> &u64 {
-        self.config_minimum_balance.get_or_init(|| {
-            self.config_minimum_balance_result().unwrap_or(100_000)
-        })
+    pub fn get_minimum_balance(&self) -> u64 {
+        self.config()
+            .map(|config| *config.minimum_balance())
+            .unwrap_or(100_000)
     }
 
-    /// config_minimum_balance_ratio -> f64
-    /// self.config()?.minimum_balance_ratio -> Result<f64>
-    pub fn config_minimum_balance_ratio_result(&self) -> Result<f64> {
-        Ok(*self.config()?.minimum_balance_ratio())
-    }
-    pub fn config_minimum_balance_ratio(&self) -> &f64 {
-        self.config_minimum_balance_ratio.get_or_init(|| {
-            self.config_minimum_balance_ratio_result().unwrap_or(0.001)
-        })
+    pub fn config_minimum_balance_ratio(&self) -> f64 {
+        self.config()
+            .map(|config| *config.minimum_balance_ratio())
+            .unwrap_or(0.001)
     }
 
-    /// config_minimum_stake -> u64
-    /// self.config()?.minimum_stake -> Result<u64>
-    pub fn config_minimum_stake_result(&self) -> Result<u64> {
-        Ok(*self.config()?.minimum_stake())
-    }
-    pub fn config_minimum_stake(&self) -> &u64 {
-        self.config_minimum_stake.get_or_init(|| {
-            self.config_minimum_stake_result().unwrap_or(1_000_000)
-        })
+    pub fn get_minimum_stake(&self) -> u64 {
+        self.config()
+            .map(|config| *config.minimum_stake())
+            .unwrap_or(1_000_000)
     }
 
-    /// config_adjust_minimum_stake -> bool
-    /// self.config()?.adjust_minimum_stake -> Result<bool>
-    pub fn config_adjust_minimum_stake_result(&self) -> Result<bool> {
-        Ok(*self.config()?.adjust_minimum_stake())
-    }
-    pub fn config_adjust_minimum_stake(&self) -> &bool {
-        self.config_adjust_minimum_stake.get_or_init(|| {
-            self.config_adjust_minimum_stake_result().unwrap_or(false)
-        })
+    pub fn get_adjust_minimum_stake(&self) -> bool {
+        self.config()
+            .map(|config| *config.adjust_minimum_stake())
+            .unwrap_or(false)
     }
 
-    /// config_minimum_stake_rounding -> u64
-    /// self.config()?.minimum_stake_rounding -> Result<u64>
-    pub fn config_minimum_stake_rounding_result(&self) -> Result<u64> {
-        Ok(*self.config()?.minimum_stake_rounding())
-    }
-    pub fn config_minimum_stake_rounding(&self) -> &u64 {
-        self.config_minimum_stake_rounding.get_or_init(|| {
-            self.config_minimum_stake_rounding_result().unwrap_or(10_000)
-        })
+    pub fn get_minimum_stake_rounding(&self) -> u64 {
+        self.config()
+            .map(|config| *config.minimum_stake_rounding())
+            .unwrap_or(10_000)
     }
 
-    /// config_daily_reward -> f64
-    /// self.config()?.daily_reward -> Result<f64>
-    pub fn config_daily_reward_result(&self) -> Result<f64> {
-        Ok(*self.config()?.daily_reward())
-    }
-    pub fn config_daily_reward(&self) -> &f64 {
-        self.config_daily_reward.get_or_init(|| {
-            self.config_daily_reward_result().unwrap_or(0.0)
-        })
+    /// self.config()?.daily_reward() -> Result<&f64>
+    pub fn config_daily_reward(&self) -> f64 {
+        self.config()
+            .map(|config| *config.daily_reward())
+            .unwrap_or(0.0)
     }
 
-    /// config_validator_address -> &str
     /// self.config()?.active_validator()?.address -> Result<&str>
-    fn config_validator_address_result(&self) -> Result<&str> {
-        Ok(&self.config()?.active_validator()?.address)
-    }
     pub fn config_validator_address(&self) -> &str {
-        self.config_validator_address.get_or_init(|| {
-            self.config_validator_address_result().unwrap_or("").to_string()
-        })
+        self.config()
+            .and_then(|config| config.active_validator())
+            .map(|validator| validator.address.as_str())
+            .unwrap_or("N/A")
     }
 
-    /// config_moniker -> &str
-    /// self.config()?.active_validator()?.moniker -> Result<&str>
-    pub fn config_validator_moniker_result(&self) -> Result<&str> {
-        Ok(&self.config()?.active_validator()?.moniker)
-    }
     pub fn config_validator_moniker(&self) -> &str {
-        self.config_validator_moniker.get_or_init(|| {
-            self.config_validator_moniker_result().unwrap_or("").to_string()
-        })
+        self.config()
+            .and_then(|config| config.active_validator())
+            .map(|validator| validator.moniker.as_str())
+            .unwrap_or("N/A")
     }
 
-    /// self.validators()?.validator(self.config_validator_address())? -> Result<Validator>
+    /// self.validators()?.validator(&self.config()?.active_validator()?.address)? -> Result<Validator>
+    /// this is a search let's OnceCell it
     pub fn validator(&self) -> eyre::Result<&Validator> {
         self.validator.get_or_try_init(|| {
-            Ok(self.validators()?.validator(self.config_validator_address())?.clone())
+            Ok(
+                self.validators()?.validator(
+                    &self.config()?.active_validator()?.address
+                )?.clone()
+            )
         })
     }
 
-    /// Retrieves the moniker of the validator as a String.
-    pub fn moniker_result(&self) -> Result<&str> {
-            Ok(&self.validator()?.moniker())
-    }
+    /// lookup active validators real moniker with default on error
     pub fn moniker(&self) -> &str {
-        self.moniker.get_or_init(|| {
-            self.moniker_result().unwrap_or("").to_string()
+        self.validator()
+            .map(|validator| validator.moniker())
+            .unwrap_or("N/A")
+    }
+
+    /// lookup active validators voting power default to 0, on error
+    pub fn voting_power(&self) -> u64 {
+        self.validator()
+            .map(|validator| validator.voting_power())
+            .unwrap_or(0)
+    }
+
+    /// lookup active validators rank default to 0, on error
+    pub fn rank(&self) -> u64 {
+        self.validator()
+            .map(|validator| validator.rank())
+            .unwrap_or(0)
+    }
+
+    /// self.delegations()?.find(self.config()?.active_validator()?.address()) -> Result<Delegation>
+    pub fn delegation(&self) -> Result<&Delegation> {
+        self.delegation.get_or_try_init(|| {
+            Ok(
+                self.delegations()?.find(
+                    &self.config()?.active_validator()?.address
+                )?.clone()
+            )
         })
     }
 
-    /// Retrieves the voting_power of the validator as a String.
-    pub fn voting_power_result(&self) -> Result<u64> {
-        Ok(self.validator()?.voting_power())
-    }
-    pub fn voting_power(&self) -> &u64 {
-        self.voting_power.get_or_init(|| {
-            self.voting_power_result().unwrap_or(ZERO)
-        })
-    }
-
-    /// rank -> u64
-    pub fn rank_result(&self) -> Result<u64> {
-        Ok(self.validator()?.rank())
-    }
-    pub fn rank(&self) -> &u64 {
-        self.rank.get_or_init(|| {
-            self.rank_result().unwrap_or(ZERO)
-        })
-    }
-
-    /// validator_staked -> u64
-    /// self.delegations()?.find(self.config_validator_address()?)?.staked -> Result<u64>
-    pub fn validator_staked_result(&self) -> Result<&u64> {
-        Ok(&self.delegations()?.find(self.config_validator_address())?.staked)
-    }
-    pub fn validator_staked(&self) -> &u64 {
-        self.validator_staked.get_or_init(|| {
-            *self.validator_staked_result().unwrap_or(&ZERO)
-        })
+    /// self.delegations()?.find(self.config()?.active_validator()?.address()).staked -> Result<u64>
+    pub fn validator_staked(&self) -> u64 {
+        self.delegation()
+            .map(|delegation| delegation.staked)
+            .unwrap_or(0)
     }
 
     pub fn claim_fee(&self) -> u64 {
@@ -609,36 +516,39 @@ impl Profile {
     /// This function attempts to resolve a validator address by searching through:
     /// 1. A provided search string, which could be a validator moniker or an address.
     /// 2. The config file, assuming the last validator listed as the active one if no search string is provided.
-    /// 3. Profiles or other address sources, falling back to checking if the search string is directly a validator or address.
-    /// 
+    /// 3. Profiles or other address sources, falling back to checking 
+    ///    if the search string is directly a validator or address.
+    ///
     /// # Parameters
-    /// 
+    ///
     /// - `search_str`: An optional search string, which can be a validator moniker or address.
     ///     - If `Some(search_str)` is provided, it will attempt to resolve the address based on the input.
-    ///     - If `None`, the function defaults to using the last validator listed in the config (assumed to be the active validator).
-    /// 
+    ///     - If `None`, the function defaults to using the last validator 
+    ///           listed in the config (assumed to be the active validator).
+    ///
     /// # Returns
-    /// 
+    ///
     /// - Returns the resolved validator address as a `Result<&str>`.
     ///     - On success, the address of the validator is returned.
     ///     - On failure, an error is returned if no valid validator can be found.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// - Returns an error if the search string does not resolve to a valid validator address.
     /// - Propagates errors if the config, profile, or validators cannot be accessed or contain invalid data.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```rust
     /// // Retrieve the validator address based on a specific search string
     /// let address = instance.validator_address(Some("validator_moniker"))?;
-    /// 
+    ///
     /// // Retrieve the active validator's address from the config when no search string is provided
     /// let address = instance.validator_address(None)?;
     /// ```
-    /// 
-    /// This method handles both cases where a search string is provided and where the active validator is used by default.
+    ///
+    /// This method handles both cases where a search string is provided and where
+    ///  the active validator is used by default.
     fn validator_address(&self, search_str: Option<&str>) -> eyre::Result<String> {
         // Handle the optional search string
         let search = match search_str {
@@ -670,78 +580,58 @@ impl Profile {
         Ok(address)
     }
 
+    pub fn minimum_balance_result(&self) -> Result<&u64> {
+        self.minimum_balance.get_or_try_init(|| {
+            let default = 100_000;
 
-    pub fn minimum_balance_result(&self) -> Result<u64> {
-        // Calculate the minimum required balance based on the ratio
-        let calculated_min = (
-            self.total_staked_result()? as f64 *
-            self.config_minimum_balance_ratio_result()?
-        ).floor() as u64;
-        let min_bal = self.config_minimum_balance_result()?;
+            // Attempt to load and clone config.
+            let mut config = self.config()?.clone();
 
-        // Return the maximum of the calculated minimum and configured minimum
-        Ok(std::cmp::max(min_bal, calculated_min))
-    }
+            // Calculate the minimum balance or fall back to default in case of delegation error.
+            let calculated_min = match self.delegations() {
+                Ok(d) => (d.total().staked as f64 * config.minimum_balance_ratio()).floor() as u64,
+                Err(_) => default,
+            };
 
-    pub fn minimum_balance(&self) -> &u64 {
-        self.minimum_balance.get_or_init(|| {
-            self.minimum_balance_result().unwrap_or(100_000)
-        })
+            // Update config if the calculated minimum is larger than the current config minimum.
+            if calculated_min > *config.minimum_balance() {
+                config.set_minimum_balance(calculated_min);
+                config.set_minimum_stake(*self.minimum_stake());
+                config.set_daily_reward(self.daily_reward());
+                config.save(self.config_file()?, true)?; // Save updated config
+            }
 
-    }
-
-    fn available_without_claim_result(&self) -> Result<u64> {
-        // Calculate available amount before claim
-        Ok(self.balance_result()?
-            .saturating_sub(self.minimum_balance_result()?)
-            .saturating_sub(self.stake_fee())
-            .max(0)
-        )
-    }
-    pub fn available_without_claim(&self) -> &u64 {
-        self.available_without_claim.get_or_init(|| {
-            self.available_without_claim_result().unwrap_or(ZERO)
+            // Return the greater of calculated_min and the current config minimum.
+            Ok(std::cmp::max(calculated_min, *config.minimum_balance()))
         })
     }
 
-    pub fn available_after_claim_result(&self) -> Result<u64> {
-        // Calculate available amount after the claim
-        Ok(self.balance_result()?
-            .saturating_add(self.total_liquid_result()?)
-            .saturating_sub(self.minimum_balance_result()?)
-            .saturating_sub(self.claim_fee())
-            .saturating_sub(self.stake_fee())
-            .max(0)
-        )
-    }
-    pub fn available_after_claim(&self) -> &u64 {
-        self.available_after_claim.get_or_init(|| {
-            self.available_after_claim_result().unwrap_or(0)
-        })
+    pub fn minimum_balance(&self) -> u64 {
+        *self.minimum_balance_result().unwrap_or(&100_000)
     }
 
-    fn stake_factor_result(&self) -> Result<u64> {
-        // Calculate the stake factor based on the rounding logic
-        let stake = self.config_minimum_stake_result()?;
-        let round = self.config_minimum_stake_rounding_result()?;
+    pub fn set_minimum_balance(&mut self, balance: Option<u64>) -> Result<()> {
+        let config = self.config()?;
+        println!("minimum balance: {}", self.minimum_balance());
 
-        if round == 0 || stake < round {
-            Ok(stake)
-        } else {
-            Ok(stake.saturating_div(round).saturating_mul(round))
-        }
-    }
+        // Determine the balance to set (either provided or calculated)
+        let new_balance = match balance {
+            Some(bal) => bal,
+            None => {
+                let min_balance = self.minimum_balance();
+                if min_balance <= *config.minimum_balance() {
+                    return Ok(()); // No need to update if the calculated balance is not higher
+                }
+                min_balance
+            }
+        };
+        println!("minimum balance: {}", &new_balance);
+        // Clone and update the configuration
+        let mut config_mut = config.clone();
+        config_mut.set_minimum_balance(new_balance);
+        self.config = OnceCell::from(config_mut);
 
-    pub fn stake_factor(&self) -> &u64 {
-        self.stake_factor.get_or_init(|| {
-            self.stake_factor_result().unwrap_or(10_000)
-        })
-    }
-
-    pub fn validator_staked_remainder(&self) -> &u64 {
-        self.validator_staked_remainder.get_or_init(|| {
-            self.validator_staked() % *self.stake_factor()
-        })
+        Ok(())
     }
 
     /// Fetch the last journal entry for the current executable related to a specific address.
@@ -751,7 +641,7 @@ impl Profile {
     /// It returns the parsed JSON representation of the log entry.
     pub fn last_journal(&self) -> Result<&serde_json::Value> {
         self.last_journal.get_or_try_init(|| {
-            let address = self.address()?;
+            let address = self.key()?.address()?;
 
             // Prepare the grep expression, escaping necessary characters
             let grep_expr = format!(r#"{{.*"address"[[:space:]]*:[[:space:]]*"{}".*}}"#, address);
@@ -826,9 +716,9 @@ impl Profile {
                 .timestamp();
 
             // Extract current data
-            let current_total_staked = self.total_staked_result()?;
-            let current_total_liquid = self.total_liquid_result()?;
-            let current_timestamp = self.delegations_timestamp()?.timestamp();
+            let current_total_staked = self.delegations()?.total().staked;
+            let current_total_liquid = self.delegations()?.total().liquid;
+            let current_timestamp = self.delegations()?.timestamp.timestamp();
 
             // Check conditions and return descriptive errors if they fail
             if last_total_staked != current_total_staked {
@@ -861,35 +751,92 @@ impl Profile {
             let daily_reward = (reward_delta as f64 / time_delta as f64 * 86400.0).round();
 
             let mut config = self.config()?.clone();
+            config.set_minimum_balance(self.minimum_balance());
+            config.set_minimum_stake(*self.minimum_stake());
             config.set_daily_reward(daily_reward);
-
+            config.save(self.config_file()?, true)?; // Save updated config
 
             Ok(daily_reward)
         }).cloned()
     }
 
     pub fn daily_reward(&self) -> f64 {
-        match self.daily_reward_result() {
-            Ok(v) => v,
-            Err(_e) => {
-                // eprintln!("Failed to calculate daily reward: {:?}", e); // Logging the error
-                0.0
-            }
-        }
+        self.daily_reward_result().unwrap_or(0.0)
     }
 
-    pub fn set_daily_reward(&mut self) -> Result<()> {
-        let daily_reward = self.daily_reward_result()?;
-        let mut config = self.config()?.clone();
-        config.set_daily_reward(daily_reward);
-        self.config = OnceCell::from(config.clone());
-        Ok(())
+    pub fn minimum_stake(&self) -> &u64 {
+        self.minimum_stake.get_or_init(|| {
+            // Get the configured minimum stake
+            let config_min = self.get_minimum_stake();
+            let rounding = self.get_minimum_stake_rounding();
+
+            // Return the configured minimum stake if adjustment is not required
+            if !self.get_adjust_minimum_stake() || rounding == 0 {
+                return config_min;
+            }
+
+            // Get daily reward and convert to u64 if necessary (assuming daily_reward() returns a compatible type)
+            let daily_reward = self.daily_reward() as u64;
+
+            // Calculate the adjusted minimum stake based on the rounding
+            let min = daily_reward - (daily_reward % rounding);
+
+            // If the adjusted minimum is less than the stake fee, return the configured minimum
+            if min < self.stake_fee() {
+                return config_min;
+            }
+
+            let mut config = match self.config() {
+                Ok(c) => c.clone(),
+                Err(_) => return min, // Ignore error and return min
+            };
+
+            config.set_minimum_balance(self.minimum_balance());
+            config.set_minimum_stake(min);
+            config.set_daily_reward(self.daily_reward());
+
+            let config_file = match self.config_file() {
+                Ok(c) => c,
+                Err(_) => return min, // Ignore error and return min
+            };
+
+            if let Err(_) = config.save(config_file, true) {
+                // Ignore the save error and return min
+                return min;
+            }
+
+            // Return the calculated minimum stake
+            min
+
+        })
+    }
+
+    pub fn available_after_claim_result(&self) -> Result<&u64> {
+        self.available_after_claim.get_or_try_init(|| {
+            // Calculate available amount after the claim
+            Ok(self.balances()?.nom
+                .saturating_add(self.delegations()?.total().liquid)
+                .saturating_sub(self.minimum_balance())
+                .saturating_sub(self.claim_fee())
+                .saturating_sub(self.stake_fee())
+                .max(0)
+            )
+        })
+    }
+    pub fn available_after_claim(&self) -> u64 {
+        *self.available_after_claim_result().unwrap_or(&0)
+    }
+
+    pub fn validator_staked_remainder(&self) -> &u64 {
+        self.validator_staked_remainder.get_or_init(|| {
+            self.validator_staked() % *self.minimum_stake()
+        })
     }
 
     pub fn can_stake_without_claim(&self) -> &bool {
         self.can_stake_without_claim.get_or_init(|| {
-            let factor    = *self.stake_factor();
-            let available = *self.available_without_claim();
+            let factor    = *self.minimum_stake();
+            let available = self.balance();
             let remainder = *self.validator_staked_remainder();
 
             // Determine if staking can occur without needing to claim
@@ -903,10 +850,10 @@ impl Profile {
 
     pub fn can_stake_after_claim(&self) -> &bool {
         self.can_stake_after_claim.get_or_init(|| {
-        let factor    = *self.stake_factor();
-        let available = *self.available_after_claim();
+        let factor    = *self.minimum_stake();
+        let available = self.available_after_claim();
         let remainder = *self.validator_staked_remainder();
-        let liquid    = *self.total_liquid();
+        let liquid    = self.total_liquid();
         let claim_fee = self.claim_fee();
 
         (liquid > claim_fee)
@@ -927,9 +874,9 @@ impl Profile {
         self.quantity_to_stake.get_or_init(|| {
             let can_stake_without_claim = *self.can_stake_without_claim();
             let can_stake_after_claim = *self.can_stake_after_claim();
-            let available_without_claim = *self.available_without_claim();
-            let available_after_claim = *self.available_after_claim();
-            let stake_factor = *self.stake_factor();
+            let available_without_claim = self.balance();
+            let available_after_claim = self.available_after_claim();
+            let stake_factor = *self.minimum_stake();
             let validator_staked_remainder = *self.validator_staked_remainder();
 
             // Determine the available amount to stake based on conditions
@@ -973,7 +920,7 @@ impl std::fmt::Debug for Profile {
         write!(
             f,
             "Profile {{ address: {}, name: {} }}",
-            self.address().map_err(|_| std::fmt::Error)?,
+            self.address(),
             self.name()
         )
     }
@@ -981,18 +928,13 @@ impl std::fmt::Debug for Profile {
 
 impl PartialEq for Profile {
     fn eq(&self, other: &Self) -> bool {
-        match (self.address(), other.address()) {
-            (Ok(addr1), Ok(addr2)) => addr1 == addr2, // Both addresses are OK, compare them
-            _ => false, // If either address returns an error, they are not equal
-        }
+        self.address() == other.address()
     }
 }
 
 impl Profile {
 
     pub fn nomic_claim(&mut self) -> eyre::Result<()> {
-
-        let _ = self.set_daily_reward();
 
         // Create and configure the Command for running "nomic claim"
         let mut cmd = Command::new(&*NOMIC);
@@ -1028,8 +970,6 @@ impl Profile {
         quantity: Option<f64>,
     ) -> eyre::Result<()> {
 
-        let _ = self.set_daily_reward();
-
         let validator_address = match self.validator_address(validator.as_deref()) {
             Ok(address) => address,
             Err(e) => {
@@ -1038,11 +978,9 @@ impl Profile {
             }
         };
 
-        let calc_qty = self.quantity_to_stake();
-
         let quantity = match quantity {
             Some(q) => ( q * 1_000_000.0 ) as u64,
-            None    => *calc_qty,
+            None    => *self.quantity_to_stake(),
         };
 
         if quantity <= 0 {
@@ -1050,14 +988,14 @@ impl Profile {
             return Err(eyre!("Quantity to stake must be greater than 0."));
         }
 
-        if quantity > *self.available_without_claim() &&
-           quantity > *self.available_after_claim()
+        if quantity > self.balance() &&
+           quantity > self.available_after_claim()
         {
             self.print(Some(OutputFormat::Json))?;
             return Err(eyre!("Not enough balance to stake that quantity."));
         }
 
-        if quantity > *self.available_without_claim() {
+        if quantity > self.balance() {
             if let Err(e) = self.nomic_claim() {
                 self.print(Some(OutputFormat::Json))?;
                 return Err(eyre!("Failed to claim: {:?}", e));
@@ -1233,29 +1171,29 @@ impl Profile {
 //  }
 
 }
-    pub fn result_to_json_string<T, E>(result: Result<T, E>) -> String
-    where
-        T: ToString,
-        E: ToString,
-    {
-        result.map(|value| value.to_string())
-              .unwrap_or_else(|err| format!("Error: {}", err.to_string()))
-    }
+//  pub fn result_to_json_string<T, E>(result: Result<T, E>) -> String
+//  where
+//      T: ToString,
+//      E: ToString,
+//  {
+//      result.map(|value| value.to_string())
+//            .unwrap_or_else(|err| format!("Error: {}", err.to_string()))
+//  }
 
 impl Profile {
     pub fn json(&self) -> eyre::Result<Value> {
         let json_output = json!({
             "profile":                       self.name(),
-            "address":                       result_to_json_string(self.address()),
+            "address":                       self.address(),
             "balance":                       self.balance(),
             "total_staked":                  self.total_staked(),
-            "timestamp":                     result_to_json_string(self.delegations_timestamp().map(|t| t.to_rfc3339())),
+            "timestamp":                     self.delegations_timestamp_rfc3339(),
             "total_liquid":                  self.total_liquid(),
-            "config_minimum_balance":        self.config_minimum_balance(),
+            "config_minimum_balance":        self.get_minimum_balance(),
             "config_minimum_balance_ratio":  self.config_minimum_balance_ratio(),
-            "config_minimum_stake":          self.config_minimum_stake(),
-            "config_adjust_minimum_stake":   self.config_adjust_minimum_stake(),
-            "config_minimum_stake_rounding": self.config_minimum_stake_rounding(),
+            "config_minimum_stake":          self.get_minimum_stake(),
+            "config_adjust_minimum_stake":   self.get_adjust_minimum_stake(),
+            "config_minimum_stake_rounding": self.get_minimum_stake_rounding(),
             "config_daily_reward":           self.config_daily_reward(),
             "config_validator_address":      self.config_validator_address(),
             "config_validator_moniker":      self.config_validator_moniker(),
@@ -1266,8 +1204,8 @@ impl Profile {
             "claim_fee":                     self.claim_fee(),
             "stake_fee":                     self.stake_fee(),
             "minimum_balance":               self.minimum_balance(),
-            "stake_factor":                  self.stake_factor(),
-            "available_without_claim":       self.available_without_claim(),
+            "stake_factor":                  self.minimum_stake(),
+            "available_without_claim":       self.balance(),
             "available_after_claim":         self.available_after_claim(),
             "validator_staked_remainder":    self.validator_staked_remainder(),
             "can_stake_without_claim":       self.can_stake_without_claim(),
@@ -1352,6 +1290,7 @@ impl Profile {
         minimum_stake: Option<u64>,
         adjust_minimum_stake: Option<bool>,
         minimum_stake_rounding: Option<u64>,
+        daily_reward: Option<f64>,
         rotate_validators: bool,
         remove_validator: Option<&str>,
         add_validator: Option<&str>,
@@ -1362,6 +1301,7 @@ impl Profile {
             && minimum_stake.is_none()
             && adjust_minimum_stake.is_none()
             && minimum_stake_rounding.is_none()
+            && daily_reward.is_none()
             && !rotate_validators
             && remove_validator.is_none()
             && add_validator.is_none()
@@ -1387,6 +1327,9 @@ impl Profile {
         }
         if let Some(rounding) = minimum_stake_rounding {
             config.set_minimum_stake_rounding(rounding);
+        }
+        if let Some(reward) = daily_reward {
+            config.set_daily_reward(reward);
         }
         if rotate_validators {
             let _ = config.rotate_validators();

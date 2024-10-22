@@ -1,4 +1,3 @@
-
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
@@ -15,8 +14,6 @@ use crate::validators;
 use eyre::Result;
 use fmt;
 use std::path::Path;
-
-
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -35,9 +32,105 @@ struct StakedGroup {
     not_staked: bool,
 }
 
+#[derive(Debug, Args)]
+pub struct ConfigEditArgs {
 
+    #[arg(
+        short = 'b', long,
+        aliases = ["min-bal", "mb", "bal", "balance"],
+        help = "Minimum wallet balance",
+        required = false,
+        default_value = "0.0",
+    )]
+    minimum_balance: f64,
 
+    #[arg(
+        short = 'r', long,
+        aliases = ["min-bal-ratio", "mbr", "bal-ratio", "balance-ratio"],
+        value_parser = validate_ratio,
+        help = "Ratio of total staked to leave as wallet balance"
+    )]
+    minimum_balance_ratio: Option<f64>,
 
+    #[arg(
+        short = 's', long,
+        aliases = ["min-stake", "ms", "stk", "stake"],
+        help = "Minimum stake",
+        required = false,
+        default_value = "0.0",
+    )]
+    minimum_stake: f64,
+
+    #[arg(
+        short = 'j',
+        long = "adjust-minimum-stake",
+        aliases = ["adjust-min-stake", "ams", "adj-stk", "adjust", "adj"],
+        help = "Adjust minimum stake to daily reward"
+    )]
+    adjust_minimum_stake: Option<bool>,
+
+    #[arg(
+        short = 'o', long,
+        aliases = ["min-stake-round", "msr", "rnd", "round", "rounding"],
+        help = "Minimum stake will be a multiple of this"
+    )]
+    minimum_stake_rounding: Option<f64>,
+
+    #[arg(
+        short = 'd', long,
+        aliases = ["daily"],
+        help = "Daily Reward",
+        required = false,
+        default_value = "0.0",
+    )]
+    daily_reward: f64,
+
+    #[arg(
+        short = 'a', long,
+        aliases = ["add"],
+        help = "Add validator (format: <address>,<moniker>)",
+    )]
+    add_validator: Option<String>,
+
+    #[arg(
+        short = 'v', long,
+        aliases = ["rotate"],
+        help = "Rotate validators"
+    )]
+    rotate_validators: bool,
+
+    #[arg(
+        short = 'x', long,
+        aliases = ["remove"],
+        help = "Remove a validator"
+    )]
+    remove_validator: Option<String>,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigSetCommands {
+    /// Set the minimum wallet balance
+    MinimumBalance {
+        #[arg()]
+        minimum_balance: Option<f64>,
+    },
+
+    ///// Set the minimum stake
+    //MinimumStake {
+    //    #[arg()]
+    //    minimum_stake: Option<f64>,
+    //},
+}
+
+#[derive(Subcommand)]
+pub enum ConfigCommand {
+    Edit(ConfigEditArgs),
+
+    Set {
+        #[command(subcommand)]
+        command: ConfigSetCommands
+    },
+}
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -79,68 +172,12 @@ pub enum Commands {
         visible_alias = "co", aliases = ["con", "conf", "confi"],
     )]
     Config {
-
         /// Profile
         #[arg()]
         profile: Option<String>,
 
-        #[arg(
-            short = 'b', long = "minimum-balance",
-            aliases = ["min-bal", "mb", "bal", "balance"],
-            help = "Minimum wallet balance"
-        )]
-        minimum_balance: Option<f64>,
-
-        #[arg(
-            short = 'r', long = "minimum-balance-ratio",
-            aliases = ["min-bal-ratio", "mbr", "bal-ratio", "balance-ratio"],
-            value_parser = validate_ratio,
-            help = "Ratio of total staked to leave as wallet balance"
-        )]
-        minimum_balance_ratio: Option<f64>,
-
-        #[arg(
-            short = 's', long,
-            aliases = ["min-stake", "ms", "stk", "stake"],
-            help = "Minimum stake"
-        )]
-        minimum_stake: Option<f64>,
-
-        #[arg(
-            short = 'j',
-            long = "adjust-minimum-stake",
-            aliases = ["adjust-min-stake", "ams", "adj-stk", "adjust", "adj"],
-            help = "Adjust minimum stake to daily reward"
-        )]
-        adjust_minimum_stake: Option<bool>,
-
-        #[arg(
-            short = 'o', long,
-            aliases = ["min-stake-round", "msr", "rnd", "round", "rounding"],
-            help = "Minimum stake will be a multiple of this"
-        )]
-        minimum_stake_rounding: Option<f64>,
-
-        #[arg(
-            short = 'v', long,
-            aliases = ["rotate"],
-            help = "Rotate validators"
-        )]
-        rotate_validators: bool,
-
-        #[arg(
-            short = 'd', long,
-            aliases = ["remove"],
-            help = "Remove a validator"
-        )]
-        remove_validator: Option<String>,
-
-        #[arg(
-            short = 'a', long,
-            aliases = ["add"],
-            help = "Add validator (format: <address>,<moniker>)",
-        )]
-        add_validator: Option<String>,
+        #[command(subcommand)]
+        command: Option<ConfigCommand>,
     },
 
     #[command( about = "Delegate", visible_alias = "de",)]
@@ -316,40 +353,75 @@ impl Cli {
                     .profile_by_name_or_address_or_home_or_default(profile.as_deref())?
                     .nomic_claim()
             }
-            Commands::Config {
-                profile,
-                minimum_balance,
-                minimum_balance_ratio,
-                minimum_stake,
-                adjust_minimum_stake,
-                minimum_stake_rounding,
-                rotate_validators,
-                remove_validator,
-                add_validator,
-            } => {
+            Commands::Config { profile, command } => {
                 let mut profile = ProfileCollection::new()?
                     .profile_by_name_or_address_or_home_or_default(profile.as_deref())?;
-
-                // Check if any options are provided to modify the config
-                if minimum_balance.is_some() || minimum_balance_ratio.is_some()
-                    || minimum_stake.is_some() || adjust_minimum_stake.is_some()
-                    || minimum_stake_rounding.is_some() || *rotate_validators
-                    || remove_validator.is_some() || add_validator.is_some()
-                {
-                    profile.edit_config(
-                        minimum_balance.map(|b| (b * 1_000_000.0) as u64),
-                        *minimum_balance_ratio,
-                        minimum_stake.map(|b| (b * 1_000_000.0) as u64),
-                        *adjust_minimum_stake,
-                        minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
-                        *rotate_validators,
-                        remove_validator.as_deref(),
-                        add_validator.as_deref(),
-                    )?;
+                match command {
+                    Some(ConfigCommand::Edit(args)) => {
+                        // calculated value
+                        let minimum_balance = if args.minimum_balance > 0.0 {
+                            (args.minimum_balance * 1_000_000.0) as u64
+                        } else {
+                            profile.minimum_balance()
+                        };
+                        // calculated value
+                        let minimum_stake = if args.minimum_stake > 0.0 {
+                            (args.minimum_stake * 1_000_000.0) as u64
+                        } else {
+                            *profile.minimum_stake()
+                        };
+                        // calculated value
+                        let daily_reward = if args.daily_reward > 0.0 {
+                            args.daily_reward * 1_000_000.0
+                        } else {
+                            profile.daily_reward()
+                        };
+                        // Check if any options are provided to modify the config
+                        if minimum_balance > 0
+                            || args.minimum_balance_ratio.is_some()
+                            || minimum_stake > 0
+                            || daily_reward > 0.0
+                            || args.adjust_minimum_stake.is_some()
+                            || args.minimum_stake_rounding.is_some()
+                            || args.rotate_validators
+                            || args.remove_validator.is_some()
+                            || args.add_validator.is_some()
+                        {
+                            profile.edit_config(
+                                Some(minimum_balance),
+                                args.minimum_balance_ratio,
+                                Some(minimum_stake),
+                                args.adjust_minimum_stake,
+                                args.minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
+                                Some(daily_reward),
+                                args.rotate_validators,
+                                args.remove_validator.as_deref(),
+                                args.add_validator.as_deref(),
+                            )?;
+                        }
+                        println!("{:?}", profile.config()?.clone());
+                        Ok(())
+                    }
+                    Some(ConfigCommand::Set { command }) => {
+                        match command {
+                            ConfigSetCommands::MinimumBalance { minimum_balance } => {
+                                let bal = minimum_balance.map(|b| (b * 1_000_000.0) as u64);
+                                profile.set_minimum_balance(bal)?;
+                                println!("{:?}", profile.config()?.clone());
+                                Ok(())
+                            },
+                            //ConfigSetCommands::MinimumStake { minimum_stake } => {
+                            //    return Ok(())
+                            //},
+                        }
+                    }
+                    _ => {
+                        println!("{:?}", profile.config()?.clone());
+                        Ok(())
+                    }
                 }
-                println!("{:?}", profile.config()?.clone());
-                Ok(())
             }
+
 
             Commands::Delegate { profile, validator, quantity } => {
                 ProfileCollection::new()?

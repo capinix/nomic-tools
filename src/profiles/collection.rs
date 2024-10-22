@@ -112,7 +112,11 @@ impl ProfileCollection {
     pub fn profile_by_address(&self, address: &str) -> Result<&Profile> {
         self.profiles
             .iter()
-            .find(|profile| profile.address().map_or(false, |profile_address| profile_address == address))
+            .find(|profile| {
+                profile.key()
+                    .and_then(|key| key.address())
+                    .map_or(false, |profile_address| profile_address == address)
+            })
             .ok_or_else(|| eyre!("Profile with address {} not found", address))
     }
 
@@ -196,7 +200,10 @@ impl ProfileCollection {
     ///     .address(None)?;
     /// ```
     pub fn address(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
-        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.address()?.to_string())
+        Ok(
+            self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?
+                .key()?.address()?.to_string()
+        )
     }
 
     /// Validates a Nomic address or retrieves it from a managed profile.
@@ -292,7 +299,10 @@ impl ProfileCollection {
 
     /// Retrieves the hex of a profile by its name or address.
     pub fn export(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
-        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.export()?.to_string())
+        Ok(
+            self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?
+                .key()?.export()?.to_string()
+        )
     }
 
 //    /// verifies the profile name or retrieves it from an address or home directory
@@ -379,7 +389,7 @@ impl ProfileCollection {
 
         for profile in profiles {
             profiles_json.insert(
-                profile.address()?.to_string(),
+                profile.key()?.address()?.to_string(),
                 serde_json::json!({
                     "home"       : profile.home(),
                     "key_file"   : profile.key_file()?.to_string_lossy(),
@@ -442,7 +452,7 @@ impl ProfileCollection {
         // Data rows
         for profile in profiles {
             // Use the correct method to get the address and the basename
-            let address = profile.address()?;
+            let address = profile.key()?.address()?;
             let name = profile.name();
 
             // Manually format the profile fields with '\x1C' as the separator

@@ -46,6 +46,7 @@ pub struct Config {
     minimum_stake_rounding:             OnceCell<u64>,
     daily_reward:                       OnceCell<f64>,
     config_validators: OnceCell<Vec<ConfigValidator>>,
+    active_validator:       OnceCell<ConfigValidator>,
     validators:         OnceCell<ValidatorCollection>,
     #[allow(dead_code)]
     timestamp:                          DateTime<Utc>,
@@ -109,6 +110,7 @@ impl Config {
             minimum_stake_rounding: OnceCell::new(),
             daily_reward:           OnceCell::new(),
             config_validators:      OnceCell::new(),
+            active_validator:       OnceCell::new(),
             validators:             initialize_validators(validators),
             timestamp,
         })
@@ -273,12 +275,13 @@ impl Config {
     }
 
     pub fn active_validator(&self) -> eyre::Result<&ConfigValidator> {
-        // Get the validators, ensuring it's initialized
-        let validators = self.config_validators()?;
-
-        // Return the last validator
-        validators.last() // Get the last item from the vector
-            .ok_or_else(|| eyre::eyre!("No validators found"))
+        self.active_validator.get_or_try_init(|| {
+            if let Some(validator) = self.config_validators()?.last() {
+                Ok(validator.clone())
+            } else {
+                Err(eyre::eyre!("No validators found"))
+            }
+        })
     }
 
     pub fn search_validator(&self, search: &str) -> eyre::Result<&str> {
