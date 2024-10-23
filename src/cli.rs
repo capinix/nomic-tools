@@ -39,10 +39,8 @@ pub struct ConfigEditArgs {
         short = 'b', long,
         aliases = ["min-bal", "mb", "bal", "balance"],
         help = "Minimum wallet balance",
-        required = false,
-        default_value = "0.0",
     )]
-    minimum_balance: f64,
+    minimum_balance: Option<f64>,
 
     #[arg(
         short = 'r', long,
@@ -56,10 +54,8 @@ pub struct ConfigEditArgs {
         short = 's', long,
         aliases = ["min-stake", "ms", "stk", "stake"],
         help = "Minimum stake",
-        required = false,
-        default_value = "0.0",
     )]
-    minimum_stake: f64,
+    minimum_stake: Option<f64>,
 
     #[arg(
         short = 'j',
@@ -80,10 +76,8 @@ pub struct ConfigEditArgs {
         short = 'd', long,
         aliases = ["daily"],
         help = "Daily Reward",
-        required = false,
-        default_value = "0.0",
     )]
-    daily_reward: f64,
+    daily_reward: Option<f64>,
 
     #[arg(
         short = 'a', long,
@@ -109,17 +103,29 @@ pub struct ConfigEditArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ConfigSetCommands {
-    /// Set the minimum wallet balance
+    #[command(about = "Set the minimum wallet balance",
+        visible_alias = "mb", aliases = ["mbal", "min-bal"],
+    )]
     MinimumBalance {
         #[arg()]
         minimum_balance: Option<f64>,
     },
 
-    ///// Set the minimum stake
-    //MinimumStake {
-    //    #[arg()]
-    //    minimum_stake: Option<f64>,
-    //},
+    #[command(about = "Set the minimum stake",
+        visible_alias = "ms", aliases = ["mstk", "min-stk"],
+    )]
+    MinimumStake {
+        #[arg()]
+        minimum_stake: Option<f64>,
+    },
+
+    #[command(about = "Set the daily reward",
+        visible_alias = "dr", aliases = ["drwd", "dly-rwd"],
+    )]
+    DailyReward {
+        #[arg()]
+        daily_reward: Option<f64>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -359,28 +365,25 @@ impl Cli {
                 match command {
                     Some(ConfigCommand::Edit(args)) => {
                         // calculated value
-                        let minimum_balance = if args.minimum_balance > 0.0 {
-                            (args.minimum_balance * 1_000_000.0) as u64
-                        } else {
-                            profile.minimum_balance()
+                        let minimum_balance = match args.minimum_balance {
+                            Some(m) => (m * 1_000_000.0) as u64,
+                            None => profile.minimum_balance(),
                         };
                         // calculated value
-                        let minimum_stake = if args.minimum_stake > 0.0 {
-                            (args.minimum_stake * 1_000_000.0) as u64
-                        } else {
-                            *profile.minimum_stake()
+                        let minimum_stake = match args.minimum_stake {
+                            Some(m) => (m * 1_000_000.0) as u64,
+                            None => *profile.minimum_stake(),
                         };
                         // calculated value
-                        let daily_reward = if args.daily_reward > 0.0 {
-                            args.daily_reward * 1_000_000.0
-                        } else {
-                            profile.daily_reward()
+                        let daily_reward = match args.daily_reward {
+                            Some(d) => d * 1_000_000.0,
+                            None => profile.daily_reward(),
                         };
                         // Check if any options are provided to modify the config
-                        if minimum_balance > 0
+                        if args.minimum_balance.is_some()
                             || args.minimum_balance_ratio.is_some()
-                            || minimum_stake > 0
-                            || daily_reward > 0.0
+                            || args.minimum_stake.is_some()
+                            || args.daily_reward.is_some()
                             || args.adjust_minimum_stake.is_some()
                             || args.minimum_stake_rounding.is_some()
                             || args.rotate_validators
@@ -410,9 +413,18 @@ impl Cli {
                                 println!("{:?}", profile.config()?.clone());
                                 Ok(())
                             },
-                            //ConfigSetCommands::MinimumStake { minimum_stake } => {
-                            //    return Ok(())
-                            //},
+                            ConfigSetCommands::MinimumStake { minimum_stake } => {
+                                let stake = minimum_stake.map(|b| (b * 1_000_000.0) as u64);
+                                profile.set_minimum_stake(stake)?;
+                                println!("{:?}", profile.config()?.clone());
+                                Ok(())
+                            },
+                            ConfigSetCommands::DailyReward { daily_reward } => {
+                                let reward = daily_reward.map(|b| (b * 1_000_000.0) as f64);
+                                profile.set_daily_reward(reward)?;
+                                println!("{:?}", profile.config()?.clone());
+                                Ok(())
+                            },
                         }
                     }
                     _ => {

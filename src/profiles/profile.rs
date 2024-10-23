@@ -431,7 +431,7 @@ impl Profile {
     }
 
     /// self.config()?.daily_reward() -> Result<&f64>
-    pub fn config_daily_reward(&self) -> f64 {
+    pub fn get_daily_reward(&self) -> f64 {
         self.config()
             .map(|config| *config.daily_reward())
             .unwrap_or(0.0)
@@ -612,7 +612,6 @@ impl Profile {
 
     pub fn set_minimum_balance(&mut self, balance: Option<u64>) -> Result<()> {
         let config = self.config()?;
-        println!("minimum balance: {}", self.minimum_balance());
 
         // Determine the balance to set (either provided or calculated)
         let new_balance = match balance {
@@ -625,10 +624,56 @@ impl Profile {
                 min_balance
             }
         };
-        println!("minimum balance: {}", &new_balance);
+
         // Clone and update the configuration
         let mut config_mut = config.clone();
         config_mut.set_minimum_balance(new_balance);
+        self.config = OnceCell::from(config_mut);
+
+        Ok(())
+    }
+
+    pub fn set_minimum_stake(&mut self, stake: Option<u64>) -> Result<()> {
+        let config = self.config()?;
+
+        // Determine the balance to set (either provided or calculated)
+        let new_stake = match stake {
+            Some(stake) => stake,
+            None => {
+                let min_stake = self.minimum_stake();
+                if min_stake == config.minimum_stake() {
+                    return Ok(());
+                }
+                *min_stake
+            }
+        };
+
+        // Clone and update the configuration
+        let mut config_mut = config.clone();
+        config_mut.set_minimum_stake(new_stake);
+        self.config = OnceCell::from(config_mut);
+
+        Ok(())
+    }
+
+    pub fn set_daily_reward(&mut self, reward: Option<f64>) -> Result<()> {
+        let config = self.config()?;
+
+        // Determine the balance to set (either provided or calculated)
+        let new_reward = match reward {
+            Some(reward) => reward,
+            None => {
+                let reward = self.daily_reward();
+                if reward == *config.daily_reward() {
+                    return Ok(()); // No need to update if the calculated balance is not higher
+                }
+                reward
+            }
+        };
+
+        // Clone and update the configuration
+        let mut config_mut = config.clone();
+        config_mut.set_daily_reward(new_reward);
         self.config = OnceCell::from(config_mut);
 
         Ok(())
@@ -761,7 +806,7 @@ impl Profile {
     }
 
     pub fn daily_reward(&self) -> f64 {
-        self.daily_reward_result().unwrap_or(0.0)
+        self.daily_reward_result().unwrap_or(self.get_daily_reward())
     }
 
     pub fn minimum_stake(&self) -> &u64 {
@@ -876,7 +921,7 @@ impl Profile {
             let can_stake_after_claim = *self.can_stake_after_claim();
             let available_without_claim = self.balance();
             let available_after_claim = self.available_after_claim();
-            let stake_factor = *self.minimum_stake();
+            let minimum_stake = *self.minimum_stake();
             let validator_staked_remainder = *self.validator_staked_remainder();
 
             // Determine the available amount to stake based on conditions
@@ -889,11 +934,12 @@ impl Profile {
                 return ZERO;
             };
 
-            // Calculate how much is needed to round `validator_staked` to a multiple of `stake_factor`
+            // Calculate how much is needed to round `validator_staked` to a multiple of
+            // `minimum_stake`
             let needed_to_round = if validator_staked_remainder == 0 {
                 0
             } else {
-                stake_factor.saturating_sub(validator_staked_remainder)
+                minimum_stake.saturating_sub(validator_staked_remainder)
             };
 
             // Check if there's enough available to cover the rounding amount
@@ -901,11 +947,12 @@ impl Profile {
                 // Calculate how much remains after rounding the validator stake
                 let remaining_after_round = available_to_stake.saturating_sub(needed_to_round);
 
-                // Determine how many full stake_factor multiples can be staked after rounding
-                let multiples_of_stake_factor = remaining_after_round.saturating_div(stake_factor);
+                // Determine how many full minimum_stake multiples can be staked after rounding
+                let multiples_of_minimum_stake = remaining_after_round.saturating_div(minimum_stake);
 
-                // The final stake amount is `needed_to_round` plus the maximum multiples of `stake_factor`
-                needed_to_round.saturating_add(multiples_of_stake_factor.saturating_mul(stake_factor))
+                // The final stake amount is `needed_to_round` plus the maximum multiples of
+                // `minimum_stake`
+                needed_to_round.saturating_add(multiples_of_minimum_stake.saturating_mul(minimum_stake))
             } else {
                 // Not enough to cover rounding, return zero
                 ZERO
@@ -1194,7 +1241,7 @@ impl Profile {
             "config_minimum_stake":          self.get_minimum_stake(),
             "config_adjust_minimum_stake":   self.get_adjust_minimum_stake(),
             "config_minimum_stake_rounding": self.get_minimum_stake_rounding(),
-            "config_daily_reward":           self.config_daily_reward(),
+            "config_daily_reward":           self.get_daily_reward(),
             "config_validator_address":      self.config_validator_address(),
             "config_validator_moniker":      self.config_validator_moniker(),
             "moniker":                       self.moniker(),
@@ -1204,7 +1251,7 @@ impl Profile {
             "claim_fee":                     self.claim_fee(),
             "stake_fee":                     self.stake_fee(),
             "minimum_balance":               self.minimum_balance(),
-            "stake_factor":                  self.minimum_stake(),
+            "minimum_stake":                 self.minimum_stake(),
             "available_without_claim":       self.balance(),
             "available_after_claim":         self.available_after_claim(),
             "validator_staked_remainder":    self.validator_staked_remainder(),

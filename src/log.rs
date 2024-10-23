@@ -9,7 +9,12 @@ use colored::*;
 
 
 // Helper function to format a value with custom width and decimal places
-fn format_value(value: f64, width: usize, decimal_places: usize) -> String {
+fn format_value(value: f64, width: usize) -> String {
+    let decimal_places = if value < 100.0 {
+        2 
+    } else {
+        0
+    };
     text(
         Some(&value.to_string()),      // Pass the raw value as a string
         Some(width),                   // Specify width
@@ -43,11 +48,13 @@ impl ApplyIf<String> for String {
 fn read_line(line: &str) {
 
     // Attempt to parse the line as JSON
-    let json: Value = serde_json::from_str(line).unwrap_or_else(|_| {
-        // Handle parsing error, return an empty JSON object or log an error
-        eprintln!("Failed to parse line as JSON: {}", line);
-        Value::Null
-    });
+    let json: Value = match serde_json::from_str(line) {
+        Ok(value) => value,
+        Err(_) => {
+            eprintln!("Failed to parse line as JSON: {}", line);
+            return; // Skip this line and continue to the next one
+        }
+    };
 
     // Extract and handle relevant data
     let timestamp = json.get("timestamp").and_then(Value::as_str).unwrap_or("N/A");
@@ -58,34 +65,53 @@ fn read_line(line: &str) {
     let total_staked = json.get("total_staked").and_then(Value::as_u64).unwrap_or(0);
     let daily_reward = json.get("daily_reward").and_then(Value::as_f64).unwrap_or(0.0);
     let minimum_balance = json.get("minimum_balance").and_then(Value::as_u64).unwrap_or(0);
+    let minimum_stake = json.get("minimum_stake").and_then(Value::as_u64).unwrap_or(0);
     let balance = json.get("balance").and_then(Value::as_u64).unwrap_or(0);
     let total_liquid = json.get("total_liquid").and_then(Value::as_u64).unwrap_or(0);
     let quantity_to_stake = json.get("quantity_to_stake").and_then(Value::as_u64).unwrap_or(0);
-    let config_minimum_stake = json.get("config_minimum_stake").and_then(Value::as_u64).unwrap_or(0);
     let config_validator_moniker = json.get("config_validator_moniker").and_then(Value::as_str).unwrap_or("N/A");
     let voting_power = json.get("voting_power").and_then(Value::as_u64).unwrap_or(0);
     let validator_staked = json.get("validator_staked").and_then(Value::as_u64).unwrap_or(0);
+    let validator_staked_remainder = json.get("validator_staked_remainder").and_then(Value::as_u64).unwrap_or(0);
+    // let claim_fee = json.get("claim_fee").and_then(Value::as_u64).unwrap_or(0);
+    // let stake_fee = json.get("stake_fee").and_then(Value::as_u64).unwrap_or(0);
+    let available_after_claim = json.get("available_after_claim").and_then(Value::as_u64).unwrap_or(0);
 
     // Format the timestamp
     let formatted_date = DateTime::parse_from_rfc3339(timestamp)
         .map(|dt| dt.format("%m-%d %H:%M").to_string())
         .unwrap_or_else(|_| "Invalid Date".to_string());
 
-    // Custom width and decimal places for each column
-    let formatted_total_staked    = format_value(total_staked      as f64 / 1_000_000.0, 8, 0);
-    let formatted_daily_reward    = format_value(daily_reward      as f64 / 1_000_000.0, 7, 2);
-    let formatted_minimum_balance = format_value(minimum_balance   as f64 / 1_000_000.0, 7, 2);
-    let formatted_balance         = format_value(balance           as f64 / 1_000_000.0, 7, 2);
-    let formatted_liquid_or_stake = if staked == "✅" {
-        format_value(quantity_to_stake as f64 / 1_000_000.0, 7, 2)
+    let base = if validator_staked_remainder > 0 {
+        validator_staked_remainder
     } else {
-        format_value(total_liquid      as f64 / 1_000_000.0, 7, 2)
+        minimum_stake
+    };
+
+    let remaining_required = base.saturating_sub(available_after_claim);
+
+    // Custom width and decimal places for each column
+    let formatted_total_staked    = format_value(total_staked      as f64 / 1_000_000.0, 8);
+    let formatted_daily_reward    = format_value(daily_reward      as f64 / 1_000_000.0, 7);
+    let formatted_minimum_balance = format_value(minimum_balance   as f64 / 1_000_000.0, 7);
+    let formatted_balance         = format_value(balance           as f64 / 1_000_000.0, 7);
+    let formatted_liquid_or_stake = if staked == "✅" {
+        format_value(quantity_to_stake as f64 / 1_000_000.0, 7)
+    } else {
+        format_value(total_liquid      as f64 / 1_000_000.0, 7)
     }
     .apply_if(staked == "✅", |text| text.green().to_string())
     .apply_if(staked != "✅", |text| text.yellow().to_string());
-    let formatted_config_minimum_stake = format_value(config_minimum_stake as f64 / 1_000_000.0, 7, 2);
-    let formatted_voting_power = format_value(voting_power as f64 / 1_000_000.0, 8, 0);
-    let formatted_validator_staked = format_value(validator_staked as f64 / 1_000_000.0, 7, 0);
+    let formatted_left_or_stake = if staked == "✅" {
+        format_value(minimum_stake as f64 / 1_000_000.0, 7)
+    } else {
+        format_value(remaining_required as f64 / 1_000_000.0, 7)
+    }
+    .apply_if(staked == "✅", |text| text.green().to_string())
+    .apply_if(staked != "✅", |text| text.truecolor(255, 165, 0).to_string());
+    //..apply_if(staked != "✅", |text| text.bright_green().to_string());
+    let formatted_voting_power = format_value(voting_power as f64 / 1_000_000.0, 8);
+    let formatted_validator_staked = format_value(validator_staked as f64 / 1_000_000.0, 7);
 
     // Print the formatted output
     println!("{:10}│{:1}│{:8}{:7}{:7}{:7}{:7}{:7}{:7}│{:8}{:8}{:8}",
@@ -97,7 +123,7 @@ fn read_line(line: &str) {
         formatted_minimum_balance.purple(),
         formatted_balance.cyan(),
         formatted_liquid_or_stake,
-        formatted_config_minimum_stake,
+        formatted_left_or_stake,
         config_validator_moniker,
         formatted_voting_power.magenta(),
         formatted_validator_staked.green(),
