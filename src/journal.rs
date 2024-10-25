@@ -8,12 +8,26 @@ use num_format::{Locale, ToFormattedString};
 use colored::Colorize;
 use crate::globals::GlobalConfig;
 
-
-
+/// A wrapper around `Value` that implements custom display formatting.
 #[derive(Debug)]
-struct DisplayValue(Value);
+struct DisplayLogValue(Value);
 
-impl std::fmt::Display for DisplayValue {
+/// Implements the `Display` trait for `DisplayLogValue`.
+/// This allows for custom formatting when the struct is printed.
+impl std::fmt::Display for DisplayLogValue {
+    /// Formats the contained `Value` based on its type.
+    ///
+    /// - For `Value::Number`, it attempts to interpret the number as a `u64`
+    ///   and divides it by 1,000,000, displaying the result in millions.
+    ///   If the result is less than 100, it is displayed with two decimal places.
+    ///   Otherwise, it is formatted as an integer with proper thousand separators.
+    ///
+    /// - For `Value::String`, it tries to parse the string as an RFC 3339 datetime.
+    ///   If parsing succeeds, it formats the datetime as "MM-DD HH:MM" in UTC.
+    ///   If parsing fails, the original string is displayed.
+    ///
+    /// - For other value types, it defaults to using the underlying value's
+    ///   `Display` implementation.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
             Value::Number(n) => {
@@ -43,9 +57,6 @@ impl std::fmt::Display for DisplayValue {
         }
     }
 }
-
-
-
 
 #[derive(Debug)]
 struct Nom6(Value);
@@ -128,7 +139,6 @@ impl std::fmt::Display for DateDisplayFromOption {
     }
 }
 
-
 /// Enum to represent output formats
 #[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
@@ -136,7 +146,6 @@ pub enum OutputFormat {
     JsonPretty,
     List,
     Log,
-    Table,
 }
 
 impl FromStr for OutputFormat {
@@ -147,7 +156,6 @@ impl FromStr for OutputFormat {
             "json-pretty" => Ok(OutputFormat::JsonPretty),
             "list"        => Ok(OutputFormat::List),
             "log"         => Ok(OutputFormat::Log),
-            "table"       => Ok(OutputFormat::Table),
             _             => Err(format!("Invalid output format: {}", s)),
         }
     }
@@ -160,7 +168,6 @@ impl std::fmt::Display for OutputFormat {
             OutputFormat::JsonPretty => "json-pretty",
             OutputFormat::List       => "list",
             OutputFormat::Log        => "log",
-            OutputFormat::Table      => "table",
         };
         write!(f, "{}", output)
     }
@@ -341,19 +348,19 @@ impl Journal {
         );
 
         // Apply color based on individual conditions for each cell
-        let total_staked_str = pad_or_truncate(&format!("{}", DisplayValue(total_staked_value.into())), col[3], true).green();
+        let total_staked_str = pad_or_truncate(&format!("{}", DisplayLogValue(total_staked_value.into())), col[3], true).green();
         output = format!("{}{}", output, total_staked_str);
 
-        let daily_reward_str = pad_or_truncate(&format!("{}", DisplayValue(self.get::<u64>("daily_reward").into())), col[4], true).blue();
+        let daily_reward_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<u64>("daily_reward").into())), col[4], true).blue();
         output = format!("{}{}", output, daily_reward_str);
 
-        let minimum_balance_str = pad_or_truncate(&format!("{}", DisplayValue(self.get::<u64>("minimum_balance").into())), col[5], true).magenta();
+        let minimum_balance_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<u64>("minimum_balance").into())), col[5], true).magenta();
         output = format!("{}{}", output, minimum_balance_str);
 
-        let balance_str = pad_or_truncate(&format!("{}", DisplayValue(balance_value.into())), col[6], true).green();
+        let balance_str = pad_or_truncate(&format!("{}", DisplayLogValue(balance_value.into())), col[6], true).green();
         output = format!("{}{}", output, balance_str);
 
-        let total_liquid_str = pad_or_truncate(&format!("{}", DisplayValue(total_liquid_value.into())), col[7], true);
+        let total_liquid_str = pad_or_truncate(&format!("{}", DisplayLogValue(total_liquid_value.into())), col[7], true);
         let total_liquid_str_colored = if is_staked {
             total_liquid_str.green()
         } else {
@@ -361,7 +368,7 @@ impl Journal {
         };
         output = format!("{}{}", output, total_liquid_str_colored);
 
-        let minimum_stake_str = pad_or_truncate(&format!("{}", DisplayValue(minimum_stake_value.into())), col[8], true);
+        let minimum_stake_str = pad_or_truncate(&format!("{}", DisplayLogValue(minimum_stake_value.into())), col[8], true);
         let minimum_stake_str_colored = if is_staked {
             minimum_stake_str.blue()
         } else {
@@ -369,13 +376,13 @@ impl Journal {
         };
         output = format!("{}{}│", output, minimum_stake_str_colored);
 
-        let config_validator_moniker_str = pad_or_truncate(&format!("{}", DisplayValue(self.get::<String>("config_validator_moniker").into())), col[9], false);
+        let config_validator_moniker_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<String>("config_validator_moniker").into())), col[9], false);
         output = format!("{}{}", output, config_validator_moniker_str);
 
-        let voting_power_str = pad_or_truncate(&format!("{}", DisplayValue(self.get::<u64>("voting_power").into())), col[10], true).magenta();
+        let voting_power_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<u64>("voting_power").into())), col[10], true).magenta();
         output = format!("{}{}", output, voting_power_str);
 
-        let validator_staked_str = pad_or_truncate(&format!("{}", DisplayValue(validator_staked_value.into())), col[11], true).green();
+        let validator_staked_str = pad_or_truncate(&format!("{}", DisplayLogValue(validator_staked_value.into())), col[11], true).green();
         output = format!("{}{}", output, validator_staked_str);
 
         output
@@ -406,10 +413,6 @@ impl Journal {
             },
             OutputFormat::Log => {
                 println!("{}", self.log());
-            },
-            OutputFormat::Table => {
-                println!("{}", self);
-                //println!("{}", self.table());
             },
         }
         Ok(())

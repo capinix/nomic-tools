@@ -7,27 +7,41 @@ use std::fs;
 use eyre::Result;
 use eyre::WrapErr;
 
-
 #[derive(Serialize, Deserialize)]
 pub struct LogConfig {
     pub column_widths: Vec<usize>,
 }
 
+/// Provides a default implementation for `LogConfig`.
+/// The default `LogConfig` will have an empty `column_widths` vector.
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            column_widths: vec![11, 1, 8, 7, 7, 6, 6, 7, 8, 8, 9, 7],
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub log: LogConfig,
 }
 
+/// Provides a default implementation for `GlobalConfig`.
+/// The default `GlobalConfig` will have the default `LogConfig`.
+impl Default for GlobalConfig {
+    fn default() -> Self {
+        Self {
+            log: LogConfig::default(), // Use the default `LogConfig`
+        }
+    }
+}
+
 
 impl GlobalConfig {
-    // Create a new GlobalConfig with default values
+    /// Creates a new `GlobalConfig` with default values, identical to `default()`.
     pub fn new() -> Self {
-        Self {
-            log: LogConfig {
-                column_widths: Vec::new(),
-            },
-        }
+        Self::default() // Delegate to `Default` implementation
     }
 
     // Path to the config file
