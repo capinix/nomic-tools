@@ -11,7 +11,6 @@ pub use collection::ProfileCollection;
 pub use config::Config;
 pub use delegations::Delegations;
 pub use delegations::Delegation;
-pub use profile::OutputFormat as ProfileOutputFormat;
 pub use profile::Profile;
 pub use util::nomic;
 

@@ -1,0 +1,30 @@
+use num_format::{Locale, ToFormattedString};
+use std::fmt;
+
+struct MyNumber(u64);
+
+impl fmt::Display for MyNumber {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let value = self.0 as f64 / 1_000_000.0; // Convert to millions
+        if value < 1000.0 {
+            // If less than 1000, display with 2 decimal places
+            write!(f, "{:.2}", value)
+        } else {
+            // If greater than or equal to 1000, display without decimal places and with thousands separators
+            let integer_part = value.trunc() as u64; // Get the integer part
+            write!(f, "{}", integer_part.to_formatted_string(&Locale::en))
+        }
+    }
+}
+
+fn main() {
+    let number1 = MyNumber(500_000);         // 0.50
+    let number2 = MyNumber(1_500_000);       // 1.50
+    let number3 = MyNumber(2_000_000_000);   // 2,000
+    let number4 = MyNumber(2_000_000_000_000);   // 2,000
+
+    println!("{}", number1); // Output: "0.50"
+    println!("{}", number2); // Output: "1.50"
+    println!("{}", number3); // Output: "2,000"
+    println!("{}", number4); // Output: "2,000"
+}

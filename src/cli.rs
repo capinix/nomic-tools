@@ -1,6 +1,8 @@
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
+//use crate::journal::Journal;
+use crate::journal::OutputFormat as JournalOutputFormat;
 use crate::functions::validate_positive;
 use crate::functions::validate_ratio;
 use crate::log::tail_journalctl;
@@ -9,11 +11,11 @@ use crate::privkey;
 use crate::profiles::CollectionOutputFormat;
 use crate::profiles::nomic;
 use crate::profiles::ProfileCollection;
-use crate::profiles::ProfileOutputFormat;
 use crate::validators;
 use eyre::Result;
 use fmt;
 use std::path::Path;
+use crate::globals::GlobalConfig;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -132,9 +134,28 @@ pub enum ConfigSetCommands {
 pub enum ConfigCommand {
     Edit(ConfigEditArgs),
 
+    Log {
+        #[command(subcommand)]
+        command: ConfigLogCommands
+    },
+
     Set {
         #[command(subcommand)]
         command: ConfigSetCommands
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigLogCommands {
+    #[command(about = "Configure Journal column widths",
+        visible_alias = "w", aliases = ["wi"],
+    )]
+    Widths {
+        #[arg(required = false)]
+        column: Option<usize>,
+
+        #[arg(required = false)]
+        width: Option<usize>,
     },
 }
 
@@ -246,9 +267,10 @@ pub enum Commands {
         /// Profile
         #[arg()]
         profile: Option<String>,
+
         /// Specify the output format
         #[arg(long, short)]
-        format: Option<ProfileOutputFormat>,
+        format: Option<JournalOutputFormat>,
     },
 
     Key(privkey::Cli),
@@ -258,19 +280,23 @@ pub enum Commands {
         /// Profile
         #[arg(required = true)]
         profile: String,
+
+        /// Specify the output format
+        #[arg(long, short)]
+        format: Option<JournalOutputFormat>,
     },
 
-    #[command(about = "Log", visible_alias = "lo")]
-    Log {
-        /// Staked group options
-        #[arg(group = "stake_group")]
-        #[arg(long)]
-        staked: bool,
+      #[command(about = "Log", visible_alias = "lo")]
+      Log {
+          /// Staked group options
+          #[arg(group = "stake_group")]
+          #[arg(long, short)]
+          staked: bool,
 
-        #[arg(group = "stake_group")]
-        #[arg(long)]
-        not_staked: bool,
-    },
+          #[arg(group = "stake_group")]
+          #[arg(long, short)]
+          not_staked: bool,
+      },
 
     #[command(about = "Run Nomic commands as Profile", visible_alias = "n", aliases = ["no", "nom", "nomi"])]
     Nomic {
@@ -376,7 +402,7 @@ impl Cli {
                         };
                         // calculated value
                         let daily_reward = match args.daily_reward {
-                            Some(d) => d * 1_000_000.0,
+                            Some(d) => (d * 1_000_000.0) as u64,
                             None => profile.daily_reward(),
                         };
                         // Check if any options are provided to modify the config
@@ -405,6 +431,45 @@ impl Cli {
                         println!("{:?}", profile.config()?.clone());
                         Ok(())
                     }
+                    Some(ConfigCommand::Log { command }) => {
+                        match command {
+                            ConfigLogCommands::Widths { column, width } => {
+                                let mut config = GlobalConfig::load_config()?;
+
+                                match (column, width) {
+                                    (None, None) => {
+                                        // Both column and width are None: Print the entire column widths array
+                                        println!("{:?}", config.log.column_widths);
+                                    }
+                                    (Some(col), None) => {
+                                        // Column is provided but no width: Print the specific column width
+                                        if *col < config.log.column_widths.len() {
+                                            println!("{:?}", config.log.column_widths[*col - 1]);
+                                        } else {
+                                            eprintln!("Column index out of bounds: {}", col);
+                                        }
+                                    }
+                                    (Some(col), Some(w)) => {
+                                        // Both column and width are provided: Set the column width
+                                        if *col < config.log.column_widths.len() {
+                                            config.set_log_column_width(*col - 1, *w)?;
+                                            println!("{:?}", config.log.column_widths);
+                                        } else {
+                                            eprintln!("Column index out of bounds: {}", col);
+                                        }
+                                    }
+                                    _ => {
+                                        eprintln!("Invalid input: Either both column and width must be provided, or just column for query.");
+                                    }
+                                }
+
+                                // Save the updated config if any changes were made
+                                config.save_config()?;
+                                Ok(())
+                            },
+
+                        }
+                    }
                     Some(ConfigCommand::Set { command }) => {
                         match command {
                             ConfigSetCommands::MinimumBalance { minimum_balance } => {
@@ -420,7 +485,7 @@ impl Cli {
                                 Ok(())
                             },
                             ConfigSetCommands::DailyReward { daily_reward } => {
-                                let reward = daily_reward.map(|b| (b * 1_000_000.0) as f64);
+                                let reward = daily_reward.map(|b| (b * 1_000_000.0) as u64);
                                 profile.set_daily_reward(reward)?;
                                 println!("{:?}", profile.config()?.clone());
                                 Ok(())
@@ -471,29 +536,30 @@ impl Cli {
             Commands::Journal { profile, format } => {
                 let collection = ProfileCollection::new()?;
                 collection.profile_by_name_or_address_or_home_or_default(profile.as_deref())?
+                    .journal()
                     .print(format.clone())
             }
 
             Commands::Key(cli)        => cli.run(),
 
-            Commands::LastJournal { profile } => {
-                // Store ProfileCollection in a variable so it lives long enough
-                let collection = ProfileCollection::new()?;  // ProfileCollection persists beyond this line
-                let profile = collection.profile_by_name_or_address_or_home_or_default(Some(profile))?;
-                let journal = profile.last_journal()?;       // Now we can safely use it
-                Ok(println!("{:#?}", journal))
+            Commands::LastJournal { profile, format } => {
+                let collection = ProfileCollection::new()?;
+                collection.profile_by_name_or_address_or_home_or_default(Some(profile))?
+                    .last_journal()?
+                    .print(format.clone())
+                //Ok(println!("{:#?}", journal))
             }
 
-            Commands::Log { staked, not_staked } => {
-                if *staked {
-                    tail_journalctl(Some(true))
-                } else if *not_staked {
-                    tail_journalctl(Some(false))
-                } else {
-                    tail_journalctl(None)
-                }
-                //Ok(())
-            }
+              Commands::Log { staked, not_staked } => {
+                  if *staked {
+                      tail_journalctl(Some(true))
+                  } else if *not_staked {
+                      tail_journalctl(Some(false))
+                  } else {
+                      tail_journalctl(None)
+                  }
+                  //Ok(())
+              }
 
             Commands::Nomic { profile, args } => {
                 let collection = ProfileCollection::new()?;

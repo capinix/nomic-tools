@@ -44,7 +44,7 @@ pub struct Config {
     minimum_stake:                      OnceCell<u64>,
     adjust_minimum_stake:              OnceCell<bool>,
     minimum_stake_rounding:             OnceCell<u64>,
-    daily_reward:                       OnceCell<f64>,
+    daily_reward:                       OnceCell<u64>,
     config_validators: OnceCell<Vec<ConfigValidator>>,
     active_validator:       OnceCell<ConfigValidator>,
     validators:         OnceCell<ValidatorCollection>,
@@ -79,7 +79,7 @@ impl Config {
         self
     }
 
-    pub fn set_daily_reward(&mut self, reward: f64) -> &mut Self {
+    pub fn set_daily_reward(&mut self, reward: u64) -> &mut Self {
         self.daily_reward = OnceCell::from(reward);
         self
     }
@@ -218,18 +218,18 @@ impl Config {
         })
     }
 
-    pub fn daily_reward(&self) -> &f64 {
+    pub fn daily_reward(&self) -> &u64 {
         self.daily_reward.get_or_init(|| {
 
             // Check the configuration file
             if let Some(matched_value) = grep_config("DAILY_REWARD", &self.content) {
                 if let Ok(reward) = matched_value.parse::<f64>() {
-                    return reward * 1_000_000.0;
+                    return (reward * 1_000_000.0) as u64;
                 }
             }
 
             // Default value if none found
-            0.0 // Default reward value
+            0 // Default reward value
         })
     }
 
@@ -340,12 +340,30 @@ impl Config {
         output.push_str(&format!("PROFILE={}\n",self.profile.as_deref().unwrap_or("unspecified")));
 
         // Add financial parameters
-        output.push_str(&format!("MINIMUM_BALANCE={:.2}\n", *self.minimum_balance() as f64 / 1_000_000.0));
-        output.push_str(&format!("MINIMUM_BALANCE_RATIO={:.3}\n", *self.minimum_balance_ratio()));
-        output.push_str(&format!("MINIMUM_STAKE={:.2}\n", *self.minimum_stake() as f64 / 1_000_000.0));
-        output.push_str(&format!("ADJUST_MINIMUM_STAKE={}\n", self.adjust_minimum_stake()));
-        output.push_str(&format!("MINIMUM_STAKE_ROUNDING={:.2}\n", *self.minimum_stake_rounding() as f64 / 1_000_000.0));
-        output.push_str(&format!("DAILY_REWARD={:.2}\n", *self.daily_reward() as f64 / 1_000_000.0));
+        output.push_str(&format!(
+                "MINIMUM_BALANCE={:.2}\n",
+                *self.minimum_balance() as f64 / 1_000_000.0)
+        );
+        output.push_str(&format!(
+                "MINIMUM_BALANCE_RATIO={:.3}\n",
+                *self.minimum_balance_ratio())
+        );
+        output.push_str(&format!(
+                "MINIMUM_STAKE={:.2}\n",
+                *self.minimum_stake() as f64 / 1_000_000.0)
+        );
+        output.push_str(&format!(
+                "ADJUST_MINIMUM_STAKE={}\n",
+                self.adjust_minimum_stake())
+        );
+        output.push_str(&format!(
+                "MINIMUM_STAKE_ROUNDING={:.2}\n", 
+                *self.minimum_stake_rounding() as f64 / 1_000_000.0)
+        );
+        output.push_str(&format!(
+                "DAILY_REWARD={:.2}\n",
+                *self.daily_reward() as f64 / 1_000_000.0)
+        );
 
         // Add validators to the output
         for validator in self.config_validators()? {

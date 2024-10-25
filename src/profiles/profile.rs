@@ -7,35 +7,35 @@ use crate::globals::{
 };
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
-use crate::functions::prompt_user;
 use crate::functions::is_valid_nomic_address;
-use crate::functions::TaskStatus;
 use crate::functions::json_table;
+use crate::functions::prompt_user;
+use crate::functions::TaskStatus;
 use crate::globals::PROFILES_DIR;
-use crate::privkey::PrivKey;
 use crate::nonce;
+use crate::privkey::PrivKey;
 use crate::profiles::Balance;
 use crate::profiles::Config;
 use crate::profiles::Delegation;
 use crate::profiles::Delegations;
 use crate::profiles::ProfileCollection;
+use crate::validators::initialize_validators;
 use crate::validators::Validator;
 use crate::validators::ValidatorCollection;
-use crate::validators::initialize_validators;
 use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
 use once_cell::sync::OnceCell;
-use serde_json::json;
+use crate::journal::Journal;
 use serde_json::Value;
 use std::cmp::PartialEq;
+use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
-use std::env;
 
 
 #[derive(Clone)]
@@ -63,10 +63,11 @@ pub struct Profile {
     can_stake_after_claim:         OnceCell<bool>,
     needs_claim:                   OnceCell<bool>,
     quantity_to_stake:             OnceCell<u64>,
-    daily_reward:                  OnceCell<f64>,
-    last_journal:                  OnceCell<serde_json::Value>,
+    daily_reward:                  OnceCell<u64>,
+    last_journal:                  OnceCell<Journal>,
     staked:                        bool,
     claimed:                       bool,
+    journal:                       OnceCell<Journal>,
 }
 
 // Static zero for use when there is an error
@@ -107,6 +108,7 @@ impl Profile {
             last_journal:                  OnceCell::new(),
             claimed:                       false,
             staked:                        false,
+            journal:                       OnceCell::new(),
         }
     }
 
@@ -400,7 +402,7 @@ impl Profile {
             .unwrap_or(0)
     }
 
-    pub fn get_minimum_balance(&self) -> u64 {
+    pub fn config_minimum_balance(&self) -> u64 {
         self.config()
             .map(|config| *config.minimum_balance())
             .unwrap_or(100_000)
@@ -431,10 +433,10 @@ impl Profile {
     }
 
     /// self.config()?.daily_reward() -> Result<&f64>
-    pub fn get_daily_reward(&self) -> f64 {
+    pub fn config_daily_reward(&self) -> u64 {
         self.config()
             .map(|config| *config.daily_reward())
-            .unwrap_or(0.0)
+            .unwrap_or(0)
     }
 
     /// self.config()?.active_validator()?.address -> Result<&str>
@@ -442,7 +444,7 @@ impl Profile {
         self.config()
             .and_then(|config| config.active_validator())
             .map(|validator| validator.address.as_str())
-            .unwrap_or("N/A")
+            .unwrap_or("N/A666")
     }
 
     pub fn config_validator_moniker(&self) -> &str {
@@ -656,7 +658,7 @@ impl Profile {
         Ok(())
     }
 
-    pub fn set_daily_reward(&mut self, reward: Option<f64>) -> Result<()> {
+    pub fn set_daily_reward(&mut self, reward: Option<u64>) -> Result<()> {
         let config = self.config()?;
 
         // Determine the balance to set (either provided or calculated)
@@ -684,7 +686,7 @@ impl Profile {
     /// This function executes the `journalctl` command to retrieve the last log entry
     /// associated with the given address and the running instance of the executable.
     /// It returns the parsed JSON representation of the log entry.
-    pub fn last_journal(&self) -> Result<&serde_json::Value> {
+    pub fn last_journal(&self) -> eyre::Result<&Journal> {
         self.last_journal.get_or_try_init(|| {
             let address = self.key()?.address()?;
 
@@ -693,16 +695,13 @@ impl Profile {
 
             // Get the current executable path
             let exe_path = env::current_exe()
-               .wrap_err("Failed to get the current executable path")?;
+                .wrap_err("Failed to get the current executable path")?;
 
             // Convert the path to a string
             let exe_path_str = exe_path.to_string_lossy();
-            //let exe_path_str = "/usr/local/bin/nomic-tools".to_string();
 
-            // println!("{}", &exe_path_str);
-            // println!("{}", &grep_expr);
-
-            // Use the executable path with journalctl
+            // Use the executable path with journalctl:w
+            //
             let output = Command::new("journalctl")
                 .args(&[
                     &format!("_EXE={}", exe_path_str),
@@ -725,88 +724,85 @@ impl Profile {
                 return Err(eyre::eyre!("No output from journalctl command"));
             }
 
-            // Convert the output to a string and parse it as JSON
-            let output_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let json: Value = serde_json::from_str(&output_str)
-                .wrap_err("Failed to parse output as JSON")?;
+            // Convert the output to a string slice and parse it as IndexMap
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            let journal  = Journal::from_json_str(&output_str.trim())?;
 
-            Ok(json)
+            // Return the newly constructed IndexMap
+            Ok(journal) // Return the constructed IndexMap directly
+
         })
     }
 
-    pub fn daily_reward_result(&self) -> Result<f64> {
+    pub fn daily_reward_result(&self) -> Result<u64> {
         self.daily_reward.get_or_try_init(|| {
             // Fetch the last journal entry
             let last_journal = self.last_journal()?;
 
             // Extract and validate data from the journal
-            let last_total_staked = last_journal
-                .get("total_staked")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_staked' in journal"))?;
+            let last_total_staked = last_journal.get::<u64>("total_staked")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_staked' in last journal"))?;
 
-            let last_total_liquid = last_journal
-                .get("total_liquid")
-                .and_then(|v| v.as_u64())
-                .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_liquid' in journal"))?;
+            let last_total_liquid = last_journal.get::<u64>("total_liquid")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_liquid' in last journal"))?;
 
-            let last_timestamp_str = last_journal
-                .get("timestamp")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| eyre::eyre!("Missing or invalid 'timestamp' in journal"))?;
+            let last_timestamp = last_journal.get::<DateTime<Utc>>("timestamp")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'timestamp' in last journal"))?;
 
             // Parse the last timestamp from string to DateTime
-            let last_timestamp = DateTime::parse_from_rfc3339(last_timestamp_str)
-                .map_err(|_| eyre::eyre!("Failed to parse 'timestamp' as RFC3339"))?
-                .timestamp();
+            let last_timestamp = last_timestamp.timestamp();
 
             // Extract current data
             let current_total_staked = self.delegations()?.total().staked;
             let current_total_liquid = self.delegations()?.total().liquid;
-            let current_timestamp = self.delegations()?.timestamp.timestamp();
+            let current_timestamp    = self.delegations()?.timestamp.timestamp();
 
             // Check conditions and return descriptive errors if they fail
             if last_total_staked != current_total_staked {
                 return Err(eyre::eyre!(
-                    "Total staked mismatch: last={}, current={}",
+                    "Cannot determine daily reward\nTotal staked mismatch: last={}, current={}",
                     last_total_staked,
                     current_total_staked
                 ));
             }
             if last_total_liquid >= current_total_liquid {
                 return Err(eyre::eyre!(
-                    "No liquid increase: last={}, current={}",
+                    "Cannot determine daily reward\nNo liquid increase: last={}, current={}",
                     last_total_liquid,
                     current_total_liquid
                 ));
             }
             if last_timestamp >= current_timestamp {
                 return Err(eyre::eyre!(
-                    "Invalid timestamp: last={}, current={}",
+                    "Cannot determine daily reward\nInvalid timestamp: last={}, current={}",
                     last_timestamp,
                     current_timestamp
                 ));
             }
 
             // Calculate the deltas
-            let reward_delta = current_total_liquid - last_total_liquid;
-            let time_delta = current_timestamp - last_timestamp;
+            let reward_delta = current_total_liquid.saturating_sub(last_total_liquid);
+            let time_delta = current_timestamp.saturating_sub(last_timestamp);
 
             // Calculate the daily reward
-            let daily_reward = (reward_delta as f64 / time_delta as f64 * 86400.0).round();
+            let daily_reward = if time_delta > 0 {
+                (reward_delta as f64 / time_delta as f64 * 86400.0) as u64
+            } else {
+                0 // or some default value
+            };
 
             let mut config = self.config()?.clone();
             config.set_minimum_balance(self.minimum_balance());
             config.set_minimum_stake(*self.minimum_stake());
             config.set_daily_reward(daily_reward);
-            config.save(self.config_file()?, true)?; // Save updated config
+            config.save(self.config_file()?, true)?;
 
             Ok(daily_reward)
         }).cloned()
     }
 
-    pub fn daily_reward(&self) -> f64 {
-        self.daily_reward_result().unwrap_or(self.get_daily_reward())
+    pub fn daily_reward(&self) -> u64 {
+        self.daily_reward_result().unwrap_or(self.config_daily_reward())
     }
 
     pub fn minimum_stake(&self) -> &u64 {
@@ -1196,75 +1192,149 @@ impl Profile {
 
     }
 
-//  pub fn auto_delegate(&self, log: bool) -> eyre::Result<()> {
-//      let quantity = *self.quantity_to_stake();
-//      let claim = *self.needs_claim();
-
-//      // Log the current state if requested
-//      if log {
-//          self.print(Some(OutputFormat::Json))?;
-//      }
-
-//      if quantity > 0 {
-//          if claim {
-//              self.nomic_claim()?;
-//          }
-//          self.nomic_delegate(None, None)?;
-//      } else {
-//          // Log a message since this is not an error
-//          eprintln!("Not enough to stake");
-//      }
-//      Ok(())
-//  }
-
 }
-//  pub fn result_to_json_string<T, E>(result: Result<T, E>) -> String
-//  where
-//      T: ToString,
-//      E: ToString,
-//  {
-//      result.map(|value| value.to_string())
-//            .unwrap_or_else(|err| format!("Error: {}", err.to_string()))
-//  }
 
 impl Profile {
-    pub fn json(&self) -> eyre::Result<Value> {
-        let json_output = json!({
-            "profile":                       self.name(),
-            "address":                       self.address(),
-            "balance":                       self.balance(),
-            "total_staked":                  self.total_staked(),
-            "timestamp":                     self.delegations_timestamp_rfc3339(),
-            "total_liquid":                  self.total_liquid(),
-            "config_minimum_balance":        self.get_minimum_balance(),
-            "config_minimum_balance_ratio":  self.config_minimum_balance_ratio(),
-            "config_minimum_stake":          self.get_minimum_stake(),
-            "config_adjust_minimum_stake":   self.get_adjust_minimum_stake(),
-            "config_minimum_stake_rounding": self.get_minimum_stake_rounding(),
-            "config_daily_reward":           self.get_daily_reward(),
-            "config_validator_address":      self.config_validator_address(),
-            "config_validator_moniker":      self.config_validator_moniker(),
-            "moniker":                       self.moniker(),
-            "voting_power":                  self.voting_power(),
-            "rank":                          self.rank(),
-            "validator_staked":              self.validator_staked(),
-            "claim_fee":                     self.claim_fee(),
-            "stake_fee":                     self.stake_fee(),
-            "minimum_balance":               self.minimum_balance(),
-            "minimum_stake":                 self.minimum_stake(),
-            "available_without_claim":       self.balance(),
-            "available_after_claim":         self.available_after_claim(),
-            "validator_staked_remainder":    self.validator_staked_remainder(),
-            "can_stake_without_claim":       self.can_stake_without_claim(),
-            "can_stake_after_claim":         self.can_stake_after_claim(),
-            "daily_reward":                  self.daily_reward(),
-            "needs_claim":                   self.needs_claim(),
-            "quantity_to_stake":             self.quantity_to_stake(),
-            "claimed":                       TaskStatus::from_bool(self.claimed).to_symbol(),
-            "staked":                        TaskStatus::from_bool(self.staked).to_symbol(),
-        });
 
-        Ok(json_output)
+    pub fn journal(&self) -> &Journal {
+        self.journal.get_or_init(|| {
+            let mut journal = Journal::new();
+
+            journal.insert(
+                "profile".to_string(),
+                Value::String(self.name().to_string())
+            );
+            journal.insert(
+                "address".to_string(),
+                Value::String(self.address().to_string())
+            );
+            journal.insert(
+                "balance".to_string(),
+                Value::Number(self.balance().into())
+            );
+            journal.insert(
+                "total_staked".to_string(),
+                Value::Number(self.total_staked().into())
+            );
+            journal.insert(
+                "timestamp".to_string(),
+                Value::String(self.delegations_timestamp_rfc3339())
+            );
+            journal.insert(
+                "total_liquid".to_string(),
+                Value::Number(self.total_liquid().into())
+            );
+            journal.insert(
+                "config_minimum_balance".to_string(),
+                Value::Number(self.config_minimum_balance().into())
+            );
+            journal.insert(
+                "config_minimum_balance_ratio".to_string(),
+                Value::Number(serde_json::Number::from_f64(self.config_minimum_balance_ratio()).unwrap())
+            );
+            journal.insert(
+                "config_minimum_stake".to_string(),
+                Value::Number(self.get_minimum_stake().into())
+            );
+            journal.insert(
+                "config_adjust_minimum_stake".to_string(),
+                Value::Bool(self.get_adjust_minimum_stake())
+            );
+            journal.insert(
+                "config_minimum_stake_rounding".to_string(),
+                Value::Number(self.get_minimum_stake_rounding().into())
+            );
+            journal.insert(
+                "config_daily_reward".to_string(),
+                Value::Number(self.config_daily_reward().into())
+            );
+            journal.insert(
+                "config_validator_address".to_string(),
+                Value::String(self.config_validator_address().to_string())
+            );
+            journal.insert(
+                "config_validator_moniker".to_string(),
+                Value::String(self.config_validator_moniker().to_string())
+            );
+            journal.insert(
+                "moniker".to_string(),
+                Value::String(self.moniker().to_string())
+            );
+            journal.insert(
+                "voting_power".to_string(),
+                Value::Number(self.voting_power().into())
+            );
+            journal.insert(
+                "rank".to_string(),
+                Value::Number(self.rank().into())
+            );
+            journal.insert(
+                "validator_staked".to_string(),
+                Value::Number(self.validator_staked().into())
+            );
+            journal.insert(
+                "claim_fee".to_string(),
+                Value::Number(self.claim_fee().into())
+            );
+            journal.insert(
+                "stake_fee".to_string(),
+                Value::Number(self.stake_fee().into())
+            );
+            journal.insert(
+                "minimum_balance".to_string(),
+                Value::Number(self.minimum_balance().into())
+            );
+            journal.insert(
+                "minimum_stake".to_string(),
+                Value::Number(serde_json::Number::from(*self.minimum_stake()))
+            );
+            journal.insert(
+                "available_without_claim".to_string(),
+                Value::Number(self.balance().into())
+            );
+            journal.insert(
+                "available_after_claim".to_string(),
+                Value::Number(self.available_after_claim().into())
+            );
+            journal.insert(
+                "validator_staked_remainder".to_string(),
+                Value::Number(serde_json::Number::from(*self.validator_staked_remainder()))
+            );
+            journal.insert(
+                "can_stake_without_claim".to_string(),
+                Value::Bool(*self.can_stake_without_claim())
+            );
+            journal.insert(
+                "can_stake_after_claim".to_string(),
+                Value::Bool(*self.can_stake_after_claim())
+            );
+            journal.insert(
+                "daily_reward".to_string(),
+                Value::Number(self.daily_reward().into())
+            );
+            journal.insert(
+                "needs_claim".to_string(),
+                Value::Bool(*self.needs_claim())
+            );
+            journal.insert(
+                "quantity_to_stake".to_string(),
+                Value::Number(serde_json::Number::from(*self.quantity_to_stake()))
+            );
+            journal.insert(
+                "claimed".to_string(),
+                Value::String(TaskStatus::from_bool(self.claimed).to_symbol().to_string())
+            );
+            journal.insert(
+                "staked".to_string(),
+                Value::String(TaskStatus::from_bool(self.staked).to_symbol().to_string())
+            );
+            journal
+        })
+    }
+
+    pub fn json(&self) -> eyre::Result<Value> {
+        let json = self.journal().json()?;
+        Ok(json)
     }
 
 }
@@ -1337,7 +1407,7 @@ impl Profile {
         minimum_stake: Option<u64>,
         adjust_minimum_stake: Option<bool>,
         minimum_stake_rounding: Option<u64>,
-        daily_reward: Option<f64>,
+        daily_reward: Option<u64>,
         rotate_validators: bool,
         remove_validator: Option<&str>,
         add_validator: Option<&str>,

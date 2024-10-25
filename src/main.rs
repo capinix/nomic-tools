@@ -6,6 +6,7 @@ mod log;
 mod profiles;
 mod globals;
 mod validators;
+mod journal;
 
 use clap::Parser;
 use eyre::Result;
