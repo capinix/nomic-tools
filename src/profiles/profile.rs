@@ -64,7 +64,7 @@ pub struct Profile {
     can_stake_without_claim:       OnceCell<bool>,
     can_stake_after_claim:         OnceCell<bool>,
     needs_claim:                   OnceCell<bool>,
-    quantity_to_stake:             OnceCell<u64>,
+    quantity:             OnceCell<u64>,
     remaining:                     OnceCell<u64>,
     journal:                       OnceCell<Journal>,
     last_journal:                  OnceCell<Journal>,
@@ -104,7 +104,7 @@ impl Profile {
             can_stake_without_claim:       OnceCell::new(),
             can_stake_after_claim:         OnceCell::new(),
             needs_claim:                   OnceCell::new(),
-            quantity_to_stake:             OnceCell::new(),
+            quantity:             OnceCell::new(),
             remaining:                     OnceCell::new(),
             last_journal:                  OnceCell::new(),
             journal:                       OnceCell::new(),
@@ -855,8 +855,8 @@ impl Profile {
         })
     }
 
-    pub fn quantity_to_stake(&self) -> &u64 {
-        self.quantity_to_stake.get_or_init(|| {
+    pub fn quantity(&self) -> &u64 {
+        self.quantity.get_or_init(|| {
             let can_stake_without_claim = *self.can_stake_without_claim();
             let can_stake_after_claim = *self.can_stake_after_claim();
             let available_without_claim = self.balance().saturating_sub(*self.minimum_balance());
@@ -961,7 +961,7 @@ impl Profile {
 
         let quantity = match quantity {
             Some(q) => ( q * 1_000_000.0 ) as u64,
-            None    => *self.quantity_to_stake(),
+            None    => *self.quantity(),
         };
 
         if quantity <= 0 {
@@ -1272,8 +1272,8 @@ impl Profile {
                 Value::Bool(*self.needs_claim())
             );
             journal.insert(
-                "quantity_to_stake".to_string(),
-                Value::Number(serde_json::Number::from(*self.quantity_to_stake()))
+                "quantity".to_string(),
+                Value::Number(serde_json::Number::from(*self.quantity()))
             );
             journal.insert(
                 "claimed".to_string(),

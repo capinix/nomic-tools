@@ -139,7 +139,7 @@ pub fn summary(group_by: GroupBy) -> Result<()> {
             GroupBy::Moniker => journal.get::<String>("moniker"),
         };
 
-        let quantity = journal.get::<u64>("quantity_to_stake");
+        let quantity = journal.get::<u64>("quantity");
 
         let mut totals = DailyTotals::new();
 

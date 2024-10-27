@@ -287,7 +287,7 @@ impl Journal {
         // Extract values
         let staked = self.get::<String>("staked").unwrap_or("❌".to_string());
         let is_staked = staked == "✅";
-        let quantity = self.get::<u64>("quantity_to_stake").unwrap_or(0);
+        let quantity = self.get::<u64>("quantity").unwrap_or(0);
         let total_liquid = self.get::<u64>("total_liquid").unwrap_or(0);
         let remaining = self.get::<u64>("remaining").unwrap_or(0);
         let minimum_stake = self.get::<u64>("minimum_stake").unwrap_or(0);
