@@ -3,11 +3,8 @@ use chrono::{DateTime, Utc};
 use crate::functions::is_valid_nomic_address;
 use crate::functions::prompt_user;
 use crate::functions::TaskStatus;
-use crate::globals::CLAIM_FEE;
-use crate::globals::NOMIC;
-use crate::globals::NOMIC_LEGACY_VERSION;
-use crate::globals::PROFILES_DIR;
-use crate::globals::STAKE_FEE;
+use crate::global::PROFILES_DIR;
+use crate::global::CONFIG;
 use crate::journal::{Journal, OutputFormat};
 use crate::nonce;
 use crate::privkey::PrivKey;
@@ -530,11 +527,11 @@ impl Profile {
     }
 
     pub fn claim_fee(&self) -> u64 {
-        (*CLAIM_FEE * 1_000_000.0) as u64
+        CONFIG.claim_fee
     }
 
     pub fn stake_fee(&self) -> u64 {
-        (*STAKE_FEE * 1_000_000.0) as u64
+        CONFIG.stake_fee
     }
 
     /// Retrieves the validator address based on an optional search string.
@@ -915,11 +912,13 @@ impl Profile {
     pub fn nomic_claim(&mut self) -> eyre::Result<()> {
 
         // Create and configure the Command for running "nomic claim"
-        let mut cmd = Command::new(&*NOMIC);
+        let mut cmd = Command::new(CONFIG.nomic()?);
         cmd.arg("claim");
 
         // Set the environment variables for NOMIC_LEGACY_VERSION
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         // Set the HOME environment variable
         let home_path: &OsStr = self.home().as_os_str();
@@ -932,7 +931,7 @@ impl Profile {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC,
+                CONFIG.nomic()?,
                 String::from_utf8_lossy(&output.stderr)
             );
             return Err(eyre!(error_msg));
@@ -989,10 +988,12 @@ impl Profile {
         }
 
         // Create and configure the Command for running "nomic delegate"
-        let mut cmd = Command::new(&*NOMIC);
+        let mut cmd = Command::new(CONFIG.nomic()?);
 
         // Set the environment variables for NOMIC_LEGACY_VERSION
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         // Assuming `self.home()` returns a &Path
         let home_path: &OsStr = self.home().as_os_str();
@@ -1010,7 +1011,7 @@ impl Profile {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC,
+                CONFIG.nomic()?,
                 String::from_utf8_lossy(&output.stderr)
             );
             if log { self.journal().print(Some(OutputFormat::Json))? };
@@ -1059,10 +1060,12 @@ impl Profile {
         let quantity = (quantity * 1_000_000.0) as u64;
 
         // Create and configure the Command for running "nomic delegate"
-        let mut cmd = Command::new(&*NOMIC);
+        let mut cmd = Command::new(CONFIG.nomic()?);
 
         // Set the environment variables for NOMIC_LEGACY_VERSION
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         // Assuming `self.home()` returns a &Path
         let home_path: &OsStr = self.home().as_os_str();
@@ -1081,7 +1084,7 @@ impl Profile {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC,
+                CONFIG.nomic()?,
                 String::from_utf8_lossy(&output.stderr)
             );
             return Err(eyre!(error_msg));
@@ -1114,10 +1117,12 @@ impl Profile {
         }
 
         // Create and configure the Command for running "nomic delegate"
-        let mut cmd = Command::new(&*NOMIC);
+        let mut cmd = Command::new(CONFIG.nomic()?);
 
         // Set the environment variables for NOMIC_LEGACY_VERSION
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         // Assuming `self.home()` returns a &Path
         let home_path: &OsStr = self.home().as_os_str();
@@ -1135,7 +1140,7 @@ impl Profile {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC,
+                CONFIG.nomic()?,
                 String::from_utf8_lossy(&output.stderr)
             );
             return Err(eyre!(error_msg));

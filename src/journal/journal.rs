@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use colored::Colorize;
 use crate::functions::format_to_millions;
-use crate::globals::GlobalConfig;
+use crate::global::CONFIG;
 use eyre::{Result, WrapErr};
 use indexmap::IndexMap;
 //use log::warn;
@@ -268,19 +268,7 @@ impl Journal {
 
     pub fn log(&self) -> String {
 
-        // Attempt to load config or use the default if loading fails
-        let config = match GlobalConfig::load() {
-            Ok(config) => config,
-            Err(err) => {
-                eprintln!("Error loading config: {}. Using default column widths.", err);
-                let mut default_config = GlobalConfig::new();
-                default_config.log.column_widths = vec![11, 1, 8, 7, 7, 6, 6, 7, 8, 8, 9, 7];
-                let _ = default_config.save(); // Ignore errors for simplicity
-                default_config // Use the default config
-            }
-        };
-
-        let col = &config.log.column_widths; // Retrieve the column widths
+        let col = CONFIG.journalctl.tail.column_widths.clone();
 
         let mut output = String::new();
 

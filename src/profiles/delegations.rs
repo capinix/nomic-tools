@@ -1,7 +1,6 @@
 
 use core::cell::OnceCell;
-use crate::globals::NOMIC;
-use crate::globals::NOMIC_LEGACY_VERSION;
+use crate::global::CONFIG;
 use eyre::eyre;
 use eyre::Result;
 use indexmap::IndexMap;
@@ -84,10 +83,12 @@ impl Delegations {
         let timestamp = Some(Utc::now());
 
         // Create and configure the Command
-        let mut cmd = Command::new(&*NOMIC); // Replace with the actual command string
+        let mut cmd = Command::new(CONFIG.nomic()?); // Replace with the actual command string
 
         // Set environment variables
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         cmd.arg("delegations");
         if let Some(home_str) = home.as_ref().map(|p| p.as_ref().to_str()).flatten() {
@@ -101,7 +102,7 @@ impl Delegations {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC, // Replace with the actual command string
+                CONFIG.nomic()?, // Replace with the actual command string
                 String::from_utf8_lossy(&output.stderr)
             );
             return Err(eyre!(error_msg));

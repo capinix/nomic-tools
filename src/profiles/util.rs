@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use crate::globals::NOMIC;
+use crate::global::CONFIG;
 use eyre::{eyre, Result};
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -13,7 +13,7 @@ pub fn nomic(
 ) -> Result<(), eyre::Error> {
     // Create the command based on whether legacy is provided or not
     let mut child = if let Some(legacy_version) = legacy {
-        Command::new(&*NOMIC)
+        Command::new(CONFIG.nomic()?)
             .env("NOMIC_LEGACY_VERSION", legacy_version)
             .env("HOME", home.as_os_str())
             .args(&args)
@@ -108,7 +108,7 @@ impl std::fmt::Display for OutputFormat {
 //
 //    // Create the command based on whether legacy is provided or not
 //    let mut child = if let Some(legacy_version) = legacy {
-//        Command::new(&*NOMIC)
+//        Command::new(CONFIG.nomic()?)
 //            .env("NOMIC_LEGACY_VERSION", legacy_version)
 //            .env("HOME", home.as_os_str())
 //            .args(&args)

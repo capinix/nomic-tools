@@ -1,20 +1,20 @@
-use lazy_static::lazy_static;
-use std::env;
-use std::path::PathBuf;
+use clap::ValueEnum;
 //use crate::functions::to_bool_string;
-use serde::{Deserialize, Serialize};
-use std::fs;
+use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
+use lazy_static::lazy_static;
 use log::warn;
-use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+use std::env;
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum GroupBy {
     Profile,
     Moniker,
 }
-
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct JournalctlSummaryProfile {
@@ -76,7 +76,7 @@ pub struct GlobalConfig {
     pub minimum_stake_rounding: u64,
     pub claim_fee: u64,
     pub stake_fee: u64,
-    pub nomic_legacy_version: String,
+    pub nomic_legacy_version: Option<String>,
     pub nomic_exe: PathBuf,
     pub journalctl: JournalctlConfig,
 }
@@ -93,7 +93,7 @@ impl Default for GlobalConfig {
             minimum_stake_rounding: 100_000,
             claim_fee: 10_000,
             stake_fee: 10_000,
-            nomic_legacy_version: "NOMIC_LEGACY_VERSION=".to_string(),
+            nomic_legacy_version: Some("".to_string()),
             nomic_exe: PathBuf::from("/usr/local/bin/nomic"),
             journalctl: JournalctlConfig {
                 tail: JournalctlTail::default(),
@@ -124,9 +124,11 @@ impl GlobalConfig {
         PROFILES_DIR.join(filename)
     }
 
-    /// Creates a new `GlobalConfig` with default values, identical to `default()`.
-    pub fn new() -> Self {
-        Self::default() // Delegate to `Default` implementation
+    pub fn nomic(&self) -> Result<String> {
+        self.nomic_exe
+            .to_str() // Convert PathBuf to &str
+            .map(|s| s.to_string()) // Convert &str to String
+            .ok_or_else(|| eyre!("Failed to convert PathBuf to String")) // Handle None case
     }
 
     // Load configuration from the TOML file and override with environment variables
@@ -167,7 +169,7 @@ impl GlobalConfig {
             config.stake_fee = val.parse().unwrap_or(config.stake_fee);
         }
         if let Ok(val) = env::var("NOMIC_LEGACY_VERSION") {
-            config.nomic_legacy_version = val;
+            config.nomic_legacy_version = Some(val);
         }
         if let Ok(val) = env::var("NOMIC") {
             config.nomic_exe = PathBuf::from(val);

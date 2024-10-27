@@ -1,6 +1,5 @@
 
-use crate::globals::NOMIC;
-use crate::globals::NOMIC_LEGACY_VERSION;
+use crate::global::CONFIG;
 use eyre::eyre;
 use eyre::Result;
 use std::process::Command;
@@ -38,10 +37,12 @@ impl Balance {
     pub fn fetch(address: Option<&str>) -> Result<Self> {
         let timestamp = Some(Utc::now());
         // Create and configure the Command
-        let mut cmd = Command::new(&*NOMIC); // Replace with the actual command string
+        let mut cmd = Command::new(CONFIG.nomic()?); // Replace with the actual command string
 
         // Set environment variables
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         cmd.arg("balance");
         if let Some(addr) = address {
@@ -55,7 +56,7 @@ impl Balance {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC, // Replace with the actual command string
+                CONFIG.nomic()?, // Replace with the actual command string
                 String::from_utf8_lossy(&output.stderr)
             );
             return Err(eyre!(error_msg));

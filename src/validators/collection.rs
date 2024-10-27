@@ -1,13 +1,13 @@
 use chrono::{Utc, DateTime};
 use clap::ValueEnum;
-use crate::globals::NOMIC;
-use crate::globals::NOMIC_LEGACY_VERSION;
+use crate::global::CONFIG;
 use crate::validators::Validator;
 use eyre::eyre;
 use eyre::Result;
 use fmt::table::Table;
 use fmt::table::TableBuilder;
 use indexmap::IndexMap;
+use once_cell::sync::OnceCell;
 use rand::seq::SliceRandom;
 use serde_json;
 use serde_json::Value;
@@ -16,7 +16,6 @@ use std::iter::FromIterator;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
-use once_cell::sync::OnceCell;
 
 // Helper function to initialize the ValidatorCollection
 pub fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
@@ -149,11 +148,13 @@ impl ValidatorCollection {
         let timestamp = Some(Utc::now());
 
         // Create and configure the Command
-        let mut cmd = Command::new(&*NOMIC);
+        let mut cmd = Command::new(CONFIG.nomic()?);
         cmd.arg("validators");
 
         // Set environment variables
-        cmd.env("NOMIC_LEGACY_VERSION", &*NOMIC_LEGACY_VERSION);
+        if let Some(ref version) = CONFIG.nomic_legacy_version {
+            cmd.env("NOMIC_LEGACY_VERSION", version);
+        }
 
         // Execute the command and collect the output
         let output = cmd.output()?;
@@ -162,7 +163,7 @@ impl ValidatorCollection {
         if !output.status.success() {
             let error_msg = format!(
                 "Command `{}` failed with output: {:?}",
-                &*NOMIC,
+                CONFIG.nomic()?,
                 String::from_utf8_lossy(&output.stderr)
             );
             return Err(eyre!(error_msg));

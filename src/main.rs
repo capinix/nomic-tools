@@ -3,7 +3,7 @@ mod functions;
 mod privkey;
 mod nonce;
 mod profiles;
-mod globals;
+//mod globals;
 mod global;
 mod validators;
 mod journal;

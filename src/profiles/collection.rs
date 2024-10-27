@@ -1,5 +1,5 @@
 use clap::ValueEnum;
-use crate::globals::PROFILES_DIR;
+use crate::global::PROFILES_DIR;
 use crate::privkey::FromPath;
 use crate::profiles::Balance;
 use crate::profiles::Delegations;
@@ -7,12 +7,12 @@ use crate::profiles::Profile;
 use crate::validators::ValidatorCollection;
 use eyre::{eyre, Result};
 use fmt::table::{Table, TableBuilder};
+use log::warn;
 use once_cell::sync::OnceCell;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use log::warn;
 
 use crate::functions::is_valid_nomic_address;
 

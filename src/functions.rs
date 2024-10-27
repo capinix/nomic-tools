@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
-use crate::globals::PROFILES_DIR;
+use crate::global::PROFILES_DIR;
 use num_format::{Locale, ToFormattedString};
 use console::strip_ansi_codes;
 
@@ -364,14 +364,14 @@ pub fn to_bool(val: String) -> Option<bool> {
     }
 }
 
-pub fn to_bool_string(val: String) -> Option<String> {
-    match val.trim().to_lowercase().as_str() {
-        "true" | "yes" | "y" | "1" => Some("true".to_string()),
-        "false" | "no" | "n" | "0" => Some("false".to_string()),
-        "" => Some("false".to_string()), // Handle empty string as "false"
-        _ => None, // Invalid value, return None
-    }
-}
+//pub fn to_bool_string(val: String) -> Option<String> {
+//    match val.trim().to_lowercase().as_str() {
+//        "true" | "yes" | "y" | "1" => Some("true".to_string()),
+//        "false" | "no" | "n" | "0" => Some("false".to_string()),
+//        "" => Some("false".to_string()), // Handle empty string as "false"
+//        _ => None, // Invalid value, return None
+//    }
+//}
 
 /// for clap
 pub fn validate_ratio(value: &str) -> Result<f64, String> {
