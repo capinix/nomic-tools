@@ -1,21 +1,23 @@
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
-//use crate::journal::Journal;
-use crate::journal::OutputFormat as JournalOutputFormat;
 use crate::functions::validate_positive;
 use crate::functions::validate_ratio;
-use crate::log::tail_journalctl;
+use crate::globals::GlobalConfig;
+use crate::journal::OutputFormat as JournalOutputFormat;
+use crate::journal::tail;
+use crate::journal::summary;
+use crate::journal::GroupBy;
 use crate::nonce;
 use crate::privkey;
 use crate::profiles::CollectionOutputFormat;
 use crate::profiles::nomic;
 use crate::profiles::ProfileCollection;
 use crate::validators;
+use crate::z;
 use eyre::Result;
 use fmt;
 use std::path::Path;
-use crate::globals::GlobalConfig;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -91,7 +93,8 @@ pub struct ConfigEditArgs {
     #[arg(
         short = 'v', long,
         aliases = ["rotate"],
-        help = "Rotate validators"
+        help = "Rotate validators",
+        default_value_t = false,
     )]
     rotate_validators: bool,
 
@@ -159,11 +162,21 @@ pub enum ConfigLogCommands {
     },
 }
 
+#[derive(Debug, Subcommand)]
+pub enum JournalctlCommands {
+    /// Display a summary grouped by profile or moniker
+    Summary {
+        #[arg(value_enum, default_value = "Profile", ignore_case = true)]
+        group_by: GroupBy,
+    },
+}
+
+
 #[derive(Subcommand)]
 pub enum Commands {
 
     #[command(about = "Display the Address (AccountId) for a profile",
-        visible_alias = "ad", aliases = ["add", "addr"],
+        visible_alias = "a", aliases = ["ad", "add", "addr", "addre", "addres"],
     )]
     Address {
         /// Profile
@@ -172,13 +185,13 @@ pub enum Commands {
     },
 
     #[command(about = "Auto delegate all profiles",
-        visible_alias = "au", aliases = ["auto"],
+        visible_alias = "auto", aliases = ["au", "aut"],
     )]
     AutoDelegate,
 
     /// Display the Balance for a profile
     #[command(about = "Display the Balance for a profile",
-        visible_alias = "ba", aliases = ["bal"],
+        visible_alias = "b", aliases = ["ba", "bal", "bala", "balan", "balanc"],
     )]
     Balance {
         /// Profile
@@ -273,6 +286,22 @@ pub enum Commands {
         format: Option<JournalOutputFormat>,
     },
 
+    #[command(about = "journalctl -f", visible_alias = "log")]
+    Journalctl {
+        /// Staked group options
+        #[arg(group = "stake_group")]
+        #[arg(long, short)]
+        staked: bool,
+
+        #[arg(group = "stake_group")]
+        #[arg(long, short)]
+        not_staked: bool,
+
+        #[command(subcommand)]
+        subcommand: Option<JournalctlCommands>,
+
+    },
+
     Key(privkey::Cli),
 
     #[command( about = "Last Journal", visible_alias = "lj", aliases = ["lastj"])]
@@ -285,18 +314,6 @@ pub enum Commands {
         #[arg(long, short)]
         format: Option<JournalOutputFormat>,
     },
-
-      #[command(about = "Log", visible_alias = "lo")]
-      Log {
-          /// Staked group options
-          #[arg(group = "stake_group")]
-          #[arg(long, short)]
-          staked: bool,
-
-          #[arg(group = "stake_group")]
-          #[arg(long, short)]
-          not_staked: bool,
-      },
 
     #[command(about = "Run Nomic commands as Profile", visible_alias = "n", aliases = ["no", "nom", "nomi"])]
     Nomic {
@@ -364,6 +381,7 @@ pub enum Commands {
     },
 
     Validators(validators::Cli),
+    Z(z::Cli),
 }
 
 impl Cli {
@@ -386,55 +404,27 @@ impl Cli {
                     .nomic_claim()
             }
             Commands::Config { profile, command } => {
-                let mut profile = ProfileCollection::new()?
+                let profile = ProfileCollection::new()?
                     .profile_by_name_or_address_or_home_or_default(profile.as_deref())?;
                 match command {
                     Some(ConfigCommand::Edit(args)) => {
-                        // calculated value
-                        let minimum_balance = match args.minimum_balance {
-                            Some(m) => (m * 1_000_000.0) as u64,
-                            None => profile.minimum_balance(),
-                        };
-                        // calculated value
-                        let minimum_stake = match args.minimum_stake {
-                            Some(m) => (m * 1_000_000.0) as u64,
-                            None => *profile.minimum_stake(),
-                        };
-                        // calculated value
-                        let daily_reward = match args.daily_reward {
-                            Some(d) => (d * 1_000_000.0) as u64,
-                            None => profile.daily_reward(),
-                        };
-                        // Check if any options are provided to modify the config
-                        if args.minimum_balance.is_some()
-                            || args.minimum_balance_ratio.is_some()
-                            || args.minimum_stake.is_some()
-                            || args.daily_reward.is_some()
-                            || args.adjust_minimum_stake.is_some()
-                            || args.minimum_stake_rounding.is_some()
-                            || args.rotate_validators
-                            || args.remove_validator.is_some()
-                            || args.add_validator.is_some()
-                        {
-                            profile.edit_config(
-                                Some(minimum_balance),
-                                args.minimum_balance_ratio,
-                                Some(minimum_stake),
-                                args.adjust_minimum_stake,
-                                args.minimum_stake_rounding.map(|b| (b * 1_000_000.0) as u64),
-                                Some(daily_reward),
-                                args.rotate_validators,
-                                args.remove_validator.as_deref(),
-                                args.add_validator.as_deref(),
-                            )?;
-                        }
-                        println!("{:?}", profile.config()?.clone());
+                        profile.edit_config(
+                            args.minimum_balance.map(|v| (v * 1_000_000.0) as u64),
+                            args.minimum_balance_ratio.map(|v| (v * 1_000_000.0) as u64),
+                            args.minimum_stake.map(|v| (v * 1_000_000.0) as u64),
+                            args.adjust_minimum_stake,
+                            args.minimum_stake_rounding.map(|v| (v * 1_000_000.0) as u64),
+                            args.daily_reward.map(|v| (v * 1_000_000.0) as u64),
+                            args.add_validator.clone(),
+                            args.remove_validator.clone(),
+                            args.rotate_validators,
+                        )?;
                         Ok(())
                     }
                     Some(ConfigCommand::Log { command }) => {
                         match command {
                             ConfigLogCommands::Widths { column, width } => {
-                                let mut config = GlobalConfig::load_config()?;
+                                let mut config = GlobalConfig::load()?;
 
                                 match (column, width) {
                                     (None, None) => {
@@ -464,7 +454,7 @@ impl Cli {
                                 }
 
                                 // Save the updated config if any changes were made
-                                config.save_config()?;
+                                config.save()?;
                                 Ok(())
                             },
 
@@ -474,26 +464,20 @@ impl Cli {
                         match command {
                             ConfigSetCommands::MinimumBalance { minimum_balance } => {
                                 let bal = minimum_balance.map(|b| (b * 1_000_000.0) as u64);
-                                profile.set_minimum_balance(bal)?;
-                                println!("{:?}", profile.config()?.clone());
-                                Ok(())
+                                profile.set_config_minimum_balance(bal)
                             },
                             ConfigSetCommands::MinimumStake { minimum_stake } => {
                                 let stake = minimum_stake.map(|b| (b * 1_000_000.0) as u64);
-                                profile.set_minimum_stake(stake)?;
-                                println!("{:?}", profile.config()?.clone());
-                                Ok(())
+                                profile.set_config_minimum_stake(stake)
                             },
                             ConfigSetCommands::DailyReward { daily_reward } => {
                                 let reward = daily_reward.map(|b| (b * 1_000_000.0) as u64);
-                                profile.set_daily_reward(reward)?;
-                                println!("{:?}", profile.config()?.clone());
-                                Ok(())
+                                profile.set_config_daily_reward(reward)
                             },
                         }
                     }
                     _ => {
-                        println!("{:?}", profile.config()?.clone());
+                        println!("{}", profile.config().clone());
                         Ok(())
                     }
                 }
@@ -503,7 +487,7 @@ impl Cli {
             Commands::Delegate { profile, validator, quantity } => {
                 ProfileCollection::new()?
                     .profile_by_name_or_address_or_home_or_default(Some(profile))?
-                    .nomic_delegate(validator.clone(), *quantity)
+                    .nomic_delegate(validator.clone(), *quantity, false)
             }
 
             Commands::Delegations { profile } => {
@@ -549,18 +533,26 @@ impl Cli {
                     .print(format.clone())
                 //Ok(println!("{:#?}", journal))
             }
+            Commands::Journalctl { staked, not_staked, subcommand } => {
+                match subcommand {
+                    Some(JournalctlCommands::Summary { group_by }) => {
+                        summary(group_by.clone())
+                    }
+                    None => {
+                        // Determine whether to tail with staked or not
+                        let staked_or_not = if *staked {
+                            Some(true)
+                        } else if *not_staked {
+                            Some(false)
+                        } else {
+                            None
+                        };
 
-              Commands::Log { staked, not_staked } => {
-                  if *staked {
-                      tail_journalctl(Some(true))
-                  } else if *not_staked {
-                      tail_journalctl(Some(false))
-                  } else {
-                      tail_journalctl(None)
-                  }
-                  //Ok(())
-              }
-
+                        // Call tail_journalctl with the determined staked status
+                        tail(staked_or_not)
+                    }
+                }
+            }
             Commands::Nomic { profile, args } => {
                 let collection = ProfileCollection::new()?;
                 let home_path = collection.home(Some(profile))?;
@@ -585,6 +577,7 @@ impl Cli {
             }
 
             Commands::Validators(cli) => cli.run(),
+            Commands::Z(cli) => cli.run(),
         }
     }
 }

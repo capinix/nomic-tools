@@ -6,34 +6,83 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use crate::globals::PROFILES_DIR;
-use fmt::table::{Table, TableBuilder};
-use serde_json::Value;
+use num_format::{Locale, ToFormattedString};
+use console::strip_ansi_codes;
 
-pub fn json_table(json: Value) -> Result<Table> {
-    if let Value::Object(map) = json {
-        let mut output = String::new();
-        // Construct the header
-        output.push_str(&format!("{}\x1C{}\n", "Key", "Value"));
+pub fn pad_or_truncate(s: &str, width: usize, right_align: bool) -> String {
+    // Calculate length without ANSI codes
+    let stripped_len = strip_ansi_codes(s).chars().count();
 
-        for (key, value) in map.iter() {
-            output.push_str(&format!("{}\x1C{}\n", key, value.to_string().trim()));
-        }
-        // Build and return the Table
-        Ok(TableBuilder::new(Some(output))
-            .set_ifs("\x1C".to_string())
-            .set_ofs("  ".to_string())
-            .set_header_index(1)
-            .set_frame(fmt::text::Frame::NONE)
-            .set_alignment(fmt::text::Alignment::LEFT)
-            .set_column_width_limits_index(80)
-            .build()
-            .clone())
+    if stripped_len > width {
+        // Truncate while keeping ANSI codes intact
+        let mut visible_count = 0;
+        let truncated: String = s.chars()
+            .take_while(|&c| {
+                // Only count non-ANSI characters toward the width limit
+                if !c.is_ascii_control() {
+                    visible_count += 1;
+                }
+                visible_count <= width
+            })
+            .collect();
+        truncated
     } else {
-        Err(eyre::eyre!("Expected JSON object.")) // Return an eyre error
+        // Add padding, keeping ANSI codes intact
+        let padding = " ".repeat(width - stripped_len);
+        if right_align {
+            format!("{}{}", padding, s) // Right-align
+        } else {
+            format!("{}{}", s, padding) // Left-align
+        }
     }
 }
 
+pub fn format_to_millions(value: u64, decimal_places: Option<usize>) -> String {
+    let integer_part = value / 1_000_000;
+    let decimal_part = value % 1_000_000;
 
+    // Format the integer part with a thousands separator
+    let formatted_integer = integer_part.to_formatted_string(&Locale::en);
+
+    match decimal_places {
+        Some(places) if decimal_part > 0 => {
+            // Format the decimal part with 6 digits and pad/truncate to required places
+            let decimal_str = pad_or_truncate(&format!("{:06}", decimal_part), places, false);
+            format!("{}.{}", formatted_integer, decimal_str)
+        }
+        None if decimal_part > 0 => {
+            // Trim trailing zeros dynamically when decimal places are unspecified
+            format!("{}.{}", formatted_integer, format!("{:06}", decimal_part))
+                .trim_end_matches('0')
+                .trim_end_matches('.')
+                .to_string()
+        }
+        _ => formatted_integer, // No decimals needed
+    }
+}
+
+//pub fn format_to_millions(value: u64) -> String {
+//
+//    // determine the integer and decimal parts as u64
+//    let integer_part = value / 1_000_000;
+//    let decimal_part = value % 1_000_000;
+//
+//    // Add thousands separator to the integer part
+//    let formatted_integer = integer_part.to_formatted_string(&Locale::en);
+//
+//    // Construct the final formatted string
+//    if decimal_part > 0 {
+//        // pad with up to 6 leading zeros, since its already
+//        // multiplied by 1_000_000
+//        format!("{}.{:06}", formatted_integer, decimal_part)
+//            .trim_end_matches('0') // Remove trailing zeros
+//            .trim_end_matches('.') // Remove trailing dot if it exists
+//            .to_string()
+//    } else {
+//        // No decimals, just output the integer part
+//        formatted_integer
+//    }
+//}
 
 #[derive(Clone)]
 pub enum TaskStatus {
@@ -305,7 +354,7 @@ pub fn construct_path(
 }
 
 
-
+#[allow(dead_code)]
 pub fn to_bool(val: String) -> Option<bool> {
     match val.trim().to_lowercase().as_str() {
         "true" | "yes" | "y" | "1" => Some(true),
@@ -341,50 +390,3 @@ pub fn prompt_user(question: &str) -> io::Result<String> {
     Ok(input.trim().to_string())         // Return trimmed input
 }
 
-/// Searches for a configuration variable in the provided configuration content.
-///
-/// # Parameters
-/// - `variable_name`: The name of the variable to search for (case-sensitive).
-/// - `config_content`: The configuration content to search within.
-///
-/// # Returns
-/// - `Option<String>`: Returns `Some(String)` if the value is found; otherwise `None`.
-///
-/// # Example
-/// The following examples demonstrate the function's behavior with different configurations:
-///
-/// ```rust
-/// let content = r#"
-/// variable1 = "some value1"
-/// variable2 = value2
-/// variable3=value3
-/// variable4 "some value4"
-/// variable5 value5
-/// "#;
-///
-/// assert_eq!(grep_config("variable1",   content), Some("some value1".to_string()));
-/// assert_eq!(grep_config("variable2",   content), Some("value2".to_string()));
-/// assert_eq!(grep_config("variable3",   content), Some("value3".to_string()));
-/// assert_eq!(grep_config("variable4",   content), Some("some value4".to_string()));
-/// assert_eq!(grep_config("variable5",   content), Some("value5".to_string()));
-/// assert_eq!(grep_config("nonexistent", content), None);
-/// ```
-pub fn grep_config(variable_name: &str, config_content: &str) -> Option<String> {
-    // Construct the regex pattern to capture various types of config values
-    let regex = Regex::new(&(
-        format!(r"(?m)^[[:space:]]*{variable_name}") +   // Match the variable name
-        r"(?:[[:space:]]*=[[:space:]]*|[[:space:]]+)" +  // Match '=' or whitespace
-        r#"(?:(?P<quote1>"[^"]*")|"# +                   // Match quoted values (")
-        r"(?P<quote2>'[^']*')|" +                        // Match quoted values (')
-        r"(?P<unquoted>[^[:space:]]+)).*$"               // Match unquoted values
-    )).unwrap();
-
-    // Capture the value if it matches the pattern
-    regex.captures(config_content).and_then(|captures| {
-        // Return the first matching capture group (quoted or unquoted)
-        captures.get(1).or_else(|| captures.get(2)).or_else(|| captures.get(3)).map(|value| {
-            // Trim surrounding quotes if present and return as String
-            value.as_str().trim_matches('"').trim_matches('\'').to_string()
-        })
-    })
-}

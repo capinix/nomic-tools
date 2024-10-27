@@ -9,6 +9,7 @@ pub use balance::Balance;
 pub use collection::OutputFormat as CollectionOutputFormat;
 pub use collection::ProfileCollection;
 pub use config::Config;
+pub use config::config_filename;
 pub use delegations::Delegations;
 pub use delegations::Delegation;
 pub use profile::Profile;

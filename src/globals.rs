@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use eyre::Result;
 use eyre::WrapErr;
+use log::warn;
 
 #[derive(Serialize, Deserialize)]
 pub struct LogConfig {
@@ -39,19 +40,34 @@ impl Default for GlobalConfig {
 
 
 impl GlobalConfig {
+
+    // Path to the config file
+    pub fn path() -> PathBuf {
+        let default_filename = "config.toml";
+        let filename = match env::current_exe() {
+            Ok(path) => match path.file_name() {
+                Some(name) => format!("{}.toml", name.to_string_lossy()),
+                None => {
+                    warn!("Failed to get the filename from the path");
+                    default_filename.to_string()
+                }
+            },
+            Err(e) => {
+                warn!("Failed to get the current executable path: {}", e);
+                default_filename.to_string()
+            },
+        };
+        PROFILES_DIR.join(filename)
+    }
+
     /// Creates a new `GlobalConfig` with default values, identical to `default()`.
     pub fn new() -> Self {
         Self::default() // Delegate to `Default` implementation
     }
 
-    // Path to the config file
-    fn config_file_path() -> PathBuf {
-        PROFILES_DIR.join("config.toml")
-    }
-
     // Load configuration from the TOML file
-    pub fn load_config() -> Result<Self> {
-        let config_path = Self::config_file_path();
+    pub fn load() -> Result<Self> {
+        let config_path = Self::path();
         let config_str = fs::read_to_string(&config_path)
             .wrap_err_with(|| format!("Failed to read config file at {:?}", config_path))?;
         toml::from_str(&config_str)
@@ -59,8 +75,8 @@ impl GlobalConfig {
     }
 
     // Save the current configuration to the TOML file
-    pub fn save_config(&self) -> Result<()> {
-        let config_path = Self::config_file_path();
+    pub fn save(&self) -> Result<()> {
+        let config_path = Self::path();
         let toml_str = toml::to_string(self)
             .wrap_err("Failed to serialize config to TOML")?;
         fs::write(&config_path, toml_str)
@@ -72,7 +88,7 @@ impl GlobalConfig {
     pub fn set_log_column_width(&mut self, column: usize, width: usize) -> Result<()> {
         if column < self.log.column_widths.len() {
             self.log.column_widths[column] = width; // Update the specified column width
-            self.save_config() // Save the updated config to disk
+            self.save() // Save the updated config to disk
         } else {
             Err(eyre::eyre!("Column index out of bounds")) // Handle out-of-bounds index
         }

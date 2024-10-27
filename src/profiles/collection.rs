@@ -1,5 +1,3 @@
-use chrono::DateTime;
-use chrono::Utc;
 use clap::ValueEnum;
 use crate::globals::PROFILES_DIR;
 use crate::privkey::FromPath;
@@ -14,6 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
+use log::warn;
 
 use crate::functions::is_valid_nomic_address;
 
@@ -21,8 +20,6 @@ use crate::functions::is_valid_nomic_address;
 pub struct ProfileCollection {
     profiles: Vec<Profile>,
     validators: OnceCell<ValidatorCollection>,
-    #[allow(dead_code)]
-    timestamp: DateTime<Utc>,
 }
 
 impl ProfileCollection {
@@ -58,13 +55,12 @@ impl ProfileCollection {
                     } else {
                         None
                     },                                         // validators
-                    None,                                      // timestamp
                     Some(true),                                // overwrite
                 );
 
                 match profile {
                     Ok(profile) => self.profiles.push(profile),
-                    Err(e) => eprintln!("Failed to load profile from {:?}: {}", entry.path(), e),
+                    Err(e) => warn!("Failed to load profile from {:?}: {}", entry.path(), e),
                 }
             }
         }
@@ -78,7 +74,6 @@ impl ProfileCollection {
     pub fn new() -> Result<Self> {
         let mut collection = ProfileCollection {
             profiles: Vec::new(),
-            timestamp: Utc::now(), // Initialize the timestamp to the current time
             validators: OnceCell::new(), // Initialize OnceCell
         };
         collection.load_profiles(false)?; // Load profiles from disk (assuming this is defined elsewhere)
@@ -92,7 +87,6 @@ impl ProfileCollection {
     pub fn load() -> Result<Self> {
         let mut collection = ProfileCollection {
             profiles: Vec::new(),
-            timestamp: Utc::now(), // Initialize the timestamp to the current time
             validators: OnceCell::new(), // Initialize OnceCell
         };
         collection.load_profiles(true)?; // Load profiles from disk (assuming this is defined elsewhere)
@@ -149,12 +143,14 @@ impl ProfileCollection {
     }
 
     /// Finds a profile by its name, address, or home.
-    pub fn profile_by_name_or_address_or_home_or_default(&self, name_or_address_or_home: Option<&str>) -> Result<Profile> {
+    pub fn profile_by_name_or_address_or_home_or_default(
+        &self, name_or_address_or_home: Option<&str>
+    ) -> Result<Profile> {
         if let Some(search) = name_or_address_or_home {
             self.profile_by_name_or_address_or_home(search).cloned()
         } else {
             let home = home::home_dir().ok_or_else(|| eyre!("Home directory not found"))?;
-            Profile::new(None, Some(home), None, None, Some(true))
+            Profile::new(None, Some(home), None, Some(true))
         }
     }
 
@@ -256,17 +252,6 @@ impl ProfileCollection {
         }
     }
 
-    /// Finds a profile by its name or address.
-//    pub fn profile_by_name_or_address(&self, name_or_address: &str) -> Result<&Profile> {
-//        // First try to find the profile by name
-//        if let Ok(profile) = self.profile_by_name(name_or_address) {
-//            return Ok(profile);
-//        }
-//
-//        // If not found by name, try to find by address
-//        self.profile_by_address(name_or_address)
-//    }
-
     /// Retrieves the home directory path based on the provided name or address.
     ///
     /// This function searches for the home directory associated with a given profile name. If a 
@@ -305,17 +290,10 @@ impl ProfileCollection {
         )
     }
 
-//    /// verifies the profile name or retrieves it from an address or home directory
-//    /// if no name is given return default
-//    pub fn name(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
-//        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.name().to_string())
-//    }
-
     /// Retrieves the address of a profile by its name or address.
     pub fn balances(&self, name_or_address_or_home: Option<&str>) -> Result<Balance, eyre::Error> {
         Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.balances()?.clone())
     }
-
 
     /// Retrieves the delegations for a profile.
     pub fn delegations(&self, name_or_address_or_home: Option<&str>) -> Result<Delegations> {
@@ -330,28 +308,14 @@ impl ProfileCollection {
         self.profiles.sort_by(|a, b| a.name().cmp(&b.name()));
     }
 
-
     pub fn auto_delegate(&mut self) -> Result<()> {
         self.sort_by_name();
         self.profiles.iter_mut().for_each(|profile| {
             // Call nomic_delegate and ignore any errors
-            let _ = profile.nomic_delegate(None, None);
+            let _ = profile.nomic_delegate(None, None, true);
         });
         Ok(())
     }
-
-//    pub fn export_nonce(&self, name_or_address: &str) -> Result<u64> {
-//        self.profile_by_name_or_address(name_or_address)?.export_nonce()
-//    }
-
-//    pub fn import_nonce(&self,
-//        name_or_address: &str,
-//        value: u64,
-//        dont_overwrite: bool,
-//    ) -> Result<()> {
-//        self.profile_by_name_or_address(name_or_address)?
-//            .import_nonce(value, dont_overwrite)
-//    }
 
     pub fn import(&self,
         name_or_address_or_home: &str,
@@ -394,7 +358,7 @@ impl ProfileCollection {
                     "home"       : profile.home(),
                     "key_file"   : profile.key_file()?.to_string_lossy(),
                     "nonce_file" : profile.nonce_file()?.to_string_lossy(),
-                    "config_file": profile.config_file()?.to_string_lossy(),
+                    "config_file": profile.config_file().to_string_lossy(),
                     "nonce"      : profile.export_nonce().ok(),
                 }),
             );

@@ -1,34 +1,26 @@
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
+use colored::Colorize;
+use crate::functions::format_to_millions;
+use crate::globals::GlobalConfig;
 use eyre::{Result, WrapErr};
 use indexmap::IndexMap;
+//use log::warn;
+use num_format::ToFormattedString;
 use serde_json::{Value, to_value};
 use std::str::FromStr;
-use num_format::{Locale, ToFormattedString};
-use colored::Colorize;
-use crate::globals::GlobalConfig;
 
 /// A wrapper around `Value` that implements custom display formatting.
 #[derive(Debug)]
 struct DisplayLogValue(Value);
 
-/// Implements the `Display` trait for `DisplayLogValue`.
-/// This allows for custom formatting when the struct is printed.
-impl std::fmt::Display for DisplayLogValue {
-    /// Formats the contained `Value` based on its type.
-    ///
-    /// - For `Value::Number`, it attempts to interpret the number as a `u64`
-    ///   and divides it by 1,000,000, displaying the result in millions.
-    ///   If the result is less than 100, it is displayed with two decimal places.
-    ///   Otherwise, it is formatted as an integer with proper thousand separators.
-    ///
-    /// - For `Value::String`, it tries to parse the string as an RFC 3339 datetime.
-    ///   If parsing succeeds, it formats the datetime as "MM-DD HH:MM" in UTC.
-    ///   If parsing fails, the original string is displayed.
-    ///
-    /// - For other value types, it defaults to using the underlying value's
-    ///   `Display` implementation.
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+#[allow(dead_code)]
+#[derive(Debug)]
+struct DisplayLogOptionValue(Option<Value>);
+
+impl DisplayLogValue {
+    /// Common display formatting logic for `DisplayLogValue`.
+    fn format_value(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
             Value::Number(n) => {
                 // Check for u64
@@ -58,56 +50,41 @@ impl std::fmt::Display for DisplayLogValue {
     }
 }
 
-#[derive(Debug)]
-struct Nom6(Value);
-
-impl std::fmt::Display for Nom6 {
+/// Implements the `Display` trait for `DisplayLogValue`.
+/// This allows for custom formatting when the struct is printed.
+impl std::fmt::Display for DisplayLogValue {
+    /// Formats the contained `Value` based on its type.
+    ///
+    /// - For `Value::Number`, it attempts to interpret the number as a `u64`
+    ///   and divides it by 1,000,000, displaying the result in millions.
+    ///   If the result is less than 100, it is displayed with two decimal places.
+    ///   Otherwise, it is formatted as an integer with proper thousand separators.
+    ///
+    /// - For `Value::String`, it tries to parse the string as an RFC 3339 datetime.
+    ///   If parsing succeeds, it formats the datetime as "MM-DD HH:MM" in UTC.
+    ///   If parsing fails, the original string is displayed.
+    ///
+    /// - For other value types, it defaults to using the underlying value's
+    ///   `Display` implementation.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            Value::Number(n) => {
-                if n.is_u64() { // Check if it's a u64 type
-                    if let Some(num) = n.as_u64() {
-                        let value = num as f64 / 1_000_000.0; // Convert to millions
-                        let integer_part = value.trunc() as u64; // Get integer part
-                        let fractional_part = value.fract(); // Get fractional part
+        self.format_value(f)
+    }
+}
 
-                        // Format the integer part with thousands separators
-                        let formatted_integer = integer_part.to_formatted_string(&Locale::en);
-
-                        // Format the fractional part to 6 decimal places
-                        let formatted_fractional = (fractional_part * 1_000_000.0).round() as u64;
-
-                        // Construct the final formatted string
-                        let final_output = if formatted_fractional == 0 {
-                            formatted_integer // Only show integer part if no fractional part
-                        } else {
-                            format!("{}.{}", formatted_integer, formatted_fractional)
-                                .trim_end_matches('0') // Remove trailing zeros
-                                .trim_end_matches('.') // Remove trailing dot if it exists
-                                .to_string()
-                        };
-
-                        // Write the final formatted string
-                        write!(f, "{}", final_output)
-
-                    } else {
-                        // If it can't be converted to u64, just return the input
-                        write!(f, "{}", self.0) // Return the original value
-                    }
-                } else {
-                    // If it's not a u64, just return the input
-                    write!(f, "{}", self.0) // Return the original value
-                }
-            }
-            _ => write!(f, "{}", self.0), // Return the original value for non-number cases
+impl std::fmt::Display for DisplayLogOptionValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(value) = &self.0 {
+            DisplayLogValue(value.clone()).fmt(f) // Use the helper function for formatting
+        } else {
+            write!(f, "None") // Handle the case for None
         }
     }
 }
 
 #[derive(Debug)]
-struct DateDisplay(Value);
+struct DisplayJournalValue(Value);
 
-impl std::fmt::Display for DateDisplay {
+impl std::fmt::Display for DisplayJournalValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
             Value::String(s) => {
@@ -118,7 +95,15 @@ impl std::fmt::Display for DateDisplay {
                 } else {
                     write!(f, "{}", s) // Return the original string if invalid
                 }
-            }
+            },
+            Value::Number(n) => {
+                // Check for u64
+                if let Some(num) = n.as_u64() {
+                    write!(f, "{}", format_to_millions(num, None))
+                } else {
+                    write!(f, "{}", n) // Return the unchanged input for other cases
+                }
+            },
             _ => write!(f, "{}", self.0), // Return the original value for non-string cases
         }
     }
@@ -131,7 +116,7 @@ impl std::fmt::Display for DateDisplayFromOption {
         match self.0 {
             Some(dt) => {
                 // Format the DateTime as "MM-DD_HH:MM"
-                let formatted = dt.format("%m-%d_%H:%M").to_string();
+                let formatted = dt.format("%m-%d %H:%M").to_string();
                 write!(f, "{}", formatted)
             }
             None => write!(f, "N/A"), // Default to "N/A" if None
@@ -215,13 +200,10 @@ impl std::fmt::Display for Journal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for (key, value) in &self.0 {
             write!(f, "{:width$} : ", key, width = self.max_key_length())?; // Print key with padding
-            match value {
-                Value::String(_) => writeln!(f, "{}", DateDisplay(value.clone()))?,
-                Value::Number(_) => writeln!(f, "{}", Nom6(value.clone()))?,
-                Value::Bool(b) => writeln!(f, "{}", b)?,
-                Value::Array(arr) => writeln!(f, "{:?}", arr)?,
-                Value::Object(obj) => writeln!(f, "{:#?}", obj)?,
-                Value::Null => writeln!(f, "null")?,
+            if key == "rank" {
+                writeln!(f, "{}", value.clone())?;
+            } else {
+                writeln!(f, "{}", DisplayJournalValue(value.clone()))?;
             }
         }
 
@@ -287,13 +269,13 @@ impl Journal {
     pub fn log(&self) -> String {
 
         // Attempt to load config or use the default if loading fails
-        let config = match GlobalConfig::load_config() {
+        let config = match GlobalConfig::load() {
             Ok(config) => config,
             Err(err) => {
                 eprintln!("Error loading config: {}. Using default column widths.", err);
                 let mut default_config = GlobalConfig::new();
                 default_config.log.column_widths = vec![11, 1, 8, 7, 7, 6, 6, 7, 8, 8, 9, 7];
-                let _ = default_config.save_config(); // Ignore errors for simplicity
+                let _ = default_config.save(); // Ignore errors for simplicity
                 default_config // Use the default config
             }
         };
@@ -305,27 +287,19 @@ impl Journal {
         // Extract values
         let staked = self.get::<String>("staked").unwrap_or("❌".to_string());
         let is_staked = staked == "✅";
-        let is_claimed = self.get::<String>("claimed").unwrap_or("❌".to_string()) == "✅";
-        let available = self.get::<u64>("available_after_claim").unwrap_or(0);
         let quantity = self.get::<u64>("quantity_to_stake").unwrap_or(0);
-        let balance = self.get::<u64>("balance").unwrap_or(0);
-        let total_staked = self.get::<u64>("total_staked").unwrap_or(0);
         let total_liquid = self.get::<u64>("total_liquid").unwrap_or(0);
-        let validator_staked = self.get::<u64>("validator_staked").unwrap_or(0);
-        let validator_staked_remainder = self.get::<u64>("validator_staked_remainder").unwrap_or(0);
+        let remaining = self.get::<u64>("remaining").unwrap_or(0);
         let minimum_stake = self.get::<u64>("minimum_stake").unwrap_or(0);
+        let balance = self.get::<u64>("balance").unwrap_or(0);
 
         // Calculations
-        let remaining_to_stake = if validator_staked_remainder > 0 {
-            validator_staked_remainder.saturating_sub(total_liquid)
-        } else {
-            minimum_stake.saturating_sub(total_liquid)
-        };
-        let minimum_stake_value = if is_staked { minimum_stake } else { remaining_to_stake };
-        let balance_after_stake = if is_claimed { balance.saturating_sub(quantity) } else { available.saturating_sub(quantity) };
-        let balance_value = if is_staked { balance_after_stake } else { balance };
-        let total_staked_value = if is_staked { total_staked.saturating_add(quantity) } else { total_staked };
-        let validator_staked_value = if is_staked { validator_staked.saturating_add(quantity) } else { validator_staked };
+//        let remaining_to_stake = balance
+//            .saturating_add(minimum_stake)
+//            .saturating_sub(validator_staked_remainder)
+//            .saturating_sub(total_liquid);
+        let minimum_stake_value = if is_staked { minimum_stake } else { remaining };
+//        let minimum_stake_value = minimum_stake;
         let total_liquid_value = if is_staked { quantity } else { total_liquid };
 
         // Formatting and color handling for each column
@@ -348,19 +322,39 @@ impl Journal {
         );
 
         // Apply color based on individual conditions for each cell
-        let total_staked_str = pad_or_truncate(&format!("{}", DisplayLogValue(total_staked_value.into())), col[3], true).green();
+        let total_staked_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(self.get::<u64>("total_staked").unwrap_or(0).into())), 
+            col[3], 
+            true
+        ).green();
         output = format!("{}{}", output, total_staked_str);
 
-        let daily_reward_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<u64>("daily_reward").into())), col[4], true).blue();
+        let daily_reward_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(self.get::<u64>("daily_reward").into())),
+            col[4],
+            true
+        ).blue();
         output = format!("{}{}", output, daily_reward_str);
 
-        let minimum_balance_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<u64>("minimum_balance").into())), col[5], true).magenta();
+        let minimum_balance_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(self.get::<u64>("minimum_balance").into())),
+            col[5],
+            true
+        ).magenta();
         output = format!("{}{}", output, minimum_balance_str);
 
-        let balance_str = pad_or_truncate(&format!("{}", DisplayLogValue(balance_value.into())), col[6], true).green();
+        let balance_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(balance.into())), 
+            col[6], 
+            true
+        ).green();
         output = format!("{}{}", output, balance_str);
 
-        let total_liquid_str = pad_or_truncate(&format!("{}", DisplayLogValue(total_liquid_value.into())), col[7], true);
+        let total_liquid_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(total_liquid_value.into())), 
+            col[7], 
+            true
+        );
         let total_liquid_str_colored = if is_staked {
             total_liquid_str.green()
         } else {
@@ -368,7 +362,11 @@ impl Journal {
         };
         output = format!("{}{}", output, total_liquid_str_colored);
 
-        let minimum_stake_str = pad_or_truncate(&format!("{}", DisplayLogValue(minimum_stake_value.into())), col[8], true);
+        let minimum_stake_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(minimum_stake_value.into())),
+            col[8],
+            true
+        );
         let minimum_stake_str_colored = if is_staked {
             minimum_stake_str.blue()
         } else {
@@ -376,13 +374,25 @@ impl Journal {
         };
         output = format!("{}{}│", output, minimum_stake_str_colored);
 
-        let config_validator_moniker_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<String>("config_validator_moniker").into())), col[9], false);
-        output = format!("{}{}", output, config_validator_moniker_str);
+        let config_validator_name_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(self.get::<String>("config_validator_name").into())),
+            col[9],
+            false
+        );
+        output = format!("{}{}", output, config_validator_name_str);
 
-        let voting_power_str = pad_or_truncate(&format!("{}", DisplayLogValue(self.get::<u64>("voting_power").into())), col[10], true).magenta();
+        let voting_power_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(self.get::<u64>("voting_power").into())),
+            col[10],
+            true
+        ).magenta();
         output = format!("{}{}", output, voting_power_str);
 
-        let validator_staked_str = pad_or_truncate(&format!("{}", DisplayLogValue(validator_staked_value.into())), col[11], true).green();
+        let validator_staked_str = pad_or_truncate(
+            &format!("{}", DisplayLogValue(self.get::<u64>("validator_staked").unwrap_or(0).into())),
+            col[11],
+            true
+        ).green();
         output = format!("{}{}", output, validator_staked_str);
 
         output
