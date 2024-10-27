@@ -4,6 +4,7 @@ mod privkey;
 mod nonce;
 mod profiles;
 mod globals;
+mod global;
 mod validators;
 mod journal;
 mod z;

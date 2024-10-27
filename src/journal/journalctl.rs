@@ -4,10 +4,10 @@ use std::env;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use crate::journal::Journal;
+use crate::global::GroupBy;
 use std::collections::HashMap;
 use chrono::Utc;
 use chrono::DateTime;
-use clap::ValueEnum;
 use log::warn;
 
 // Common function to process journalctl output
@@ -116,12 +116,6 @@ impl DailyTotals {
         // Clear totals after printing
         self.totals.clear();
     }
-}
-
-#[derive(Debug, Clone, ValueEnum)]
-pub enum GroupBy {
-    Profile,
-    Moniker,
 }
 
 pub fn summary(group_by: GroupBy) -> Result<()> {

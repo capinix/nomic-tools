@@ -27,13 +27,11 @@ use log::warn;
 use once_cell::sync::OnceCell;
 use serde_json::Value;
 use std::cmp::PartialEq;
-//use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-//use std::str::FromStr;
 
 // Static zero for use when there is an error
 static ZERO: u64 = 0;
@@ -64,7 +62,7 @@ pub struct Profile {
     can_stake_without_claim:       OnceCell<bool>,
     can_stake_after_claim:         OnceCell<bool>,
     needs_claim:                   OnceCell<bool>,
-    quantity:             OnceCell<u64>,
+    quantity:                      OnceCell<u64>,
     remaining:                     OnceCell<u64>,
     journal:                       OnceCell<Journal>,
     last_journal:                  OnceCell<Journal>,
@@ -104,7 +102,7 @@ impl Profile {
             can_stake_without_claim:       OnceCell::new(),
             can_stake_after_claim:         OnceCell::new(),
             needs_claim:                   OnceCell::new(),
-            quantity:             OnceCell::new(),
+            quantity:                      OnceCell::new(),
             remaining:                     OnceCell::new(),
             last_journal:                  OnceCell::new(),
             journal:                       OnceCell::new(),

@@ -3,11 +3,11 @@ use clap::Parser;
 use clap::Subcommand;
 use crate::functions::validate_positive;
 use crate::functions::validate_ratio;
-use crate::globals::GlobalConfig;
 use crate::journal::OutputFormat as JournalOutputFormat;
 use crate::journal::tail;
 use crate::journal::summary;
-use crate::journal::GroupBy;
+use crate::global::GroupBy;
+use crate::global::CONFIG;
 use crate::nonce;
 use crate::privkey;
 use crate::profiles::CollectionOutputFormat;
@@ -137,9 +137,9 @@ pub enum ConfigSetCommands {
 pub enum ConfigCommand {
     Edit(ConfigEditArgs),
 
-    Log {
+    Journalctl {
         #[command(subcommand)]
-        command: ConfigLogCommands
+        command: ConfigJournalctlCmd
     },
 
     Set {
@@ -149,7 +149,7 @@ pub enum ConfigCommand {
 }
 
 #[derive(Debug, Subcommand)]
-pub enum ConfigLogCommands {
+pub enum ConfigJournalctlCmd {
     #[command(about = "Configure Journal column widths",
         visible_alias = "w", aliases = ["wi"],
     )]
@@ -160,7 +160,37 @@ pub enum ConfigLogCommands {
         #[arg(required = false)]
         width: Option<usize>,
     },
+    Summary {
+        #[command(subcommand)]
+        command: ConfigJournalctlSummary,
+    },
+
 }
+
+#[derive(Debug, Subcommand)]
+pub enum ConfigJournalctlSummary {
+    #[command(
+        about = "Configure Journal column widths for profiles",
+        visible_alias = "p", aliases = ["prof"]
+    )]
+    Profile {
+        #[arg(required = false)]
+        column: Option<usize>,
+
+        #[arg(required = false)]
+        width: Option<usize>,
+    },
+
+    #[command(about = "Configure Journal column widths for monikers")]
+    Moniker {
+        #[arg(required = false)]
+        column: Option<usize>,
+
+        #[arg(required = false)]
+        width: Option<usize>,
+    },
+}
+
 
 #[derive(Debug, Subcommand)]
 pub enum JournalctlCommands {
@@ -421,29 +451,30 @@ impl Cli {
                         )?;
                         Ok(())
                     }
-                    Some(ConfigCommand::Log { command }) => {
+                    Some(ConfigCommand::Journalctl { command }) => {
+                        let mut config = CONFIG.clone();
                         match command {
-                            ConfigLogCommands::Widths { column, width } => {
-                                let mut config = GlobalConfig::load()?;
+                            ConfigJournalctlCmd::Widths { column, width } => {
 
                                 match (column, width) {
                                     (None, None) => {
                                         // Both column and width are None: Print the entire column widths array
-                                        println!("{:?}", config.log.column_widths);
+                                        println!("{:?}", config.journalctl.tail.column_widths);
                                     }
                                     (Some(col), None) => {
                                         // Column is provided but no width: Print the specific column width
-                                        if *col < config.log.column_widths.len() {
-                                            println!("{:?}", config.log.column_widths[*col - 1]);
+                                        if *col < config.journalctl.tail.column_widths.len() {
+                                            println!("{:?}", config.journalctl.tail.column_widths[*col - 1]);
                                         } else {
                                             eprintln!("Column index out of bounds: {}", col);
                                         }
                                     }
                                     (Some(col), Some(w)) => {
                                         // Both column and width are provided: Set the column width
-                                        if *col < config.log.column_widths.len() {
-                                            config.set_log_column_width(*col - 1, *w)?;
-                                            println!("{:?}", config.log.column_widths);
+                                        if *col < config.journalctl.tail.column_widths.len() {
+                                            config.set_journalctl_tail_column_width(*col - 1, *w)?;
+                                            println!("{:?}", config.journalctl.tail.column_widths);
+                                            config.save()?;
                                         } else {
                                             eprintln!("Column index out of bounds: {}", col);
                                         }
@@ -452,9 +483,73 @@ impl Cli {
                                         eprintln!("Invalid input: Either both column and width must be provided, or just column for query.");
                                     }
                                 }
+                                Ok(())
+                            },
+                            ConfigJournalctlCmd::Summary { command } => {
+                                match command {
+                                    ConfigJournalctlSummary::Profile { column, width } => {
+                                        match (column, width) {
+                                            (None, None) => {
+                                                // Both column and width are None: Print the entire column widths array
+                                                println!("{:?}", config.journalctl.summary.profile.column_widths);
+                                            }
+                                            (Some(col), None) => {
+                                                // Column is provided but no width: Print the specific column width
+                                                if *col < config.journalctl.summary.profile.column_widths.len() {
+                                                    println!("{:?}", config.journalctl.summary.profile.column_widths[*col - 1]);
+                                                } else {
+                                                    eprintln!("Column index out of bounds: {}", col);
+                                                }
+                                            }
+                                            (Some(col), Some(w)) => {
+                                                // Both column and width are provided: Set the column width
+                                                if *col < config.journalctl.summary.profile.column_widths.len() {
+                                                    config.set_journalctl_summary_column_width(GroupBy::Profile, *col - 1, *w)?;
+                                                    println!("{:?}", config.journalctl.summary.profile.column_widths);
+                                                    config.save()?;
+                                                } else {
+                                                    eprintln!("Column index out of bounds: {}", col);
+                                                }
+                                            }
+                                            _ => {
+                                                eprintln!("Invalid input: Either both column and width must be provided, or just column for query.");
+                                            }
+                                        }
+
+                                    }
+                                    ConfigJournalctlSummary::Moniker { column, width } => {
+                                        match (column, width) {
+                                            (None, None) => {
+                                                // Both column and width are None: Print the entire column widths array
+                                                println!("{:?}", config.journalctl.summary.moniker.column_widths);
+                                            }
+                                            (Some(col), None) => {
+                                                // Column is provided but no width: Print the specific column width
+                                                if *col < config.journalctl.summary.moniker.column_widths.len() {
+                                                    println!("{:?}", config.journalctl.summary.moniker.column_widths[*col - 1]);
+                                                } else {
+                                                    eprintln!("Column index out of bounds: {}", col);
+                                                }
+                                            }
+                                            (Some(col), Some(w)) => {
+                                                // Both column and width are provided: Set the column width:w
+                                                //
+                                                if *col < config.journalctl.summary.moniker.column_widths.len() {
+                                                    config.set_journalctl_summary_column_width(GroupBy::Moniker, *col - 1, *w)?;
+                                                    println!("{:?}", config.journalctl.summary.moniker.column_widths);
+                                                    config.save()?;
+                                                } else {
+                                                    eprintln!("Column index out of bounds: {}", col);
+                                                }
+                                            }
+                                            _ => {
+                                                eprintln!("Invalid input: Either both column and width must be provided, or just column for query.");
+                                            }
+                                        }
+                                    }
+                                }
 
                                 // Save the updated config if any changes were made
-                                config.save()?;
                                 Ok(())
                             },
 

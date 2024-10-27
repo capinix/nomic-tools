@@ -24,16 +24,75 @@ impl Default for LogConfig {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct GlobalConfig {
-    pub log: LogConfig,
+pub struct JournalctlSummaryProfile {
+    pub column_widths: Vec<usize>,
 }
 
-/// Provides a default implementation for `GlobalConfig`.
-/// The default `GlobalConfig` will have the default `LogConfig`.
+#[derive(Serialize, Deserialize)]
+pub struct JournalctlSummaryMoniker {
+    pub column_widths: Vec<usize>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct JournalctlSummary {
+    pub profile: JournalctlSummaryProfile,
+    pub moniker: JournalctlSummaryMoniker,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct JournalctlTail {
+    pub column_widths: Vec<usize>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct JournalctlConfig {
+    pub tail: JournalctlTail,
+    pub summary: JournalctlSummary,
+}
+
+impl Default for JournalctlTail {
+    fn default() -> Self {
+        Self {
+            column_widths: vec![11, 1, 8, 7, 7, 6, 6, 7, 8, 8, 9, 7],
+        }
+    }
+}
+
+impl Default for JournalctlSummaryProfile {
+    fn default() -> Self {
+        Self {
+            column_widths: vec![5, 8, 8],
+        }
+    }
+}
+
+impl Default for JournalctlSummaryMoniker {
+    fn default() -> Self {
+        Self {
+            column_widths: vec![5, 8, 8],
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct GlobalConfig {
+    pub log: LogConfig,
+    pub journalctl: JournalctlConfig,
+}
+
+/// Provides a default implementation for `GlobalConfig`
+/// The default `GlobalConfig` will have the default `LogConfig`
 impl Default for GlobalConfig {
     fn default() -> Self {
         Self {
-            log: LogConfig::default(), // Use the default `LogConfig`
+            log: LogConfig::default(),
+            journalctl: JournalctlConfig {
+                tail: JournalctlTail::default(),
+                summary: JournalctlSummary {
+                    profile: JournalctlSummaryProfile::default(),
+                    moniker: JournalctlSummaryMoniker::default(),
+                }
+            }
         }
     }
 }

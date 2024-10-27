@@ -1,4 +1,5 @@
 use crate::functions::format_to_millions;
+use crate::global::CONFIG;
 use eyre::Result;
 use eyre::WrapErr;
 use serde::Deserialize;
@@ -86,14 +87,14 @@ impl std::fmt::Display for Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            profile:           String::new(), // Empty profile by default
-            minimum_balance:          10_000, // Default balance
-            minimum_balance_ratio:     1_000, // Default to 0.001 (as f64 divided by 1_000_000.0)
-            minimum_stake:         1_000_000, // Default minimum stake
-            adjust_minimum_stake:      false, // Default adjustment to false
-            minimum_stake_rounding:   10_000, // Default rounding
-            daily_reward:                  0, // Default daily reward is zero
-            validators:           Vec::new(), // Start with no validators
+            profile:                String::new(),                 // Empty profile by default
+            minimum_balance:        CONFIG.minimum_balance,        // Default balance
+            minimum_balance_ratio:  CONFIG.minimum_balance_ratio,  // Default to 0.001 (as f64 divided by 1_000_000.0)
+            minimum_stake:          CONFIG.minimum_stake,          // Default minimum stake
+            adjust_minimum_stake:   CONFIG.adjust_minimum_stake,   // Default adjustment to false
+            minimum_stake_rounding: CONFIG.minimum_stake_rounding, // Default rounding
+            daily_reward:           0,                             // Default daily reward is zero
+            validators:             Vec::new(),                    // Start with no validators
         }
     }
 }
