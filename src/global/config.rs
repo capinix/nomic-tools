@@ -9,6 +9,12 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+
+//pub enum OptionalString {
+//    None,
+//    Value(String),
+//}
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum GroupBy {
@@ -187,6 +193,41 @@ impl GlobalConfig {
             .wrap_err_with(|| format!("Failed to write config to {:?}", config_path))?;
         Ok(())
     }
+
+    pub fn open(&self) -> Result<()> {
+        let path: PathBuf = GlobalConfig::path();
+
+        println!("{:?}", path);
+
+        #[cfg(target_os = "windows")]
+        {
+            // On Windows, use "notepad" or any other editor of your choice
+            Command::new("notepad").arg(path).spawn()?;
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            // On macOS, use "open" command
+            Command::new("open").arg(path).spawn()?;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Try to get the editor from the environment variables
+            let editor = env::var("EDITOR")
+                .or_else(|_| env::var("VISUAL"))
+                .unwrap_or_else(|_| "vim".to_string());
+
+            // Spawn the editor with the file path
+            Command::new(editor)
+                .arg(path)
+                .status()?;
+
+        }
+
+        Ok(())
+    }
+
 
     // Edit a specific log column width and save to disk
     pub fn set_journalctl_tail_column_width(&mut self, column: usize, width: usize) -> Result<()> {

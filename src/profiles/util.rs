@@ -50,21 +50,6 @@ pub fn nomic(
 }
 
 
-//fn default_config(profile_name: &str) -> String {
-//	format!(
-//		"PROFILE={}\n\
-//		MINIMUM_BALANCE=10.00\n\
-//		MINIMUM_BALANCE_RATIO=0.001\n\
-//		MINIMUM_STAKE=5\n\
-//		ADJUST_MINIMUM_STAKE=true\n\
-//		MINIMUM_STAKE_ROUNDING=5\n\
-//		DAILY_REWARD=0.00\n\
-//		read VALIDATOR MONIKER <<< \"nomic1jpvav3h0d2uru27fcne3v9k3mrl75l5zzm09uj radicalu\"\n\
-//		read VALIDATOR MONIKER <<< \"nomic1stfhcjgl9j7d9wzultku7nwtjd4zv98pqzjmut maximusu\"",
-//		profile_name
-//	)
-//}
-
 /// Enum to represent output formats
 #[derive(Debug, Clone, ValueEnum)]
 pub enum OutputFormat {
@@ -100,35 +85,3 @@ impl std::fmt::Display for OutputFormat {
 	}
 }
 
-//pub fn nomic(
-//	home: &Path, 
-//	legacy: Option<String>, 
-//	args: Vec<String>
-//) -> Result<(), eyre::Error> {
-//
-//    // Create the command based on whether legacy is provided or not
-//    let mut child = if let Some(legacy_version) = legacy {
-//        Command::new(CONFIG.nomic()?)
-//            .env("NOMIC_LEGACY_VERSION", legacy_version)
-//            .env("HOME", home.as_os_str())
-//            .args(&args)
-//            .spawn()?
-//    } else {
-//        Command::new("nomic")
-//            .env("HOME", home.as_os_str())
-//            .args(&args)
-//            .spawn()?
-//    };
-//
-//    // Wait for the command to finish
-//    let status = child.wait()?;
-//
-//    // Ensure eyre properly processes any errors before exiting the program
-//    if let Some(code) = status.code() {
-//        exit(code);  // Exit with the child's exit code
-//    } else {
-//        return Err(eyre::eyre!("Process terminated by signal"));  // Handle signal-based termination
-//    }
-//
-//    Ok(())  // Return Ok if everything worked fine
-//}

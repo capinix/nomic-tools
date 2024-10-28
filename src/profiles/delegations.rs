@@ -1,6 +1,8 @@
 
-use core::cell::OnceCell;
+use once_cell::sync::OnceCell;
 use crate::global::CONFIG;
+use crate::validators::ValidatorCollection;
+use crate::functions::format_to_millions;
 use eyre::eyre;
 use eyre::Result;
 use indexmap::IndexMap;
@@ -27,6 +29,7 @@ pub struct Delegations {
     pub timestamp: DateTime<Utc>,
     pub delegations: IndexMap<String, Delegation>,
     pub total: OnceCell<Delegation>,
+    pub validators: OnceCell<ValidatorCollection>,
 }
 
 impl fmt::Debug for Delegations {
@@ -47,11 +50,15 @@ impl Delegations {
     }
 
     /// Creates a new Delegations instance.
-    pub fn new(timestamp: Option<DateTime<Utc>>) -> Self {
+    pub fn new(
+        timestamp: Option<DateTime<Utc>>,
+        validators: Option<ValidatorCollection>,
+    ) -> Self {
         Delegations {
             timestamp:   timestamp.unwrap_or(Utc::now()),
             delegations: IndexMap::new(),
             total:       OnceCell::new(),
+            validators:  ValidatorCollection::initialize_oncecell(validators),
         }
     }
 
@@ -112,7 +119,7 @@ impl Delegations {
         let output_str = String::from_utf8_lossy(&output.stdout);
         let lines: Vec<&str> = output_str.lines().collect();
 
-        let mut delegations = Delegations::new(timestamp);
+        let mut delegations = Delegations::new(timestamp, None);
 
         // Iterate over the lines starting with "- nomic"
         for line in lines.iter().filter(|line| line.trim().starts_with("- nomic")) {
@@ -161,6 +168,97 @@ impl Delegations {
 
         // Return the delegations instance wrapped in a Result
         Ok(delegations)
+    }
+
+    pub fn validators(&self) -> eyre::Result<&ValidatorCollection> {
+        self.validators.get_or_try_init(|| {
+            ValidatorCollection::fetch()
+        })
+    }
+
+    pub fn table(&self) -> String {
+        let col = [44, 10, 8, 8, 8]; // Column widths
+
+        // Start with the timestamp and the header in a single formatted string using col
+        let header = format!(
+            "Delegations as of {}:\n{:width0$} {:width1$} {:>width2$} {:>width3$} {:>width4$}\n",
+            self.timestamp,
+            "Address",
+            "Moniker",
+            "Staked",
+            "Liquid",
+            "NBTC",
+            width0 = col[0],
+            width1 = col[1],
+            width2 = col[2],
+            width3 = col[3],
+            width4 = col[4],
+        );
+
+        // Create a line of dashes for the header using the same format string
+        let separator = format!(
+            "{:-<width0$} {:-<width1$} {:->width2$} {:->width3$} {:->width4$}\n",
+            "", "", "", "", "",
+            width0 = col[0],
+            width1 = col[1],
+            width2 = col[2],
+            width3 = col[3],
+            width4 = col[4],
+        );
+
+        // Create a formatted string for each delegation using col
+        let delegations_output: String = self.delegations.iter().map(|(address, delegation)| {
+            let moniker = self.validators().ok()
+                .and_then(|v| v.validator(address).ok())
+                .map_or("N/A".to_string(), |validator| validator.moniker().to_string());
+            format!(
+                "{:width0$} {:width1$} {:>width2$} {:>width3$} {:>width4$}\n",
+                address,
+                moniker,
+                format_to_millions(delegation.staked, Some(2)),
+                format_to_millions(delegation.liquid, Some(2)),
+                format_to_millions(delegation.nbtc, Some(2)),
+                width0 = col[0],
+                width1 = col[1],
+                width2 = col[2],
+                width3 = col[3],
+                width4 = col[4],
+            )
+        }).collect(); // Collect into a single String
+
+        let total_separator = format!(
+            "{:width0$} {:width1$} {:->width2$} {:->width3$} {:->width4$}\n",
+            "", "", "", "", "",
+            width0 = col[0],
+            width1 = col[1],
+            width2 = col[2],
+            width3 = col[3],
+            width4 = col[4],
+        );
+
+        let totals = format!(
+            "{:width0$} {:width1$} {:>width2$} {:>width3$} {:>width4$}\n",
+            "", "",
+            format_to_millions(self.total().staked, Some(2)),
+            format_to_millions(self.total().liquid, Some(2)),
+            format_to_millions(self.total().nbtc, Some(2)),
+            width0 = col[0],
+            width1 = col[1],
+            width2 = col[2],
+            width3 = col[3],
+            width4 = col[4],
+        );
+
+        // Combine the header, separator, and delegations output
+        format!("{}{}{}{}{}", header, separator, delegations_output, total_separator, totals)
+    }
+}
+
+impl std::fmt::Display for Delegations {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Use the existing table method to get the formatted string
+        let output = self.table();
+        write!(f, "{}", output)
     }
 }
 

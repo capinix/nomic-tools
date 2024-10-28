@@ -1,5 +1,6 @@
 mod journal;
 mod journalctl;
+pub mod cli;
 
 pub use journal::Journal;
 pub use journal::OutputFormat;

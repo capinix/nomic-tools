@@ -3,21 +3,26 @@ use eyre::Result;
 use crate::global::CONFIG;
 use crate::global::GroupBy;
 
-/// Defines the CLI structure for the `validators` command.
 #[derive(Parser)]
 #[command(name = "GlobalConfig", about = "Global Configuration Settings")]
 pub struct Cli {
-    /// Subcommands for the validators command
     #[command(subcommand)]
     pub command: Command,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
+    #[command(about = "Manage journalctl settings", visible_alias = "j",
+        aliases = ["jo", "jou", "jour", "journ", "journa", "journal", "journalc", "journalct"],
+    )]
     Journalctl {
         #[command(subcommand)]
         command: Journalctl,
     },
+    #[command(about = "Open global config in default editor", visible_alias = "o",
+        aliases = ["op", "ope"],
+    )]
+    Open,
 }
 
 #[derive(Debug, Subcommand)]
@@ -45,10 +50,16 @@ pub enum Journalctl {
 
 #[derive(Debug, Subcommand)]
 pub enum JournalctlSummary {
+    #[command(about = "journalctl profile summary settings",
+        visible_alias = "p", aliases = ["pr", "pro", "prof", "profi", "profil"],
+    )]
     Profile {
         #[command(subcommand)]
         command: Option<JournalctlSummaryProfile>,
     },
+    #[command(about = "journalctl moniker summary settings",
+        visible_alias = "m", aliases = ["mo", "mon", "moni", "monik", "monike"],
+    )]
     Moniker {
         #[command(subcommand)]
         command: Option<JournalctlSummaryMoniker>,
@@ -183,6 +194,9 @@ impl Cli {
                         None => Ok(()),
                     },
                 }
+            }
+            Command::Open => {
+                CONFIG.open()
             }
         }
     }

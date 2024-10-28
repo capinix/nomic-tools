@@ -17,16 +17,24 @@ use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
 
+//// Helper function to initialize the ValidatorCollection
+//pub fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
+//    match validators {
+//        Some(v) => {
+//            let cell = OnceCell::new();
+//            cell.set(v).unwrap();
+//            cell
+//        },
+//        None => OnceCell::new(),
+//    }
+//}
 // Helper function to initialize the ValidatorCollection
 pub fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
-    match validators {
-        Some(v) => {
-            let cell = OnceCell::new();
-            cell.set(v).unwrap();
-            cell
-        },
-        None => OnceCell::new(),
+    let cell = OnceCell::new();
+    if let Some(v) = validators {
+        cell.set(v).unwrap();
     }
+    cell
 }
 
 /// Enum to represent output formats
@@ -76,6 +84,15 @@ pub struct ValidatorCollection {
 }
 
 impl ValidatorCollection {
+
+    pub fn initialize_oncecell(validators: Option<ValidatorCollection>) -> OnceCell<Self> {
+        let cell = OnceCell::new();
+        if let Some(v) = validators {
+            cell.set(v).unwrap();
+        }
+        cell
+    }
+
     /// Creates a `ValidatorCollection` from an iterator of `Validator` instances.
     ///
     /// # Arguments
@@ -175,7 +192,6 @@ impl ValidatorCollection {
         Self::import(output_str, timestamp)
 
     }
-
     /// Creates a `ValidatorCollection` from a `Vec<Validator>`.
     ///
     /// # Arguments

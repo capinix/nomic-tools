@@ -11,7 +11,7 @@ use std::path::Path;
 
 /// Defines the CLI structure for the `privkey` command.
 #[derive(Parser)]
-#[command(name = "PrivKey", about = "Manage PrivKey File", visible_alias = "k",)]
+#[command(about = "Manage PrivKey File")]
 pub struct Cli {
     /// Subcommands for the nonce command
     #[command(subcommand)]

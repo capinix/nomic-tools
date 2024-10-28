@@ -6,10 +6,7 @@ use crate::nonce::Nonce;
 use eyre::Result;
 
 #[derive(Parser)]
-#[command(
-    name = "Nonce", 
-    about = "Manage Nonce File",
-)]
+#[command(about = "Manage Nonce File")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<CliCommand>,

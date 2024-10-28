@@ -1,8 +1,8 @@
 use clap::ValueEnum;
 use crate::global::PROFILES_DIR;
 use crate::privkey::FromPath;
-use crate::profiles::Balance;
-use crate::profiles::Delegations;
+//use crate::profiles::Balance;
+//use crate::profiles::Delegations;
 use crate::profiles::Profile;
 use crate::validators::ValidatorCollection;
 use eyre::{eyre, Result};
@@ -282,23 +282,23 @@ impl ProfileCollection {
         Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.home().to_path_buf())
     }
 
-    /// Retrieves the hex of a profile by its name or address.
-    pub fn export(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
-        Ok(
-            self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?
-                .key()?.export()?.to_string()
-        )
-    }
-
-    /// Retrieves the address of a profile by its name or address.
-    pub fn balances(&self, name_or_address_or_home: Option<&str>) -> Result<Balance, eyre::Error> {
-        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.balances()?.clone())
-    }
-
-    /// Retrieves the delegations for a profile.
-    pub fn delegations(&self, name_or_address_or_home: Option<&str>) -> Result<Delegations> {
-        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.delegations()?.clone())
-    }
+//    /// Retrieves the hex of a profile by its name or address.
+//    pub fn export(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
+//        Ok(
+//            self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?
+//                .key()?.export()?.to_string()
+//        )
+//    }
+//
+//    /// Retrieves the address of a profile by its name or address.
+//    pub fn balances(&self, name_or_address_or_home: Option<&str>) -> Result<Balance, eyre::Error> {
+//        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.balances()?.clone())
+//    }
+//
+//    /// Retrieves the delegations for a profile.
+//    pub fn delegations(&self, name_or_address_or_home: Option<&str>) -> Result<Delegations> {
+//        Ok(self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?.delegations()?.clone())
+//    }
     pub fn send(&self, source: Option<&str>, destination: Option<&str>, quantity: Option<f64>) -> Result<()> {
         self.profile_by_name_or_address_or_home_or_default(source)?
             .nomic_send(self.validate_address(destination)?, quantity)
