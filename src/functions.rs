@@ -49,6 +49,8 @@ pub fn format_to_millions(value: u64, decimal_places: Option<usize>) -> String {
             // Format the decimal part with 6 digits and pad/truncate to required places
             let decimal_str = pad_or_truncate(&format!("{:06}", decimal_part), places, false);
             format!("{}.{}", formatted_integer, decimal_str)
+                .trim_end_matches('.')
+                .to_string()
         }
         None if decimal_part > 0 => {
             // Trim trailing zeros dynamically when decimal places are unspecified

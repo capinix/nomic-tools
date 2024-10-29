@@ -905,6 +905,7 @@ dependencies = [
  "hex",
  "home",
  "indexmap",
+ "itertools",
  "lazy_static",
  "log",
  "num-format",

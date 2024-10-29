@@ -10,6 +10,7 @@ use std::fmt;
 use std::path::Path;
 use std::process::Command;
 use chrono::{Utc, DateTime};
+use tabled::{Tabled, Table, settings::{Alignment, Border, Modify, Span, Style, object::{Columns, Rows, Cell}}};
 
 #[derive(Clone, Debug)]
 pub struct Delegation {
@@ -176,89 +177,107 @@ impl Delegations {
         })
     }
 
-    pub fn table(&self) -> String {
-        let col = [44, 10, 8, 8, 8]; // Column widths
+    pub fn moniker(&self, address: &str) -> String {
+        match self.validators() {
+            Ok(validators) => {
+                // Attempt to get the moniker, and handle errors gracefully
+                validators.validator(address)
+                    .map(|validator| validator.moniker()) // Extract the moniker if successful
+                    .unwrap_or_else(|_| "N/A").to_string() // Handle the error
+            },
+            Err(_) => "N/A".to_string(), // Handle error from validators()
+        }
+    }
 
-        // Start with the timestamp and the header in a single formatted string using col
-        let header = format!(
-            "Delegations as of {}:\n{:width0$} {:width1$} {:>width2$} {:>width3$} {:>width4$}\n",
-            self.timestamp,
-            "Address",
-            "Moniker",
-            "Staked",
-            "Liquid",
-            "NBTC",
-            width0 = col[0],
-            width1 = col[1],
-            width2 = col[2],
-            width3 = col[3],
-            width4 = col[4],
+    pub fn format_table(&self) -> String {
+        // Prepare rows for the table
+        let mut rows: Vec<DelegationRow> = Vec::new();
+
+        // Add header row automatically handled by the Tabled derive
+        for (address, delegation) in &self.delegations {
+            let row = DelegationRow::from_data(
+                address.clone(),
+                self.moniker(address),
+                delegation.staked,
+                delegation.liquid,
+                delegation.nbtc,
+            );
+            rows.push(row);
+        }
+
+        // Create totals row
+        let totals_row = DelegationRow::from_data(
+            format!("{} {}",
+             self.timestamp.format("%Y-%m-%d %H:%M").to_string(),
+             "Total"
+            ),
+            "".to_string(),
+            self.total().staked,
+            self.total().liquid,
+            self.total().nbtc,
         );
+        rows.push(totals_row);
 
-        // Create a line of dashes for the header using the same format string
-        let separator = format!(
-            "{:-<width0$} {:-<width1$} {:->width2$} {:->width3$} {:->width4$}\n",
-            "", "", "", "", "",
-            width0 = col[0],
-            width1 = col[1],
-            width2 = col[2],
-            width3 = col[3],
-            width4 = col[4],
-        );
+        // Create the table and apply styles and modifications
+         let mut table = Table::new(rows.clone()); // Clone the rows here to pass ownership to the table
 
-        // Create a formatted string for each delegation using col
-        let delegations_output: String = self.delegations.iter().map(|(address, delegation)| {
-            let moniker = self.validators().ok()
-                .and_then(|v| v.validator(address).ok())
-                .map_or("N/A".to_string(), |validator| validator.moniker().to_string());
-            format!(
-                "{:width0$} {:width1$} {:>width2$} {:>width3$} {:>width4$}\n",
-                address,
-                moniker,
-                format_to_millions(delegation.staked, Some(2)),
-                format_to_millions(delegation.liquid, Some(2)),
-                format_to_millions(delegation.nbtc, Some(2)),
-                width0 = col[0],
-                width1 = col[1],
-                width2 = col[2],
-                width3 = col[3],
-                width4 = col[4],
-            )
-        }).collect(); // Collect into a single String
+        table
+            .with(Style::empty()) // Use an empty style
+            .with(Modify::new(Columns::new(2..)).with(Alignment::right())) // Staked, Liquid, NBTC columns align right
+            // Set borders on the first row
+            .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
+            // Apply right alignment to the totals row (last row)
+            .with(Modify::new(Rows::single(rows.len())).with(Alignment::right()))
+            // Apply a distinct bottom border to the totals row
+            .with(Modify::new(Cell::new(rows.len(), 2)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len(), 3)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len(), 4)).with(Border::new().set_top('-')))
+            // Apply span to the first two cells in the last row
+            .with(Modify::new(Cell::new(rows.len(), 0)).with(Span::column(2)));
 
-        let total_separator = format!(
-            "{:width0$} {:width1$} {:->width2$} {:->width3$} {:->width4$}\n",
-            "", "", "", "", "",
-            width0 = col[0],
-            width1 = col[1],
-            width2 = col[2],
-            width3 = col[3],
-            width4 = col[4],
-        );
-
-        let totals = format!(
-            "{:width0$} {:width1$} {:>width2$} {:>width3$} {:>width4$}\n",
-            "", "",
-            format_to_millions(self.total().staked, Some(2)),
-            format_to_millions(self.total().liquid, Some(2)),
-            format_to_millions(self.total().nbtc, Some(2)),
-            width0 = col[0],
-            width1 = col[1],
-            width2 = col[2],
-            width3 = col[3],
-            width4 = col[4],
-        );
-
-        // Combine the header, separator, and delegations output
-        format!("{}{}{}{}{}", header, separator, delegations_output, total_separator, totals)
+        // Return the formatted table as a string
+        table.to_string()
     }
 }
 
-impl std::fmt::Display for Delegations {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Use the existing table method to get the formatted string
-        let output = self.table();
-        write!(f, "{}", output)
+#[derive(Clone, Tabled)]
+struct DelegationRow {
+    #[tabled(rename = "Address")]
+    address: String,
+
+    #[tabled(rename = "Moniker")]
+    moniker: String,
+
+    #[tabled(rename = "Staked")]
+    staked: String,
+
+    #[tabled(rename = "Liquid")]
+    liquid: String,
+
+    #[tabled(rename = "NBTC")]
+    nbtc: String,
+}
+
+impl DelegationRow {
+    fn from_data(address: String, moniker: String, staked: u64, liquid: u64, nbtc: u64) -> Self {
+        DelegationRow {
+            address,
+            moniker,
+            staked: format_to_millions(staked, Some(2)),
+            liquid: format_to_millions(liquid, Some(2)),
+            nbtc: format_to_millions(nbtc, Some(2)),
+        }
+    }
+}
+
+
+impl fmt::Display for Delegations {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "\n{}", self.format_table())
     }
 }
 

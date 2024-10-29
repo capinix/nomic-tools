@@ -1,33 +1,24 @@
 use chrono::{Utc, DateTime};
 use clap::ValueEnum;
 use crate::global::CONFIG;
-use crate::validators::Validator;
+use crate::validators::validator::{Validator, ValidatorTableDetail, ValidatorTableSimple};
 use eyre::eyre;
 use eyre::Result;
-use fmt::table::Table;
-use fmt::table::TableBuilder;
 use indexmap::IndexMap;
+use itertools::Itertools;
 use once_cell::sync::OnceCell;
 use rand::seq::SliceRandom;
 use serde_json;
 use serde_json::Value;
+use std::cmp::Reverse;
 use std::fs;
 use std::iter::FromIterator;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
+use tabled::{Table, settings::{Alignment, Border, Modify, Style, Width, object::{Columns, Cell}}};
 
 //// Helper function to initialize the ValidatorCollection
-//pub fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
-//    match validators {
-//        Some(v) => {
-//            let cell = OnceCell::new();
-//            cell.set(v).unwrap();
-//            cell
-//        },
-//        None => OnceCell::new(),
-//    }
-//}
 // Helper function to initialize the ValidatorCollection
 pub fn initialize_validators(validators: Option<ValidatorCollection>) -> OnceCell<ValidatorCollection> {
     let cell = OnceCell::new();
@@ -571,7 +562,7 @@ impl ValidatorCollection {
     /// let raw_string = collection.raw(None)?;
     /// assert!(raw_string.contains("address"));
     /// ```
-    pub fn raw(&self, include_details: Option<bool>) -> eyre::Result<String> {
+    pub fn raw(&self, include_details: bool) -> eyre::Result<String> {
         let mut output = String::new(); // Create a new String to hold the output
 
         for validator in &self.validators {
@@ -581,7 +572,7 @@ impl ValidatorCollection {
             output.push_str(&format!("    MONIKER: {}\n", validator.moniker()));
 
             // Include details if specified
-            if include_details.unwrap_or(true) {
+            if include_details {
                 output.push_str(&format!("    DETAILS: {}\n", validator.details()));
             }
         }
@@ -596,95 +587,49 @@ impl ValidatorCollection {
     ///
     /// ```
     /// let collection = ValidatorCollection::new();
-    /// let table = collection.table(None, None); // Include None for default behavior
+    /// let table = collection.format_table(None); // Include None for default behavior
     /// assert!(table.contains("Rank"));
     /// ```
-    pub fn table(&self, include_details: Option<bool>, column_widths: Option<Vec<usize>>) -> eyre::Result<Table> {
-        // Initialize the output string
-        let mut output = String::new();
+    pub fn format_table(&self, include_details: bool) -> Result<String> {
 
-        // Determine whether to include details
-        let details = include_details.unwrap_or(false);
+        // Create the table and apply styles and modifications
+        let mut table = if include_details {
+            let rows: Vec<ValidatorTableDetail> = self.validators
+                .iter()
+                .sorted_by_key(|v| Reverse(v.voting_power()))
+                .map(|v| v.table_detail())
+                .collect();
+            Table::new(rows)
 
-        // Define the header based on the presence of details
-        let header: Vec<&str> = if details {
-            vec!["Rank", "Address", "Voting Power", "Moniker", "Details"]
         } else {
-            vec!["Rank", "Address", "Voting Power", "Moniker"]
+            let rows: Vec<ValidatorTableSimple> = self.validators
+                .iter()
+                .sorted_by_key(|v| Reverse(v.voting_power()))
+                .map(|v| v.table_simple())
+                .collect();
+            Table::new(rows)
         };
+        table
+            .with(Style::empty()) // Use an empty style
+            .with(Modify::new(Columns::single(0)).with(Alignment::right()))
+            .with(Modify::new(Columns::single(2)).with(Alignment::right()))
+            // Set borders on the first row
+            .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')));
 
-        // Define the default widths based on whether details are included
-        let default_widths = if details {
-            vec![0, 0, 0, 0, 20] // Default widths for details
-        } else {
-            vec![0, 0, 0, 0] // Default widths without details
-        };
-
-        // Create the final widths vector, starting with defaults
-        let mut final_widths = default_widths.clone();
-
-        // If user provided widths, overwrite the defaults
-        if let Some(user_widths) = column_widths {
-            for (i, &width) in user_widths.iter().enumerate() {
-                if i < final_widths.len() {
-                    final_widths[i] = width; // Use user-provided width
-                }
-            }
+        // If details are included, ensure the last column's width matches custom settings if any
+        if include_details {
+        table
+            .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Columns::single(4)).with(Width::truncate(60)));
         }
 
-        // Sort validators by voting power in descending order
-        let mut sorted_validators = self.validators.clone();
-        sorted_validators.sort_by_key(|v| std::cmp::Reverse(v.voting_power()));
-
-        // Construct the header
-        output.push_str(&header.join("\x1C"));
-        output.push('\n');
-
-        // Join final widths into a string and append to output
-        output.push_str(&final_widths.iter().map(|w| w.to_string()).collect::<Vec<_>>().join("\x1C"));
-        output.push('\n');
-
-        // Data rows
-        for validator in &sorted_validators {
-            let row = if details {
-                format!(
-                    "{}\x1C{}\x1C{}\x1C{}\x1C{}",
-                    validator.rank(),
-                    validator.address(),
-                    validator.voting_power_nom(),
-                    validator.moniker(),
-                    validator.details()
-                )
-            } else {
-                format!(
-                    "{}\x1C{}\x1C{}\x1C{}",
-                    validator.rank(),
-                    validator.address(),
-                    validator.voting_power_nom(),
-                    validator.moniker(),
-                )
-            };
-
-            // Add the formatted validator to output
-            output.push_str(&row);
-            output.push('\n');
-        }
-
-        // Create and configure the table using TableBuilder
-        let mut table = TableBuilder::new(Some(output))
-            .set_ifs("\x1C".to_string())
-            .set_ofs("  ".to_string())
-            .set_header_index(1)
-            .set_column_width_limits_index(2)
-            .set_max_cell_width(80)
-            .set_pad_decimal_digits(true)
-            .set_max_decimal_digits(0)
-            .set_use_thousand_separator(true)
-            .clone();
-
-        // Build and return the table
-        Ok(table.build().clone())
+        // Format and return the table as a string
+        Ok(table.to_string())
     }
+
 
     /// Returns an `IndexMap` representation of the validators.
     ///
@@ -697,9 +642,8 @@ impl ValidatorCollection {
     /// ```
     pub fn index_map(
         &self,
-        include_details: Option<bool>
+        include_details: bool
     ) -> eyre::Result<IndexMap<String, IndexMap<String, serde_json::Value>>> {
-        let details = include_details.unwrap_or(false);
 
         // Pre-allocate space for the outer map
         let mut array = IndexMap::new();
@@ -710,13 +654,13 @@ impl ValidatorCollection {
 
         for validator in sorted_validators {
             // Pre-allocate space for the inner map
-            let mut record = IndexMap::with_capacity(if details { 5 } else { 4 });
+            let mut record = IndexMap::with_capacity(if include_details { 5 } else { 4 });
 
             record.insert("VOTING POWER".to_string(), serde_json::Value::Number(validator.voting_power().into()));
             record.insert("MONIKER".to_string(),      serde_json::Value::String(validator.moniker().to_string()));
             record.insert("RANK".to_string(),         serde_json::Value::Number(validator.rank().into()));
 
-            if details {
+            if include_details {
                 record.insert("DETAILS".to_string(),  serde_json::Value::String(validator.details().to_string()));
             }
 
@@ -735,7 +679,7 @@ impl ValidatorCollection {
     /// let json_object = collection.json(None).unwrap(); // This will return a serde_json::Value
     /// assert!(json_object.get("address").is_some());
     /// ```
-    pub fn json(&self, include_details: Option<bool>) -> eyre::Result<Value> {
+    pub fn json(&self, include_details: bool) -> eyre::Result<Value> {
         // Call index_map and handle the result
         let index_map_result = self.index_map(include_details);
 
@@ -769,13 +713,12 @@ impl ValidatorCollection {
     /// assert!(tuple_vector.iter().any(|(_, address, _, _)| *address == "address"));
     /// ```
     pub fn tuple(&self,
-        include_details: Option<bool>
+        include_details: bool
     ) -> eyre::Result<Vec<(u64, String, u64, String, Option<String>)>> {
-        let details = include_details.unwrap_or(false);
         let mut output = Vec::with_capacity(self.validators.len()); // Preallocate output vector
 
         for validator in &self.validators {
-            let tuple = if details {
+            let tuple = if include_details {
                 (
                     validator.rank(),
                     validator.address().to_string(),
@@ -836,8 +779,8 @@ impl ValidatorCollection {
     /// Ensure that the desired format is valid, as unsupported formats will result in no output.
     pub fn print(&self,
         format: Option<OutputFormat>,
-        include_details: Option<bool>,
-        column_widths: Option<Vec<usize>>
+        include_details: bool,
+        // column_widths: Option<Vec<usize>>
     ) -> eyre::Result<()> {
 
         // Use the default format if None is provided
@@ -856,7 +799,7 @@ impl ValidatorCollection {
                     .map_err(|e| eyre::eyre!("Error serializing JSON: {}", e))?;
                 println!("{}", pretty_json);
             },
-            OutputFormat::Table => self.table(include_details, column_widths)?.printstd(),
+            OutputFormat::Table => println!("{}", self.format_table(include_details)?),
             OutputFormat::Tuple => println!("{:?}", self.tuple(include_details)?),
             OutputFormat::Raw   => println!("{}",   self.raw(include_details)?),
         }
