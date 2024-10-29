@@ -80,8 +80,11 @@ pub enum Commands {
     )]
     Redelegate(profiles::cli::redelegate::Command),
 
-    #[command(visible_alias = "s", aliases = ["se", "sen"])]
+    #[command(visible_alias = "se", aliases = ["sen"])]
     Send(profiles::cli::send::Command),
+
+    #[command(visible_alias = "st", aliases = ["sta", "stat"])]
+    Stats(profiles::cli::stats::Command),
 
     #[command(visible_alias = "v", 
         aliases = ["va", "val", "vali", "valid", "valida", "validat", "validato", "validator"]
@@ -114,6 +117,7 @@ impl Cli {
             Commands::Profiles(cmd)     => cmd.run(),
             Commands::Redelegate(cmd)   => cmd.run(),
             Commands::Send(cmd)         => cmd.run(),
+            Commands::Stats(cmd)        => cmd.run(),
             Commands::Validators(cli)   => cli.run(),
             Commands::Z(cli)            => cli.run(),
         }

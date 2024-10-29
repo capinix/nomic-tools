@@ -12,11 +12,13 @@ use crate::profiles::Balance;
 use crate::profiles::Config;
 use crate::profiles::config_filename;
 use crate::profiles::Delegation;
+use crate::profiles::DelegationRow;
 use crate::profiles::Delegations;
 use crate::profiles::ProfileCollection;
 use crate::validators::initialize_validators;
 use crate::validators::Validator;
 use crate::validators::ValidatorCollection;
+use tabled::{Table, settings::{Alignment, Border, Modify, Span, Style, object::{Columns, Rows, Cell}}};
 use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
@@ -24,6 +26,7 @@ use log::warn;
 use once_cell::sync::OnceCell;
 use serde_json::Value;
 use std::cmp::PartialEq;
+use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
@@ -54,6 +57,7 @@ pub struct Profile {
     minimum_balance:               OnceCell<u64>,
     daily_reward:                  OnceCell<u64>,
     minimum_stake:                 OnceCell<u64>,
+    available_without_claim:       OnceCell<u64>,
     available_after_claim:         OnceCell<u64>,
     validator_staked_remainder:    OnceCell<u64>,
     can_stake_without_claim:       OnceCell<bool>,
@@ -93,6 +97,7 @@ impl Profile {
             delegation:                    OnceCell::new(),
             minimum_balance:               OnceCell::new(),
             minimum_stake:                 OnceCell::new(),
+            available_without_claim:       OnceCell::new(),
             available_after_claim:         OnceCell::new(),
             daily_reward:                  OnceCell::new(),
             validator_staked_remainder:    OnceCell::new(),
@@ -493,6 +498,28 @@ impl Profile {
             .unwrap_or("N/A")
     }
 
+    pub fn name_or_moniker(&self, search: &str) -> &str {
+        // First search within `config().validators` by `name` or `address`
+        self.config().validators
+            .iter()
+            .find(|validator| validator.name == search || validator.address == search)
+            .map(|validator| validator.name.as_str())
+            // If no match, try searching `self.validators()` by `moniker` or `address`
+            .or_else(|| {
+                // Handle `self.validators()` Result and search within `moniker` or `address`
+                self.validators().ok()
+                    .and_then(|validators| {
+                        validators
+                            .iter()
+                            .find(|validator| validator.moniker() == search || validator.address() == search)
+                            .map(|validator| validator.moniker())
+                    })
+            })
+            // Default to "N/A" if no match is found in either list
+            .unwrap_or("N/A")
+    }
+
+
     /// lookup active validators voting power default to 0, on error
     pub fn voting_power(&self) -> u64 {
         self.validator()
@@ -600,12 +627,15 @@ impl Profile {
 
     pub fn minimum_balance(&self) -> &u64 {
         self.minimum_balance.get_or_init(|| {
-            let default = 100_000;
+            let default = CONFIG.minimum_balance;
             let config = self.config();
+
+            // Ensure `minimum_balance_ratio` does not exceed 1,000,000
+            let adjusted_ratio = config.minimum_balance_ratio.min(1_000_000);
 
             match self.delegations() {
                 Ok(d) => d.total().staked
-                    .saturating_mul(config.minimum_balance_ratio)
+                    .saturating_mul(adjusted_ratio)
                     .saturating_div(1_000_000)
                     .max(config.minimum_balance),
                 Err(_) => default,
@@ -625,14 +655,14 @@ impl Profile {
             // Prepare the grep expression, escaping necessary characters
             let grep_expr = format!(r#"{{.*"address"[[:space:]]*:[[:space:]]*"{}".*}}"#, address);
 
-//          // Get the current executable path
-//          let exe_path = env::current_exe()
-//              .wrap_err("Failed to get the current executable path")?;
+            // Get the current executable path
+            let exe_path = env::current_exe()
+                .wrap_err("Failed to get the current executable path")?;
 
-//          // Convert the path to a string
-//          let exe_path_str = exe_path.to_string_lossy();
+            // Convert the path to a string
+            let exe_path_str = exe_path.to_string_lossy();
 
-            let exe_path_str = "/usr/local/bin/nomic-tools".to_string();
+//          let exe_path_str = "/usr/local/bin/nomic-tools".to_string();
 
             // Use the executable path with journalctl:w
             //
@@ -747,7 +777,7 @@ impl Profile {
         self.minimum_stake.get_or_init(|| {
             // Get the configured minimum stake
             let config_min = self.config().minimum_stake;
-            
+
             let rounding = self.config().minimum_stake_rounding;
 
             // Return the configured minimum stake if adjustment is not required
@@ -768,7 +798,6 @@ impl Profile {
 
             let mut config = self.config().clone();
 
-
             config.minimum_balance = *self.minimum_balance();
             config.minimum_stake = min;
             config.daily_reward = self.daily_reward();
@@ -783,21 +812,51 @@ impl Profile {
         })
     }
 
-    pub fn available_after_claim_result(&self) -> Result<&u64> {
-        self.available_after_claim.get_or_try_init(|| {
-            // Calculate available amount after the claim
-            Ok(self.balances()?.nom
-                .saturating_add(self.delegations()?.total().liquid)
-                .saturating_sub(*self.minimum_balance())
-                .saturating_sub(self.claim_fee())
-                .saturating_sub(self.stake_fee())
-                .max(0)
-            )
+    pub fn available_without_claim(&self) -> &u64 {
+        self.available_without_claim.get_or_init(|| {
+            match self.balances() {
+                Ok(balances) => {
+                    balances.nom
+                        .saturating_sub(*self.minimum_balance())
+                        .saturating_sub(self.stake_fee())
+                        .max(0)
+                },
+                Err(_) => 0,
+            }
         })
     }
-    pub fn available_after_claim(&self) -> u64 {
-        *self.available_after_claim_result().unwrap_or(&0)
+
+    pub fn available_after_claim(&self) -> &u64 {
+        self.available_after_claim.get_or_init(|| {
+            match self.balances() {
+                Ok(balances) => {
+                    balances.nom
+                    .saturating_add(self.delegations().map_or(0, |d| d.total().liquid))
+                    .saturating_sub(*self.minimum_balance())
+                    .saturating_sub(self.claim_fee())
+                    .saturating_sub(self.stake_fee())
+                    .max(0)
+                },
+                Err(_) => 0,
+            }
+        })
     }
+
+//  pub fn available_after_claim_result(&self) -> Result<&u64> {
+//      self.available_after_claim.get_or_try_init(|| {
+//          // Calculate available amount after the claim
+//          Ok(self.balances()?.nom
+//              .saturating_add(self.delegations()?.total().liquid)
+//              .saturating_sub(*self.minimum_balance())
+//              .saturating_sub(self.claim_fee())
+//              .saturating_sub(self.stake_fee())
+//              .max(0)
+//          )
+//      })
+//  }
+//  pub fn available_after_claim(&self) -> u64 {
+//      *self.available_after_claim_result().unwrap_or(&0)
+//  }
 
     pub fn validator_staked_remainder(&self) -> &u64 {
         self.validator_staked_remainder.get_or_init(|| {
@@ -809,14 +868,14 @@ impl Profile {
         self.remaining.get_or_init(|| {
             self.minimum_stake()
                 .saturating_sub(*self.validator_staked_remainder())
-                .saturating_sub(self.available_after_claim())
+                .saturating_sub(*self.available_after_claim())
         })
     }
 
     pub fn can_stake_without_claim(&self) -> &bool {
         self.can_stake_without_claim.get_or_init(|| {
             let factor    = *self.minimum_stake();
-            let available = self.balance().saturating_sub(*self.minimum_balance());
+            let available = *self.available_without_claim();
             let remainder = *self.validator_staked_remainder();
 
             // Determine if staking can occur without needing to claim
@@ -831,12 +890,11 @@ impl Profile {
     pub fn can_stake_after_claim(&self) -> &bool {
         self.can_stake_after_claim.get_or_init(|| {
             let factor    = *self.minimum_stake();
-            let available = self.available_after_claim();
+            let available = *self.available_after_claim();
             let remainder = *self.validator_staked_remainder();
             let liquid    = *self.total_liquid();
-            let claim_fee = self.claim_fee();
 
-            (liquid > claim_fee)
+            (liquid > self.claim_fee())
                 .then_some(remainder)
                 .map(|rem| if rem > 0 { available > rem } else { available > factor })
                 .unwrap_or(false)
@@ -853,10 +911,10 @@ impl Profile {
     pub fn quantity(&self) -> &u64 {
         self.quantity.get_or_init(|| {
             let can_stake_without_claim = *self.can_stake_without_claim();
-            let can_stake_after_claim = *self.can_stake_after_claim();
-            let available_without_claim = self.balance().saturating_sub(*self.minimum_balance());
-            let available_after_claim = self.available_after_claim();
-            let minimum_stake = *self.minimum_stake();
+            let can_stake_after_claim   = *self.can_stake_after_claim();
+            let available_without_claim = *self.available_without_claim();
+            let available_after_claim   = *self.available_after_claim();
+            let minimum_stake           = *self.minimum_stake();
             let validator_staked_remainder = *self.validator_staked_remainder();
 
             // Determine the available amount to stake based on conditions
@@ -967,7 +1025,7 @@ impl Profile {
         }
 
         if quantity > *self.balance() &&
-           quantity > self.available_after_claim()
+           quantity > *self.available_after_claim()
         {
             if log { self.journal().print(Some(OutputFormat::Json))? };
             return Err(eyre!("Not enough balance to stake that quantity."));
@@ -1247,8 +1305,12 @@ impl Profile {
                 Value::Number(serde_json::Number::from(*self.minimum_stake()))
             );
             journal.insert(
+                "available_without_claim".to_string(),
+                Value::Number(serde_json::Number::from(*self.available_without_claim()))
+            );
+            journal.insert(
                 "available_after_claim".to_string(),
-                Value::Number(self.available_after_claim().into())
+                Value::Number(serde_json::Number::from(*self.available_after_claim()))
             );
             journal.insert(
                 "validator_staked_remainder".to_string(),
@@ -1288,6 +1350,92 @@ impl Profile {
             );
             journal
         })
+    }
+
+    pub fn stats(&self) -> Result<String> {
+        // Prepare rows for the table
+        let delegations = self.delegations()?;
+        let balances    = self.balances()?;
+
+        let mut rows: Vec<DelegationRow> = Vec::new();
+
+        // Iterate over the `delegations` field in `Delegations`
+        for (address, delegation) in delegations.delegations.iter() {
+            let row = DelegationRow::from_data(
+                address.clone(),
+                self.name_or_moniker(address).to_string(),
+                delegation.staked,
+                delegation.liquid,
+                delegation.nbtc,
+            );
+            rows.push(row);
+        }
+
+        // Create totals row
+        let totals_row = DelegationRow::from_data(
+            format!("{} {}",
+             delegations.timestamp.format("%Y-%m-%d %H:%M").to_string(),
+             "Total Delegation",
+            ),
+            "".to_string(),
+            delegations.total().staked,
+            delegations.total().liquid,
+            delegations.total().nbtc,
+        );
+        rows.push(totals_row);
+
+        // Create balances row
+        let balances_row = DelegationRow::from_data(
+            "Balances".to_string(),
+            "".to_string(),
+            0,
+            balances.nom,
+            balances.nbtc,
+        );
+        rows.push(balances_row);
+
+        // Create totals row
+        let totals_row = DelegationRow::from_data(
+            "".to_string(),
+            "".to_string(),
+            balances.nom  + delegations.total().liquid + delegations.total().staked,
+            balances.nom  + delegations.total().liquid,
+            balances.nbtc + delegations.total().nbtc,
+        );
+        rows.push(totals_row);
+
+
+        // Create the table and apply styles and modifications
+         let mut table = Table::new(rows.clone()); // Clone the rows here to pass ownership to the table
+
+        table
+            .with(Style::empty()) // Use an empty style
+            .with(Modify::new(Columns::new(2..)).with(Alignment::right())) // Staked, Liquid, NBTC columns align right
+            // Set borders on the first row
+            .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
+            // Apply right alignment to the totals row (last row)
+            .with(Modify::new(Rows::single(rows.len() - 2)).with(Alignment::right()))
+            .with(Modify::new(Rows::single(rows.len() - 1)).with(Alignment::right()))
+            .with(Modify::new(Rows::single(rows.len() - 0)).with(Alignment::right()))
+            // Apply a distinct bottom border to the totals row
+            .with(Modify::new(Cell::new(rows.len() - 2, 2)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 2, 3)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 2, 4)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 0, 2)).with(Border::new().set_top('=')))
+            .with(Modify::new(Cell::new(rows.len() - 0, 3)).with(Border::new().set_top('=')))
+            .with(Modify::new(Cell::new(rows.len() - 0, 4)).with(Border::new().set_top('=')))
+            // Apply span to the first two cells in the last row
+            .with(Modify::new(Cell::new(rows.len() - 2, 0)).with(Span::column(2)))
+            .with(Modify::new(Cell::new(rows.len() - 1, 0)).with(Span::column(2)))
+            .with(Modify::new(Cell::new(rows.len() - 0, 0)).with(Span::column(2)));
+
+        // Return the formatted table as a string
+        Ok(table.to_string())
+
     }
 }
 

@@ -14,6 +14,7 @@ pub use config::Config;
 pub use config::config_filename;
 pub use delegations::Delegations;
 pub use delegations::Delegation;
+pub use delegations::DelegationRow;
 pub use profile::Profile;
 pub use util::nomic;
 

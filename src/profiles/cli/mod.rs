@@ -11,3 +11,4 @@ pub mod nomic;
 pub mod profiles;
 pub mod redelegate;
 pub mod send;
+pub mod stats;

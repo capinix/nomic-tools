@@ -1,15 +1,14 @@
 
-use once_cell::sync::OnceCell;
+use chrono::{Utc, DateTime};
+use crate::functions::format_to_millions;
 use crate::global::CONFIG;
 use crate::validators::ValidatorCollection;
-use crate::functions::format_to_millions;
-use eyre::eyre;
-use eyre::Result;
+use eyre::{eyre, Result};
 use indexmap::IndexMap;
+use once_cell::sync::OnceCell;
 use std::fmt;
 use std::path::Path;
 use std::process::Command;
-use chrono::{Utc, DateTime};
 use tabled::{Tabled, Table, settings::{Alignment, Border, Modify, Span, Style, object::{Columns, Rows, Cell}}};
 
 #[derive(Clone, Debug)]
@@ -27,10 +26,10 @@ impl Delegation {
 }
 #[derive(Clone)]
 pub struct Delegations {
-    pub timestamp: DateTime<Utc>,
+    pub timestamp:   DateTime<Utc>,
     pub delegations: IndexMap<String, Delegation>,
-    pub total: OnceCell<Delegation>,
-    pub validators: OnceCell<ValidatorCollection>,
+    pub total:       OnceCell<Delegation>,
+    pub validators:  OnceCell<ValidatorCollection>,
 }
 
 impl fmt::Debug for Delegations {
@@ -78,7 +77,7 @@ impl Delegations {
             for delegation in self.delegations.values() {
                 total_staked += delegation.staked;
                 total_liquid += delegation.liquid;
-                total_nbtc += delegation.nbtc;
+                total_nbtc   += delegation.nbtc;
             }
 
             Delegation::new(total_staked, total_liquid, total_nbtc)
@@ -245,7 +244,7 @@ impl Delegations {
 }
 
 #[derive(Clone, Tabled)]
-struct DelegationRow {
+pub struct DelegationRow {
     #[tabled(rename = "Address")]
     address: String,
 
@@ -263,7 +262,7 @@ struct DelegationRow {
 }
 
 impl DelegationRow {
-    fn from_data(address: String, moniker: String, staked: u64, liquid: u64, nbtc: u64) -> Self {
+    pub fn from_data(address: String, moniker: String, staked: u64, liquid: u64, nbtc: u64) -> Self {
         DelegationRow {
             address,
             moniker,
