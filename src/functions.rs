@@ -8,6 +8,75 @@ use std::str::FromStr;
 use crate::global::PROFILES_DIR;
 use num_format::{Locale, ToFormattedString};
 use console::strip_ansi_codes;
+use tabled::Tabled;
+
+/// A struct representing a row in a table with up to 10 columns.
+///
+/// This struct is derived from `Tabled`, which allows it to be easily displayed
+/// in a tabular format. Each cell in the table is represented by a `String`.
+#[derive(Clone, Tabled)]
+pub struct TableColumns {
+    pub cell0: String,
+    pub cell1: String,
+    pub cell2: String,
+    pub cell3: String,
+    pub cell4: String,
+    pub cell5: String,
+    pub cell6: String,
+    pub cell7: String,
+    pub cell8: String,
+    pub cell9: String,
+}
+
+impl TableColumns {
+    /// Creates a new `TableColumns` instance from a vector of string slices.
+    ///
+    /// If the input vector has fewer than 10 items, the remaining cells will
+    /// be filled with empty strings (`String::new()`). If the input vector has
+    /// more than 10 items, the extra items will be ignored.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - A vector of string slices that represent the initial cell values.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let row = TableColumns::new(vec!["Alice", "Validator 1", "100", "200", "0.5"]);
+    /// assert_eq!(row.cell0, "Alice");
+    /// assert_eq!(row.cell1, "Validator 1");
+    /// assert_eq!(row.cell2, "100");
+    /// assert_eq!(row.cell3, "200");
+    /// assert_eq!(row.cell4, "0.5");
+    /// assert_eq!(row.cell5, ""); // cell5 is empty
+    /// ```
+    ///
+    /// # Assertions
+    ///
+    /// - Ensures that the output has exactly 10 cells.
+    /// - Fills any missing cells with empty strings.
+    pub fn new(input: Vec<&str>) -> Self {
+        // Map input items to String, and pad with String::new() if there are fewer than 10 items
+        let mut cells = input.into_iter().map(|s| s.to_string()).collect::<Vec<String>>();
+
+        // Pad to ensure exactly 10 items
+        cells.resize(10, String::new());
+
+        // Return a new TableColumns instance with the prepared cells
+        TableColumns {
+            cell0: cells[0].clone(),
+            cell1: cells[1].clone(),
+            cell2: cells[2].clone(),
+            cell3: cells[3].clone(),
+            cell4: cells[4].clone(),
+            cell5: cells[5].clone(),
+            cell6: cells[6].clone(),
+            cell7: cells[7].clone(),
+            cell8: cells[8].clone(),
+            cell9: cells[9].clone(),
+        }
+    }
+}
 
 pub fn pad_or_truncate(s: &str, width: usize, right_align: bool) -> String {
     // Calculate length without ANSI codes

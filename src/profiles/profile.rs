@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use crate::functions::is_valid_nomic_address;
 use crate::functions::prompt_user;
 use crate::functions::TaskStatus;
+use crate::functions::TableColumns;
 use crate::global::PROFILES_DIR;
 use crate::global::CONFIG;
 use crate::journal::{Journal, OutputFormat};
@@ -12,13 +13,12 @@ use crate::profiles::Balance;
 use crate::profiles::Config;
 use crate::profiles::config_filename;
 use crate::profiles::Delegation;
-use crate::profiles::DelegationRow;
 use crate::profiles::Delegations;
 use crate::profiles::ProfileCollection;
 use crate::validators::initialize_validators;
 use crate::validators::Validator;
 use crate::validators::ValidatorCollection;
-use tabled::{Table, settings::{Alignment, Border, Modify, Span, Style, object::{Columns, Rows, Cell}}};
+use tabled::{builder::Builder, settings::{Alignment,  Border, Color, Modify, Span, Style, object::{Columns, Rows, Cell}}};
 use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
@@ -32,6 +32,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
+use crate::functions::format_to_millions;
 
 // Static zero for use when there is an error
 static ZERO: u64 = 0;
@@ -1352,90 +1353,341 @@ impl Profile {
         })
     }
 
-    pub fn stats(&self) -> Result<String> {
-        // Prepare rows for the table
-        let delegations = self.delegations()?;
-        let balances    = self.balances()?;
+    /// Generates the profile details section with the name and address.
+    fn report_profile(&self) -> String {
+        let rows = vec![
+            TableColumns::new(vec![
+                "Profile:",
+                self.name(),
+            ]),
+            TableColumns::new(vec![
+                "Address:",
+                self.address(),
+            ]),
+        ];
 
-        let mut rows: Vec<DelegationRow> = Vec::new();
-
-        // Iterate over the `delegations` field in `Delegations`
-        for (address, delegation) in delegations.delegations.iter() {
-            let row = DelegationRow::from_data(
-                address.clone(),
-                self.name_or_moniker(address).to_string(),
-                delegation.staked,
-                delegation.liquid,
-                delegation.nbtc,
-            );
-            rows.push(row);
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([row.cell0.clone(), row.cell1.clone()]);
         }
 
+        let mut table = builder.build();
+        table.with(Style::blank());
+
+        table.to_string()
+    }
+
+    fn report_config(&self) -> String {
+        let config = self.config();
+        let rows = vec![
+            TableColumns::new(vec![ "Configuration:" ]),
+            TableColumns::new(vec![
+                "Minimum Balance:",
+                &format_to_millions(config.minimum_balance, None),
+                "Minimum Balance Ratio:",
+                &format_to_millions(config.minimum_balance_ratio, None),
+            ]),
+            TableColumns::new(vec![
+                "Minimum Stake:",
+                &format_to_millions(config.minimum_stake, None),
+            ]),
+            TableColumns::new(vec![
+                "Adjust Minimum Stake:",
+                &config.adjust_minimum_stake.to_string(),
+                "Minimum Stake Rounding:",
+                &format_to_millions(config.minimum_stake_rounding, None),
+            ]),
+        ];
+
+        // Initialize Builder without headers
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([row.cell0.clone(), row.cell1.clone(), row.cell2.clone(), row.cell3.clone()]);
+        }
+
+        let mut table = builder.build();
+        table
+            .with(Style::empty())
+            .with(Modify::new(Cell::new(1, 0)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(1, 1)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(1, 2)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(1, 3)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(0, 0)).with(Span::column(4)))
+            .with(Modify::new(Cell::new(1, 1)).with(Border::new().set_right('│')))
+            .with(Modify::new(Cell::new(2, 1)).with(Border::new().set_right('│')))
+            .with(Modify::new(Cell::new(3, 1)).with(Border::new().set_right('│')))
+            .with(Modify::new(Columns::single(1)).with(Alignment::right()))
+            .with(Modify::new(Columns::single(3)).with(Alignment::right()))
+            ;
+
+        table.to_string()
+    }
+
+    fn report_config_validators(&self) -> String {
+        let config = self.config();
+        let mut rows: Vec<TableColumns> = Vec::new();
+
+        rows.push(
+            TableColumns::new(vec![
+                "Validators:",
+            ]),
+        );
+        // Iterate over the `validators` in `ConfigValidators`
+        for validator in config.validators.iter() {
+            rows.push(TableColumns::new(vec![
+                &validator.address,
+                &validator.name,
+            ]));
+        }
+
+        // Initialize Builder without headers
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([row.cell0.clone(), row.cell1.clone()]);
+        }
+
+        let mut table = builder.build();
+        table
+            .with(Style::blank())
+            ;
+        for (index, row) in rows.iter().enumerate() {
+            if row.cell0 == config.validator_address()  {
+                table.with(Modify::new(Rows::single(index)).with(Color::FG_BLUE));
+            }
+        }
+
+        table.to_string()
+    }
+
+    fn get_validator_rank(&self, address: &str) -> String {
+        self
+            .validators()
+            .map_err(|e| {
+                warn!("Failed to retrieve validators: {}", e);
+                "N/A".to_string()
+            })
+            .and_then(|validators| {
+                validators.validator(address).map_err(|e| {
+                    warn!("Validator not found for address {}: {}", address, e);
+                    "N/A".to_string()
+                })
+            })
+            .map(|v| v.rank().to_string())
+            .unwrap_or_else(|_| "N/A".to_string())
+    }
+
+    fn report_delegations(&self) -> String {
+
+        let delegations = match self.delegations() {
+            Ok(delegations) => delegations,
+            Err(e) => {
+                warn!("Failed to retrieve delegations: {}", e);
+                return "N/A".to_string();
+            }
+        };
+
+        let address = self.config().validator_address();
+
+        let mut rows: Vec<TableColumns> = Vec::new();
+
+        rows.push(TableColumns::new(vec![
+            "Delegations:",
+        ]));
+
+        rows.push(TableColumns::new(vec![
+            "Rank",
+            "Validator Address",
+            "Moniker",
+            "Staked",
+            "Liquid",
+            "NBTC",
+        ]));
+
+        let mut data_rows: Vec<TableColumns> = Vec::new();
+        // Iterate over the `delegations` field in `Delegations`
+        for (address, delegation) in delegations.delegations.iter() {
+        // Attempt to retrieve validators and handle errors if they occur
+
+            data_rows.push(TableColumns::new(vec![
+                &self.get_validator_rank(address),
+                address,
+                self.name_or_moniker(address),
+                &format_to_millions(delegation.staked, Some(0)),
+                &format_to_millions(delegation.liquid, Some(2)),
+                &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+            ]));
+        }
+
+        // Add a new row only if no row with the target address exists
+        if data_rows.iter().find(|row| row.cell1 == address).is_none() {
+            data_rows.push(TableColumns::new(vec![
+                &self.get_validator_rank(address),
+                address,
+                self.name_or_moniker(address),
+            ]));
+        }
+
+        // Sort rows descending by `cell0`, converting each `cell0` to `usize`
+        data_rows.sort_by(|a, b| {
+            a.cell0.parse::<usize>().unwrap_or(0).cmp(&b.cell0.parse::<usize>().unwrap_or(0))
+        });
+
+        // Append `data_rows` to `rows`
+        rows.extend(data_rows);
+
         // Create totals row
-        let totals_row = DelegationRow::from_data(
-            format!("{} {}",
-             delegations.timestamp.format("%Y-%m-%d %H:%M").to_string(),
+        rows.push(TableColumns::new(vec![
+            &format!("{} {}",
+             delegations.timestamp.format("%Y-%m-%d %H:%M"),
              "Total Delegation",
             ),
-            "".to_string(),
-            delegations.total().staked,
-            delegations.total().liquid,
-            delegations.total().nbtc,
-        );
-        rows.push(totals_row);
+            "",
+            "",
+            &format_to_millions(delegations.total().staked, Some(0)),
+            &format_to_millions(delegations.total().liquid, Some(2)),
+            &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+        ]));
 
         // Create balances row
-        let balances_row = DelegationRow::from_data(
-            "Balances".to_string(),
-            "".to_string(),
-            0,
-            balances.nom,
-            balances.nbtc,
-        );
-        rows.push(balances_row);
+        rows.push(TableColumns::new(vec![
+            "Balances",
+            "",
+            "",
+            "",
+            &format_to_millions(*self.balance(), Some(2)),
+            &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+        ]));
 
         // Create totals row
-        let totals_row = DelegationRow::from_data(
-            "".to_string(),
-            "".to_string(),
-            balances.nom  + delegations.total().liquid + delegations.total().staked,
-            balances.nom  + delegations.total().liquid,
-            balances.nbtc + delegations.total().nbtc,
-        );
-        rows.push(totals_row);
+        rows.push(TableColumns::new(vec![
+            "",
+            "",
+            "",
+            &format_to_millions(*self.balance() + delegations.total().liquid + delegations.total().staked, Some(0)),
+            &format_to_millions(*self.balance() + delegations.total().liquid, Some(2)),
+            &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+        ]));
 
+        // Initialize Builder without headers
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([
+                row.cell0.clone(), 
+                row.cell1.clone(), 
+                row.cell2.clone(), 
+                row.cell3.clone(),
+                row.cell4.clone(),
+                row.cell5.clone(),
+            ]);
+        }
 
-        // Create the table and apply styles and modifications
-         let mut table = Table::new(rows.clone()); // Clone the rows here to pass ownership to the table
+        let mut table = builder.build();
 
         table
-            .with(Style::empty()) // Use an empty style
-            .with(Modify::new(Columns::new(2..)).with(Alignment::right())) // Staked, Liquid, NBTC columns align right
+            .with(Style::blank())
+            .with(Modify::new(Columns::single(0)).with(Alignment::right()))
+            .with(Modify::new(Columns::new(3..)).with(Alignment::right()))
             // Set borders on the first row
-            .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(1, 0)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(1, 1)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(1, 2)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(1, 3)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(1, 4)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(1, 5)).with(Border::new().set_bottom('-')))
             // Apply right alignment to the totals row (last row)
             .with(Modify::new(Rows::single(rows.len() - 2)).with(Alignment::right()))
             .with(Modify::new(Rows::single(rows.len() - 1)).with(Alignment::right()))
             .with(Modify::new(Rows::single(rows.len() - 0)).with(Alignment::right()))
             // Apply a distinct bottom border to the totals row
-            .with(Modify::new(Cell::new(rows.len() - 2, 2)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len() - 2, 3)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len() - 2, 4)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len() - 0, 2)).with(Border::new().set_top('=')))
-            .with(Modify::new(Cell::new(rows.len() - 0, 3)).with(Border::new().set_top('=')))
-            .with(Modify::new(Cell::new(rows.len() - 0, 4)).with(Border::new().set_top('=')))
+            .with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 3, 4)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 3, 5)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 1, 3)).with(Border::new().set_top('=')))
+            .with(Modify::new(Cell::new(rows.len() - 1, 4)).with(Border::new().set_top('=')))
+            .with(Modify::new(Cell::new(rows.len() - 1, 5)).with(Border::new().set_top('=')))
             // Apply span to the first two cells in the last row
-            .with(Modify::new(Cell::new(rows.len() - 2, 0)).with(Span::column(2)))
-            .with(Modify::new(Cell::new(rows.len() - 1, 0)).with(Span::column(2)))
-            .with(Modify::new(Cell::new(rows.len() - 0, 0)).with(Span::column(2)));
+            .with(Modify::new(Cell::new(0, 0)).with(Span::column(6)).with(Alignment::left()))
+            // Total delegation row
+            .with(Modify::new(Cell::new(rows.len() - 3, 0)).with(Span::column(3)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Color::FG_YELLOW))
+            .with(Modify::new(Cell::new(rows.len() - 3, 4)).with(Color::FG_GREEN))
+            // Balances row
+            .with(Modify::new(Cell::new(rows.len() - 2, 0)).with(Span::column(3)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() - 2, 4)).with(Color::FG_GREEN))
+            // Grand totals row
+            .with(Modify::new(Cell::new(rows.len() - 1, 3)).with(Color::new("\x1b[38;2;255;165;0m", "\x1b[0m")))
+            .with(Modify::new(Cell::new(rows.len() - 1, 4)).with(Color::FG_GREEN))
+            ;
 
-        // Return the formatted table as a string
-        Ok(table.to_string())
+        for (index, row) in rows.iter().enumerate() {
+            if row.cell1 == address  {
+                table.with(Modify::new(Rows::single(index)).with(Color::FG_BLUE));
+            }
+        }
 
+        table.to_string()
+    }
+
+    fn report_calc(&self) -> String {
+        let rows = vec![
+            TableColumns::new(vec![
+                "Daily Reward",
+                &format_to_millions(self.daily_reward(), Some(2)),
+                "Rewards to earn before staking",
+                &format_to_millions(*self.remaining(), Some(2)),
+            ]),
+            TableColumns::new(vec![
+                "Minimum Stake",
+                &format_to_millions(*self.minimum_stake(), Some(2)),
+                "quantity to stake after claim",
+                &format_to_millions(self.minimum_stake().saturating_sub(*self.validator_staked_remainder()), Some(2)),
+            ]),
+            TableColumns::new(vec![
+                "Minimum Balance",
+                &format_to_millions(*self.minimum_balance(), Some(2)),
+                "Available to stake without claiming rewards",
+                &format_to_millions(*self.available_without_claim(), Some(2)),
+            ]),
+            TableColumns::new(vec![
+                "",
+                "",
+                "Available to stake after claiming rewards",
+                &format_to_millions(*self.available_after_claim(), Some(2)),
+            ]),
+            // Add other rows as needed
+        ];
+
+        // Initialize Builder without headers
+        let mut builder = Builder::default();
+        for row in rows {
+            builder.push_record([row.cell0, row.cell1, row.cell3, row.cell2]);
+        }
+
+        let mut table = builder.build();
+        table
+            .with(Style::blank()) // Suppress borders
+            .with(Modify::new(Columns::single(1)).with(Alignment::right()).with(Border::new().set_right('│')))
+            .with(Modify::new(Columns::single(2)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(0, 1)).with(Color::FG_YELLOW))
+            .with(Modify::new(Cell::new(0, 2)).with(Color::FG_BLUE))
+            .with(Modify::new(Cell::new(1, 1)).with(Color::FG_BLUE))
+            .with(Modify::new(Cell::new(1, 2)).with(Color::FG_BLUE))
+            .with(Modify::new(Cell::new(2, 1)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(2, 2)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(3, 2)).with(Color::FG_GREEN))
+            ;
+
+        table.to_string()
+    }
+
+    pub fn report(&self) -> String {
+        format!(
+            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
+            self.report_profile(),
+            self.report_config(),
+            self.report_config_validators(),
+            self.report_delegations(),
+            self.report_calc(),
+        )
     }
 }
-

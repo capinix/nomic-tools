@@ -246,10 +246,10 @@ impl Delegations {
 #[derive(Clone, Tabled)]
 pub struct DelegationRow {
     #[tabled(rename = "Address")]
-    address: String,
+    pub address: String,
 
     #[tabled(rename = "Moniker")]
-    moniker: String,
+    pub moniker: String,
 
     #[tabled(rename = "Staked")]
     staked: String,
@@ -268,7 +268,7 @@ impl DelegationRow {
             moniker,
             staked: format_to_millions(staked, Some(2)),
             liquid: format_to_millions(liquid, Some(2)),
-            nbtc: format_to_millions(nbtc, Some(2)),
+            nbtc: format!("{:.8}", (nbtc as f64 / 100_000_000.0)),
         }
     }
 }

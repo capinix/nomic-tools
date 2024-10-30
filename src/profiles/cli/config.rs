@@ -12,7 +12,7 @@ pub struct Cli {
     profile: Option<String>,
 
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -132,7 +132,7 @@ impl Cli {
         )?;
 
         match &self.command {
-            Command::Edit(args) => {
+            Some(Command::Edit(args)) => {
                 profile.edit_config(
                     args.minimum_balance.map(|v| (v * 1_000_000.0) as u64),
                     args.minimum_balance_ratio.map(|v| (v * 1_000_000.0) as u64),
@@ -147,7 +147,7 @@ impl Cli {
                 Ok(())
             }
 
-            Command::Set { command } => {
+            Some(Command::Set { command }) => {
                 if let Some(cmd) = command {
                     match cmd {
                         SetCommands::MinimumBalance { minimum_balance } => {
@@ -167,6 +167,10 @@ impl Cli {
                     println!("No subcommand provided for Set.");
                     Ok(())
                 }
+            }
+            _ => {
+                println!("{}", profile.config());
+                Ok(())
             }
 
         } //match
