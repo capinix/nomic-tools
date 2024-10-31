@@ -1,11 +1,12 @@
 
 use chrono::{DateTime, Utc};
+use crate::functions::format_to_millions;
 use crate::functions::is_valid_nomic_address;
 use crate::functions::prompt_user;
-use crate::functions::TaskStatus;
 use crate::functions::TableColumns;
-use crate::global::PROFILES_DIR;
+use crate::functions::TaskStatus;
 use crate::global::CONFIG;
+use crate::global::PROFILES_DIR;
 use crate::journal::{Journal, OutputFormat};
 use crate::nonce;
 use crate::privkey::PrivKey;
@@ -18,7 +19,6 @@ use crate::profiles::ProfileCollection;
 use crate::validators::initialize_validators;
 use crate::validators::Validator;
 use crate::validators::ValidatorCollection;
-use tabled::{builder::Builder, settings::{Alignment,  Border, Color, Modify, Span, Style, object::{Columns, Rows, Cell}}};
 use eyre::eyre;
 use eyre::Result;
 use eyre::WrapErr;
@@ -32,10 +32,12 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
-use crate::functions::format_to_millions;
+use tabled::builder::Builder;
+use tabled::settings::{Alignment, Border, Color, Modify, Span, Style};
+use tabled::settings::object::{Columns, Rows, Cell};
 
 // Static zero for use when there is an error
-static ZERO: u64 = 0;
+// static ZERO: u64 = 0;
 
 #[derive(Clone)]
 pub struct Profile {
@@ -60,10 +62,6 @@ pub struct Profile {
     minimum_stake:                 OnceCell<u64>,
     available_without_claim:       OnceCell<u64>,
     available_after_claim:         OnceCell<u64>,
-    validator_staked_remainder:    OnceCell<u64>,
-    can_stake_without_claim:       OnceCell<bool>,
-    can_stake_after_claim:         OnceCell<bool>,
-    needs_claim:                   OnceCell<bool>,
     quantity:                      OnceCell<u64>,
     remaining:                     OnceCell<u64>,
     journal:                       OnceCell<Journal>,
@@ -101,10 +99,6 @@ impl Profile {
             available_without_claim:       OnceCell::new(),
             available_after_claim:         OnceCell::new(),
             daily_reward:                  OnceCell::new(),
-            validator_staked_remainder:    OnceCell::new(),
-            can_stake_without_claim:       OnceCell::new(),
-            can_stake_after_claim:         OnceCell::new(),
-            needs_claim:                   OnceCell::new(),
             quantity:                      OnceCell::new(),
             remaining:                     OnceCell::new(),
             last_journal:                  OnceCell::new(),
@@ -843,110 +837,66 @@ impl Profile {
         })
     }
 
-//  pub fn available_after_claim_result(&self) -> Result<&u64> {
-//      self.available_after_claim.get_or_try_init(|| {
-//          // Calculate available amount after the claim
-//          Ok(self.balances()?.nom
-//              .saturating_add(self.delegations()?.total().liquid)
-//              .saturating_sub(*self.minimum_balance())
-//              .saturating_sub(self.claim_fee())
-//              .saturating_sub(self.stake_fee())
-//              .max(0)
-//          )
-//      })
-//  }
-//  pub fn available_after_claim(&self) -> u64 {
-//      *self.available_after_claim_result().unwrap_or(&0)
-//  }
+    pub fn validator_staked_remainder(&self) -> u64 {
+        self.validator_staked() % *self.minimum_stake()
+    }
 
-    pub fn validator_staked_remainder(&self) -> &u64 {
-        self.validator_staked_remainder.get_or_init(|| {
-            self.validator_staked() % *self.minimum_stake()
+    pub fn needed(&self) -> &u64 {
+        self.remaining.get_or_init(|| {
+            let validator_staked_remainder = self.validator_staked_remainder();
+            if validator_staked_remainder == 0 {
+                *self.minimum_stake()
+            } else {
+                validator_staked_remainder
+            }
         })
     }
 
     pub fn remaining(&self) -> &u64 {
         self.remaining.get_or_init(|| {
-            self.minimum_stake()
-                .saturating_sub(*self.validator_staked_remainder())
-                .saturating_sub(*self.available_after_claim())
+            self.needed().saturating_sub(*self.available_after_claim())
         })
     }
 
-    pub fn can_stake_without_claim(&self) -> &bool {
-        self.can_stake_without_claim.get_or_init(|| {
-            let factor    = *self.minimum_stake();
-            let available = *self.available_without_claim();
-            let remainder = *self.validator_staked_remainder();
-
-            // Determine if staking can occur without needing to claim
-            if remainder > 0 {
-                available > remainder
-            } else {
-                available > factor
-            }
-        })
+    pub fn can_stake_without_claim(&self) -> bool {
+        *self.available_without_claim() > *self.needed()
     }
 
-    pub fn can_stake_after_claim(&self) -> &bool {
-        self.can_stake_after_claim.get_or_init(|| {
-            let factor    = *self.minimum_stake();
-            let available = *self.available_after_claim();
-            let remainder = *self.validator_staked_remainder();
-            let liquid    = *self.total_liquid();
-
-            (liquid > self.claim_fee())
-                .then_some(remainder)
-                .map(|rem| if rem > 0 { available > rem } else { available > factor })
-                .unwrap_or(false)
-        })
+    pub fn can_stake_after_claim(&self) -> bool {
+        *self.available_after_claim() > *self.needed()
     }
 
-    pub fn needs_claim(&self) -> &bool {
-        self.needs_claim.get_or_init(|| {
-            !*self.can_stake_without_claim() &&
-             *self.can_stake_after_claim()
-        })
+    pub fn needs_claim(&self) -> bool {
+        !self.can_stake_without_claim() && self.can_stake_after_claim()
     }
 
     pub fn quantity(&self) -> &u64 {
         self.quantity.get_or_init(|| {
-            let can_stake_without_claim = *self.can_stake_without_claim();
-            let can_stake_after_claim   = *self.can_stake_after_claim();
-            let available_without_claim = *self.available_without_claim();
-            let available_after_claim   = *self.available_after_claim();
-            let minimum_stake           = *self.minimum_stake();
-            let validator_staked_remainder = *self.validator_staked_remainder();
-
-            // Determine the available amount to stake based on conditions
-            let available_to_stake = match (can_stake_without_claim, can_stake_after_claim) {
-                (true, _) => available_without_claim,
-                (false, true) => { available_after_claim },
-                _ => return ZERO, // If neither staking condition is met, return 0 for staking
-            };
-
-            // Calculate how much is needed to round `validator_staked` to a multiple of
-            // `minimum_stake`
-            let needed_to_round = minimum_stake.saturating_sub(validator_staked_remainder);
-
-            // Check if there's enough available to cover the rounding amount
-            if available_to_stake >= needed_to_round {
-                // Calculate how much remains after rounding the validator stake
-                let remaining_after_round = available_to_stake.saturating_sub(needed_to_round);
-
-                // Determine how many full minimum_stake multiples can be staked after rounding
-                let multiples_of_minimum_stake = remaining_after_round.saturating_div(minimum_stake);
-
-                // The final stake amount is `needed_to_round` plus the maximum multiples of
-                // `minimum_stake`
-                needed_to_round.saturating_add(multiples_of_minimum_stake.saturating_mul(minimum_stake))
-            } else {
-                // Not enough to cover rounding, return zero
-                ZERO
-            }
+            let validator_staked_remainder = self.validator_staked_remainder();
+            let minimum_stake = *self.minimum_stake();
+            self.can_stake_without_claim()
+                .then(|| self.available_without_claim())
+                .or_else(|| self.can_stake_after_claim().then(|| self.available_after_claim()))
+                .unwrap_or(&0)
+                .saturating_sub(validator_staked_remainder)
+                .saturating_div(minimum_stake)
+                .saturating_mul(minimum_stake)
+                .saturating_add(validator_staked_remainder)
         })
     }
 }
+
+// Custom Display implementation for Profile
+impl std::fmt::Display for Profile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}\n\n{}\n\n{}",
+            self.report_profile(),
+            self.report_config(),
+            self.report_config_validators(),
+        )
+    }
+}
+
 
 // Custom Debug implementation for Profile
 impl std::fmt::Debug for Profile {
@@ -1025,14 +975,12 @@ impl Profile {
             return Err(eyre!("Quantity to stake must be greater than 0."));
         }
 
-        if quantity > *self.balance() &&
-           quantity > *self.available_after_claim()
-        {
+        if quantity > *self.available_without_claim() && quantity > *self.available_after_claim() {
             if log { self.journal().print(Some(OutputFormat::Json))? };
             return Err(eyre!("Not enough balance to stake that quantity."));
         }
 
-        if quantity > *self.balance() {
+        if quantity > *self.available_without_claim() {
             if let Err(e) = self.nomic_claim() {
                 if log { self.journal().print(Some(OutputFormat::Json))? };
                 return Err(eyre!("Failed to claim: {:?}", e));
@@ -1315,7 +1263,7 @@ impl Profile {
             );
             journal.insert(
                 "validator_staked_remainder".to_string(),
-                Value::Number(serde_json::Number::from(*self.validator_staked_remainder()))
+                Value::Number(serde_json::Number::from(self.validator_staked_remainder()))
             );
             journal.insert(
                 "remaining".to_string(),
@@ -1323,11 +1271,11 @@ impl Profile {
             );
             journal.insert(
                 "can_stake_without_claim".to_string(),
-                Value::Bool(*self.can_stake_without_claim())
+                Value::Bool(self.can_stake_without_claim())
             );
             journal.insert(
                 "can_stake_after_claim".to_string(),
-                Value::Bool(*self.can_stake_after_claim())
+                Value::Bool(self.can_stake_after_claim())
             );
             journal.insert(
                 "daily_reward".to_string(),
@@ -1335,7 +1283,7 @@ impl Profile {
             );
             journal.insert(
                 "needs_claim".to_string(),
-                Value::Bool(*self.needs_claim())
+                Value::Bool(self.needs_claim())
             );
             journal.insert(
                 "quantity".to_string(),
@@ -1640,7 +1588,7 @@ impl Profile {
                 "Minimum Stake",
                 &format_to_millions(*self.minimum_stake(), Some(2)),
                 "quantity to stake after claim",
-                &format_to_millions(self.minimum_stake().saturating_sub(*self.validator_staked_remainder()), Some(2)),
+                &format_to_millions(self.minimum_stake().saturating_sub(self.validator_staked_remainder()), Some(2)),
             ]),
             TableColumns::new(vec![
                 "Minimum Balance",

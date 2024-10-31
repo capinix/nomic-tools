@@ -27,6 +27,18 @@ impl Journal {
     }
 }
 
+#[derive(Debug, Subcommand)]
+pub enum JournalctlCommands {
+    /// Display a summary grouped by profile or moniker
+    Summary {
+        #[arg(value_enum, default_value = "Profile", ignore_case = true)]
+        group_by: GroupBy,
+
+        #[arg(long, short, action = clap::ArgAction::SetTrue)]
+        follow: bool,
+    },
+}
+
 #[derive(Debug, Args)]
 #[command(about = "journalctl -f")]
 pub struct Journalctl {
@@ -39,6 +51,9 @@ pub struct Journalctl {
     #[arg(long, short)]
     pub not_staked: bool,
 
+    #[arg(long, short, action = clap::ArgAction::SetTrue)]
+    pub follow: bool,
+
     #[command(subcommand)]
     pub subcommand: Option<JournalctlCommands>,
 }
@@ -46,8 +61,8 @@ pub struct Journalctl {
 impl Journalctl {
     pub fn run(&self) -> Result<()> {
         match &self.subcommand {
-            Some(JournalctlCommands::Summary { group_by }) => {
-                summary(group_by.clone())
+            Some(JournalctlCommands::Summary { group_by, follow }) => {
+                summary(group_by.clone(), *follow)
             }
             None => {
                 let staked_or_not = if self.staked {
@@ -57,7 +72,7 @@ impl Journalctl {
                 } else {
                     None
                 };
-                tail(staked_or_not)
+                tail(staked_or_not, self.follow)
             }
         }
     }
@@ -82,13 +97,4 @@ impl LastJournal {
             .last_journal()?
             .print(self.format.clone())
     }
-}
-
-#[derive(Debug, Subcommand)]
-pub enum JournalctlCommands {
-    /// Display a summary grouped by profile or moniker
-    Summary {
-        #[arg(value_enum, default_value = "Profile", ignore_case = true)]
-        group_by: GroupBy,
-    },
 }

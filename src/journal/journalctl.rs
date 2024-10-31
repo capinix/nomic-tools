@@ -1,34 +1,47 @@
+use chrono::DateTime;
+use chrono::Utc;
+use crate::functions::format_to_millions;
+use crate::functions::TableColumns;
+use crate::global::GroupBy;
+use crate::journal::Journal;
 use eyre::Result;
 use eyre::WrapErr;
+use log::warn;
+use std::collections::HashMap;
 use std::env;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
-use crate::journal::Journal;
-use crate::global::GroupBy;
-use std::collections::HashMap;
-use chrono::Utc;
-use chrono::DateTime;
-use log::warn;
+use tabled::builder::Builder;
+use tabled::settings::{Alignment, Color, Modify, Style, Padding};
+use tabled::settings::object::{Columns, Rows};
+
+// Define ANSI color codes for a small palette of contrasting colors
+const COLORS: [&str; 4] = ["\x1b[31m", "\x1b[34m", "\x1b[33m", "\x1b[32m"]; // Red, Yellow, Blue, Green
+const RESET: &str = "\x1b[0m";
 
 // Common function to process journalctl output
-fn process_journal_lines<F>(grep_expr: &str, line_processor: F) -> Result<()>
+fn process_journal_lines<F>(grep_expr: &str, follow: bool, mut line_processor: F) -> Result<()>
 where
-    F: Fn(String) -> Result<()>,
+    F: FnMut(String) -> Result<()>,
 {
     // Get the path of the current executable
     let exe_path = env::current_exe().wrap_err("Failed to get the current executable path")?;
     let exe_path_str = exe_path.to_string_lossy();
 
     // Start the journalctl command
-    let mut child = Command::new("journalctl")
-        .args(&[
-            &format!("_EXE={}", exe_path_str),
-            &format!("--grep={}", grep_expr),
-            "--output=cat",
-            "--no-pager",
-            "--follow",
-            "--lines=200",
-        ])
+    let mut cmd = Command::new("journalctl");
+    cmd.args(&[
+        &format!("_EXE={}", exe_path_str),
+        &format!("--grep={}", grep_expr),
+        "--no-tail",
+        "--no-pager",
+        "--output=cat",
+    ]);
+    if follow {
+        cmd.arg("--follow");
+    }
+
+    let mut child = cmd
         .stdout(Stdio::piped())
         .spawn()
         .wrap_err("Failed to start journalctl")?;
@@ -51,7 +64,7 @@ where
     Ok(())
 }
 
-pub fn tail(staked_or_not: Option<bool>) -> Result<()> {
+pub fn tail(staked_or_not: Option<bool>, follow: bool) -> Result<()> {
     // Define the grep expression based on the staked_or_not parameter
     let grep_expr = match staked_or_not {
         Some(true) => r#"{[^}]*"staked"[[:space:]]*:[[:space:]]*"✅"[^}]*}"#,
@@ -60,7 +73,7 @@ pub fn tail(staked_or_not: Option<bool>) -> Result<()> {
     };
 
     // Call the common function with the grep expression and the specific line processing
-    process_journal_lines(grep_expr, |line| {
+    process_journal_lines(grep_expr, follow, |line| {
         let journal = Journal::from_json_str(&line)?;
         println!("{}", journal.log());
         Ok(())
@@ -70,15 +83,18 @@ pub fn tail(staked_or_not: Option<bool>) -> Result<()> {
 pub struct DailyTotals {
     pub day: String,
     pub totals: HashMap<String, u64>,
-    pub column_widths: [usize; 3],
+    color_index: usize,
 }
+
+
+
 
 impl DailyTotals {
     pub fn new() -> Self {
         Self {
-            day: String::new(), // Start with an empty string
+            day: String::new(),
             totals: HashMap::new(),
-            column_widths: [5, 10, 10], // Default widths for day, name, and total columns
+            color_index: 0,
         }
     }
 
@@ -89,7 +105,7 @@ impl DailyTotals {
         // If the day does not match, flush and update to the new day
         if self.day != day_str {
             self.flush();
-            self.day = day_str;
+            self.day = day_str.to_string();
         }
 
         // Add quantity to the existing total for this name, or insert a new one if it doesn't exist
@@ -97,33 +113,70 @@ impl DailyTotals {
     }
 
     fn flush(&mut self) {
-        let (width_day, width_name, width_total) = (
-            self.column_widths[0],
-            self.column_widths[1],
-            self.column_widths[2],
-        );
 
         // Collect entries into a vector and sort by name
         let mut sorted_totals: Vec<_> = self.totals.iter().collect();
         sorted_totals.sort_by_key(|(name, _)| name.to_owned()); // Sort by name
 
-        if !sorted_totals.is_empty() { // Only print if there are totals to show
-            for (name, total) in sorted_totals {
-                println!("{:width_day$} {:width_name$} {:>width_total$}", self.day, name, total);
-            }
-        }
+        self.color_index = (self.color_index + 1) % COLORS.len(); // Increment and wrap around
+
+        println!("{}", self);
 
         // Clear totals after printing
         self.totals.clear();
     }
+
+    fn print(&self) -> String {
+        let mut rows: Vec<TableColumns> = Vec::new();
+        for (name, total) in self.totals.iter() {
+            rows.push(TableColumns::new(vec![
+                &self.day,
+                name,
+                &format_to_millions(*total, None),
+            ]));
+        }
+        rows.sort_by_key(|row| row.cell1.clone());
+
+        // Initialize Builder without headers
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([
+                row.cell0.clone(), 
+                row.cell1.clone(), 
+                row.cell2.clone(), 
+            ]);
+        }
+
+        let color = COLORS[self.color_index % COLORS.len()];
+
+        let mut table = builder.build();
+        table
+            .with(Style::blank())
+            .with(Modify::new(Columns::single(0)).with(Padding::new(0,0,0,0)))
+            .with(Modify::new(Columns::single(1)).with(Padding::new(0,1,0,0)))
+            .with(Modify::new(Columns::single(2)).with(Padding::new(0,0,0,0)))
+            .with(Modify::new(Columns::single(2)).with(Alignment::right()))
+            .with(Modify::new(Rows::new(0..)).with(Color::new(color, RESET)))
+            ;
+
+        table.to_string()
+    }
 }
 
-pub fn summary(group_by: GroupBy) -> Result<()> {
+impl std::fmt::Display for DailyTotals { // Fully qualified fmt
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.print())
+    }
+}
+
+pub fn summary(group_by: GroupBy, follow: bool) -> Result<()> {
     // Define the grep expression for staked status
     let grep_expr = r#"{[^}]*"staked"[[:space:]]*:[[:space:]]*"✅"[^}]*}"#;
 
+    let mut totals = DailyTotals::new();
+
     // Call the common function with the grep expression and specific line processing
-    process_journal_lines(grep_expr, |line| {
+    process_journal_lines(grep_expr, follow, |line| {
         let journal = Journal::from_json_str(&line)?;
         let timestamp = journal.get::<DateTime<Utc>>("timestamp");
 
@@ -135,10 +188,9 @@ pub fn summary(group_by: GroupBy) -> Result<()> {
 
         let quantity = journal.get::<u64>("quantity");
 
-        let mut totals = DailyTotals::new();
-
         match (timestamp, group, quantity) {
             (Some(timestamp), Some(group), Some(quantity)) => {
+
                 totals.add(timestamp, group, quantity);
             }
             _ => {
