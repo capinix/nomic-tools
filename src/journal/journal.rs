@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use clap::ValueEnum;
 use colored::Colorize;
-use crate::functions::format_to_millions;
+use crate::functions::NumberDisplay;
 use crate::global::CONFIG;
 use eyre::{Result, WrapErr};
 use indexmap::IndexMap;
@@ -99,7 +99,7 @@ impl std::fmt::Display for DisplayJournalValue {
             Value::Number(n) => {
                 // Check for u64
                 if let Some(num) = n.as_u64() {
-                    write!(f, "{}", format_to_millions(num, None))
+                    write!(f, "{}", NumberDisplay::new(num).scale(6).decimal_places(6).trim(true).format())
                 } else {
                     write!(f, "{}", n) // Return the unchanged input for other cases
                 }

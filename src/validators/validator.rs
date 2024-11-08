@@ -23,8 +23,8 @@ pub struct ValidatorTableDetail {
     #[tabled(rename = "Moniker")]
     pub moniker: String,
 
-    #[tabled(rename = "Details")]
-    pub details: String,
+//    #[tabled(rename = "Details")]
+//    pub details: String,
 }
 
 #[derive(Clone, tabled::Tabled)]
@@ -96,7 +96,7 @@ impl Validator {
             address: self.address.clone(),
             voting_power: self.voting_power_nom(),
             moniker: self.moniker.clone(),
-            details: self.details.clone(),
+            //details: self.details.clone(),
         }
     }
 

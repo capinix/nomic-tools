@@ -1,6 +1,6 @@
 use chrono::DateTime;
 use chrono::Utc;
-use crate::functions::format_to_millions;
+use crate::functions::NumberDisplay;
 use crate::functions::TableColumns;
 use crate::global::GroupBy;
 use crate::journal::Journal;
@@ -13,10 +13,16 @@ use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tabled::builder::Builder;
 use tabled::settings::{Alignment, Color, Modify, Style, Padding};
-use tabled::settings::object::{Columns, Rows};
+use tabled::settings::object::Columns;
 
 // Define ANSI color codes for a small palette of contrasting colors
-const COLORS: [&str; 4] = ["\x1b[31m", "\x1b[34m", "\x1b[33m", "\x1b[32m"]; // Red, Yellow, Blue, Green
+const COLORS: [&str; 5] = [
+    "\x1b[31m",  // Red
+    "\x1b[34m",  // Blue
+    "\x1b[33m",  // Yellow
+    "\x1b[38;2;255;165;0m",  // Orange (RGB: 255, 165, 0)
+    "\x1b[32m",  // Green
+];
 const RESET: &str = "\x1b[0m";
 
 // Common function to process journalctl output
@@ -132,7 +138,7 @@ impl DailyTotals {
             rows.push(TableColumns::new(vec![
                 &self.day,
                 name,
-                &format_to_millions(*total, None),
+                &NumberDisplay::new(*total).decimal_places(2).format(),
             ]));
         }
         rows.sort_by_key(|row| row.cell1.clone());
@@ -148,15 +154,18 @@ impl DailyTotals {
         }
 
         let color = COLORS[self.color_index % COLORS.len()];
+        let color_q = COLORS[(self.color_index + 2) % COLORS.len()];
 
         let mut table = builder.build();
         table
             .with(Style::blank())
             .with(Modify::new(Columns::single(0)).with(Padding::new(0,0,0,0)))
-            .with(Modify::new(Columns::single(1)).with(Padding::new(0,1,0,0)))
+            .with(Modify::new(Columns::single(1)).with(Padding::new(0,0,0,0)))
             .with(Modify::new(Columns::single(2)).with(Padding::new(0,0,0,0)))
             .with(Modify::new(Columns::single(2)).with(Alignment::right()))
-            .with(Modify::new(Rows::new(0..)).with(Color::new(color, RESET)))
+            .with(Modify::new(Columns::single(0)).with(Color::new(color, RESET)))
+            .with(Modify::new(Columns::single(1)).with(Color::new(color, RESET)))
+            .with(Modify::new(Columns::single(2)).with(Color::new(color_q, RESET)))
             ;
 
         table.to_string()

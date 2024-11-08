@@ -1,8 +1,6 @@
 use clap::ValueEnum;
 use crate::global::PROFILES_DIR;
 use crate::privkey::FromPath;
-//use crate::profiles::Balance;
-//use crate::profiles::Delegations;
 use crate::profiles::Profile;
 use crate::validators::ValidatorCollection;
 use eyre::{eyre, Result};
@@ -46,18 +44,17 @@ impl ProfileCollection {
 
         for entry in entries.flatten() {
             if entry.file_type()?.is_dir() {
+                let path = entry.path().to_string_lossy().to_string();
                 // Load the profile with or without validators
                 let profile = Profile::new(
-                    None,                                      // name
-                    Some(entry.path()),                        // home
-                    if load_validators {                       // validators
-                        Some(self.validators()?.clone())
-                    } else {
-                        None
-                    },                                         // validators
-                    Some(true),                                // overwrite
+                    None,                             // name
+                    Some(path),                       // home
+                    None,                             // privkey_file
+                    Some(true),                       // overwrite
+                    load_validators
+                        .then(|| self.validators())
+                        .transpose()?,
                 );
-
                 match profile {
                     Ok(profile) => self.profiles.push(profile),
                     Err(e) => warn!("Failed to load profile from {:?}: {}", entry.path(), e),
@@ -74,9 +71,9 @@ impl ProfileCollection {
     pub fn new() -> Result<Self> {
         let mut collection = ProfileCollection {
             profiles: Vec::new(),
-            validators: OnceCell::new(), // Initialize OnceCell
+            validators: OnceCell::new(),
         };
-        collection.load_profiles(false)?; // Load profiles from disk (assuming this is defined elsewhere)
+        collection.load_profiles(false)?;
         Ok(collection)
     }
 
@@ -87,9 +84,9 @@ impl ProfileCollection {
     pub fn load() -> Result<Self> {
         let mut collection = ProfileCollection {
             profiles: Vec::new(),
-            validators: OnceCell::new(), // Initialize OnceCell
+            validators: OnceCell::new(),
         };
-        collection.load_profiles(true)?; // Load profiles from disk (assuming this is defined elsewhere)
+        collection.load_profiles(true)?;
         Ok(collection)
     }
 
@@ -126,31 +123,39 @@ impl ProfileCollection {
     }
 
     /// Finds a profile by its name, address, or home.
-    pub fn profile_by_name_or_address_or_home(&self, name_address_home: &str) -> Result<&Profile> {
+    pub fn profile_by_name_or_address_or_home<S: AsRef<Path> + AsRef<str>>(&self, search: S) -> Result<&Profile> {
         // First try to find the profile by name
-        if let Ok(profile) = self.profile_by_name(name_address_home) {
+        let search_str: &str = search.as_ref();
+        if let Ok(profile) = self.profile_by_name(search_str.as_ref()) {
             return Ok(profile);
         }
 
         // Next, try to find the profile by address
-        if let Ok(profile) = self.profile_by_address(name_address_home) {
+        if let Ok(profile) = self.profile_by_address(search_str.as_ref()) {
             return Ok(profile);
         }
 
         // Finally, attempt to find by home; convert the string to a Path
-        let home_path = Path::new(name_address_home);
-        self.profile_by_home(home_path)
+        let search_path: &Path = search.as_ref();
+        self.profile_by_home(search_path.as_ref())
     }
 
     /// Finds a profile by its name, address, or home.
-    pub fn profile_by_name_or_address_or_home_or_default(
-        &self, name_or_address_or_home: Option<&str>
+    pub fn profile_by_name_or_address_or_home_or_default<S: AsRef<str> + AsRef<Path>>(
+        &self,
+        search: Option<S>
     ) -> Result<Profile> {
-        if let Some(search) = name_or_address_or_home {
+        if let Some(search) = search {
             self.profile_by_name_or_address_or_home(search).cloned()
         } else {
             let home = home::home_dir().ok_or_else(|| eyre!("Home directory not found"))?;
-            Profile::new(None, Some(home), None, Some(true))
+            Profile::new(
+                None,       // name
+                Some(home.to_string_lossy().to_string()), // home
+                None,       // privkey_file
+                Some(true), // overwrite
+                None        // ValidatorCollection
+            )
         }
     }
 
@@ -195,9 +200,9 @@ impl ProfileCollection {
     /// let address = ProfileCollection::search_list()?
     ///     .address(None)?;
     /// ```
-    pub fn address(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
+    pub fn address<S: AsRef<str> + AsRef<Path>>(&self, search: Option<S>) -> Result<String, eyre::Error> {
         Ok(
-            self.profile_by_name_or_address_or_home_or_default(name_or_address_or_home)?
+            self.profile_by_name_or_address_or_home_or_default(search.as_ref())?
                 .key()?.address()?.to_string()
         )
     }
@@ -247,8 +252,7 @@ impl ProfileCollection {
     pub fn validate_address(&self, name_or_address_or_home: Option<&str>) -> Result<String, eyre::Error> {
         match name_or_address_or_home {
             Some(search) if is_valid_nomic_address(search) => Ok(search.to_string()),
-            Some(search) => self.address(Some(search)),
-            None => self.address(None),
+            _ => self.address(name_or_address_or_home),
         }
     }
 
@@ -317,20 +321,28 @@ impl ProfileCollection {
         Ok(())
     }
 
-    pub fn import(&self,
+    pub fn import(
+        &self,
         name_or_address_or_home: &str,
         hex_str: &str,
         force: bool,
     ) -> Result<()> {
-        self.profile_by_name_or_address_or_home(name_or_address_or_home)?
-            .import(hex_str, force)
+        match self.profile_by_name_or_address_or_home(name_or_address_or_home) {
+            Ok(profile) => profile.import(hex_str, force),
+            Err(_) => {
+                // Attempt to create a new profile if it doesn't exist
+                Profile::new(Some(name_or_address_or_home), None, Some(hex_str), None, None)
+                    .map(|_| ())
+                    .map_err(|err| eyre::eyre!("Failed to create new profile: {}", err))
+            },
+        }
     }
 
     pub fn import_file(&self, 
         name: &str, 
         file: &Path
     ) -> Result<()> {
-        self.import(name, file.privkey()?.export()?, true)
+        self.import(name, file.privkey()?.export(), true)
     }
 
     /// Retrieves validators, initializing it if necessary.

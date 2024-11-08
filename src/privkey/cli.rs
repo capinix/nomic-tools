@@ -1,13 +1,9 @@
 
 use clap::{Parser, Subcommand};
-use crate::functions::construct_path;
-use crate::privkey::get_privkey;
 use crate::privkey::PrivKey;
-use eyre::eyre;
-use eyre::Result;
+use eyre::{eyre, Result};
 use std::io::{self, Write};
-use std::path::Path;
-
+use std::path::PathBuf;
 
 /// Defines the CLI structure for the `privkey` command.
 #[derive(Parser)]
@@ -73,11 +69,11 @@ pub enum Command {
 
         /// Profile, Home path or File path
         #[arg(conflicts_with = "stdout")]
-        output: Option<String>,
+        output: Option<PathBuf>,
 
-        /// Output to stdout
-        #[arg(long, short = 't', conflicts_with = "output")]
-        stdout: bool,
+        ///// Output to stdout
+        //#[arg(long, short = 't', conflicts_with = "output")]
+        //stdout: bool,
 
         /// Force overwrite
         #[arg(long, short = 'f')]
@@ -90,67 +86,69 @@ impl Cli {
         match &self.command {
 
             Some(Command::Address { input_args }) => {
-                let address = if input_args.stdin_args.stdin {
+                let privkey = if input_args.stdin_args.stdin {
                     PrivKey::stdin(
                         input_args.stdin_args.max_attempts, 
                         input_args.stdin_args.timeout,
-                    )?.address()?
-                      .to_string()
+                    )?
                 } else {
-                    get_privkey(
-                        input_args.input.as_deref(), // hex string, profile name, home path or file path
-                        Some(&Path::new(".orga-wallet").join("privkey")),
-                        None,
-                    )?.address()?              // Privkey.address method returns address
-                      .to_string()             // To string
+                    match input_args.input.as_deref() {
+                        Some(data) => {
+                            PrivKey::import(data)?
+                        },
+                        None => {
+                            PrivKey::new(None)
+                        }
+                    }
                 };
-                Ok(println!("{}", address))
+                Ok(println!("{}", privkey.address()?))
             },
 
             Some(Command::Export { input_args }) => {
-                let export = if input_args.stdin_args.stdin {
+                let privkey = if input_args.stdin_args.stdin {
                     PrivKey::stdin(
                         input_args.stdin_args.max_attempts, 
                         input_args.stdin_args.timeout,
-                    )?.export()?
-                      .to_string()
+                    )?
                 } else {
-                    get_privkey(
-                        input_args.input.as_deref(), // hex string, profile name, home path or file path
-                        Some(&Path::new(".orga-wallet").join("privkey")),
-                        None,
-                    )?.export()?               // Privkey.export method returns export
-                      .to_string()             // To string
+                    match input_args.input.as_deref() {
+                        Some(data) => {
+                            PrivKey::import(data)?
+                        },
+                        None => {
+                            PrivKey::new(None)
+                        }
+                    }
                 };
-                Ok(println!("{}", export))
+                Ok(println!("{}", privkey.export()))
             },
 
-            Some(Command::Write { input, stdin_args, output, stdout, force }) => {
-
+            Some(Command::Write { input, stdin_args, output, force }) => {
                 let privkey = if stdin_args.stdin {
                     PrivKey::stdin(
                         stdin_args.max_attempts, 
                         stdin_args.timeout,
                     )?
                 } else {
-                    get_privkey(
-                        input.as_deref(),   // hex string, profile name, home path or file path
-                        Some(&Path::new(".orga-wallet").join("privkey")),
-                        None,
-                    )?
+                    match input.as_deref() {
+                        Some(data) => {
+                            PrivKey::import(data)?
+                        },
+                        None => {
+                            PrivKey::new(None)
+                        }
+                    }
                 };
 
-                let output_path = construct_path(
-                    output.as_deref(),                  // profile name, home path or file path
-                    Some(&Path::new(".orga-wallet").join("privkey")),
-                )?;
-
-                if *stdout {
-                    Ok(io::stdout().write_all(privkey.bytes())?)
-                } else {
-                    // Save the private key to file or home
-                    privkey.save_to_file_or_home(Some(output_path), None, *force)
+                match output.as_deref() {
+                    Some(file) => {
+                        return Ok(privkey.save(file, *force)?);
+                    },
+                    None => {
+                        return Ok(io::stdout().write_all(privkey.bytes())?);
+                    },
                 }
+
             },
 
             None => Err(eyre!("No command provided")),

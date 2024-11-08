@@ -1,6 +1,6 @@
 
 use chrono::{DateTime, Utc};
-use crate::functions::format_to_millions;
+use crate::functions::NumberDisplay;
 use crate::functions::is_valid_nomic_address;
 use crate::functions::prompt_user;
 use crate::functions::TableColumns;
@@ -8,7 +8,7 @@ use crate::functions::TaskStatus;
 use crate::global::CONFIG;
 use crate::global::PROFILES_DIR;
 use crate::journal::{Journal, OutputFormat};
-use crate::nonce;
+use crate::nonce::Nonce;
 use crate::privkey::PrivKey;
 use crate::profiles::Balance;
 use crate::profiles::Config;
@@ -50,7 +50,12 @@ pub struct Profile {
     config:                        OnceCell<Config>,
     balances:                      OnceCell<Balance>,
     balance:                       OnceCell<u64>,
+
+    /// ValidatorCollection, used to lookup Validator information
+    /// Requires a network request. if previously fetched, and optionally provided,
+    /// we might not have to do another network request
     validators:                    OnceCell<ValidatorCollection>,
+
     validator:                     OnceCell<Validator>,
     delegations:                   OnceCell<Delegations>,
     total_staked:                  OnceCell<u64>,
@@ -62,8 +67,14 @@ pub struct Profile {
     minimum_stake:                 OnceCell<u64>,
     available_without_claim:       OnceCell<u64>,
     available_after_claim:         OnceCell<u64>,
-    quantity:                      OnceCell<u64>,
-    remaining:                     OnceCell<u64>,
+    calc:                          OnceCell<Calc>,
+    validator_staked_remainder:    OnceCell<u64>,
+    needed:                        OnceCell<u64>,
+    //remaining:                     OnceCell<u64>,
+    can_stake_without_claim:       OnceCell<bool>,
+    can_stake_after_claim:         OnceCell<bool>,
+    //needs_claim:                   OnceCell<bool>,
+    //quantity:                      OnceCell<u64>,
     journal:                       OnceCell<Journal>,
     last_journal:                  OnceCell<Journal>,
     staked:                        bool,
@@ -72,14 +83,16 @@ pub struct Profile {
 
 impl Profile {
 
-    fn create_profile(
-        name:       String,
-        home:       PathBuf,
+    fn create_profile<P: AsRef<Path>, S: AsRef<str>>(
+        name:       S,
+        home:       P,
         validators: Option<ValidatorCollection>,
     ) -> Self {
+        let name: &str  = name.as_ref();
+        let home: &Path = home.as_ref();
         Self {
-            name,
-            home,
+            name:                         name.to_string(),
+            home:                       home.to_path_buf(),
             wallet_path:                   OnceCell::new(),
             nonce_file:                    OnceCell::new(),
             key_file:                      OnceCell::new(),
@@ -98,9 +111,15 @@ impl Profile {
             minimum_stake:                 OnceCell::new(),
             available_without_claim:       OnceCell::new(),
             available_after_claim:         OnceCell::new(),
+            calc:                          OnceCell::new(),
+            validator_staked_remainder:    OnceCell::new(),
+            can_stake_without_claim:       OnceCell::new(),
+            can_stake_after_claim:         OnceCell::new(),
+            //needs_claim:                   OnceCell::new(),
             daily_reward:                  OnceCell::new(),
-            quantity:                      OnceCell::new(),
-            remaining:                     OnceCell::new(),
+            //quantity:                      OnceCell::new(),
+            needed:                        OnceCell::new(),
+            //remaining:                     OnceCell::new(),
             last_journal:                  OnceCell::new(),
             journal:                       OnceCell::new(),
             claimed:                       false,
@@ -109,22 +128,27 @@ impl Profile {
     }
 
     // Helper function to perform copying of config and wallet data
-    fn copy_config_and_wallet<P: AsRef<Path>>(profile_home: P, home: P) -> Result<()> {
+    fn copy_config_and_wallet<P: AsRef<Path>>(
+        profile_home: P,
+        home: P
+    ) -> Result<()> {
         // Copy home/config to profiles_dir/name/config
-        let home_config = home.as_ref().join(config_filename());
-        let profile_config = profile_home.as_ref().join(config_filename());
+        let profile_home: &Path = profile_home.as_ref();
+        let home: &Path = home.as_ref();
+
+        let home_config = home.join(config_filename());
+        let profile_config = profile_home.join(config_filename());
 
         if home_config.exists() {
-            fs::copy(&home_config, &profile_config)
-                .with_context(|| format!(
-                        "Failed to copy config file from {:?} to {:?}", 
-                        home_config, profile_config
-                ))?;
+            fs::copy(&home_config, &profile_config).with_context(|| format!(
+                "Failed to copy config file from {:?} to {:?}", 
+                home_config, profile_config
+            ))?;
         }
 
         // Copy home/.orga-wallet to profiles_dir/name/.orga-wallet
-        let home_wallet = home.as_ref().join(".orga-wallet");
-        let profile_wallet = profile_home.as_ref().join(".orga-wallet");
+        let home_wallet = home.join(".orga-wallet");
+        let profile_wallet = profile_home.join(".orga-wallet");
 
         if home_wallet.exists() {
             fs_extra::dir::copy(&home_wallet, &profile_wallet, &fs_extra::dir::CopyOptions::new())
@@ -138,9 +162,17 @@ impl Profile {
     }
 
     // Helper function to check and copy data from home to profiles directory
-    fn check_and_copy_data<P: AsRef<Path>>(profile_home: P, home: P, overwrite: Option<bool>) -> Result<()> {
-        let profile_privkey = profile_home.as_ref().join(".orga-wallet/privkey");
-        let home_privkey = home.as_ref().join(".orga-wallet/privkey");
+    fn check_and_copy_data<P: AsRef<Path>>(
+        profile_home: P,
+        home: P,
+        overwrite: Option<bool>
+    ) -> Result<()> {
+
+        let profile_home: &Path = profile_home.as_ref();
+        let home: &Path = home.as_ref();
+
+        let profile_privkey = profile_home.join(".orga-wallet").join("privkey");
+        let home_privkey    = home.join(".orga-wallet").join("privkey");
 
         // Check if privkey exists in both locations
         if profile_privkey.exists() && home_privkey.exists() {
@@ -168,76 +200,173 @@ impl Profile {
         Ok(())
     }
 
-    pub fn new<P: AsRef<Path>>(
-        name: Option<String>,
-        home: Option<P>,
-        validators: Option<ValidatorCollection>,
+    fn create_with_name_and_home<P: AsRef<Path>, S: AsRef<str>>(
+        name: S,
+        home: P,
+        profiles_dir: P,
         overwrite: Option<bool>,
+        validators: Option<ValidatorCollection>,
     ) -> Result<Self> {
+        let name_str: &str = name.as_ref();
+        let home_path: &Path = home.as_ref();
+        let profiles_path: &Path = profiles_dir.as_ref();
+        let profile_home_path = profiles_path.join(name_str);
 
-        // Resolve the profiles directory
-        let profiles_dir = &*PROFILES_DIR;
-
-        // Step 1: Handle the case where both `name` and `home` are provided
-        if let (Some(name), Some(home)) = (name.clone(), home.as_ref()) {
-            let home_path = home.as_ref().to_path_buf();
-            let profile_home_path = profiles_dir.join(&name);
-
-            // Check if the resolved `profiles_dir/name` matches the provided `home`
-            if home_path != profile_home_path {
-                // Check if home is an immediate subdirectory of profiles_dir
-                if home_path.starts_with(profiles_dir) {
-                    return Err(eyre!("Invalid name: home is an immediate subdirectory of profiles_dir"));
-                }
-                // Create `profiles_dir/name` if it doesn't exist
-                if !profile_home_path.exists() {
-                    fs::create_dir_all(&profile_home_path)
-                        .with_context(|| format!("Failed to create profile directory: {:?}", profile_home_path))?;
-                }
-
-                // Perform overwrite checks and file copying
-                Self::check_and_copy_data(&profile_home_path, &home_path, overwrite)?;
+        if home_path != profile_home_path {
+            if home_path.starts_with(profiles_dir) {
+                return Err(eyre!(
+                    "Invalid name: home is an immediate subdirectory of profiles_dir"
+                ));
             }
-            return Ok(Self::create_profile(
-                name,               // name
-                profile_home_path,  // home
-                validators,         // validators
-            ));
-        }
-
-        // Step 2: If only `name` is provided
-        if let Some(name) = name.clone() {
-            let profile_home_path = profiles_dir.join(&name);
 
             // Create `profiles_dir/name` if it doesn't exist
             if !profile_home_path.exists() {
-                fs::create_dir_all(&profile_home_path)
-                    .with_context(|| format!("Failed to create profile directory: {:?}", profile_home_path))?;
+                fs::create_dir_all(&profile_home_path).with_context(|| format!(
+                    "Failed to create profile directory: {:?}",
+                    profile_home_path,
+                ))?;
             }
-            return Ok(Self::create_profile(
-                name,               // name
-                profile_home_path,  // home
-                validators,         // validators
-            ));
+
+            Self::check_and_copy_data(
+                profile_home_path.to_path_buf(), home_path.to_path_buf(), overwrite)?;
         }
 
-        // Step 3: If only `home` is provided
-        if let Some(home) = home {
-            let home_path = home.as_ref().to_path_buf();
-            let home_name = home_path.file_name()
-                .ok_or_else(|| eyre!("Invalid home directory: unable to extract name"))?
-                .to_string_lossy()
-                .to_string();
-            let profile_home_path = profiles_dir.join(&home_name);
+        Ok(Self::create_profile(name, profile_home_path.to_path_buf(), validators))
+    }
 
-            return Ok(Self::create_profile(
-                home_name,          // name
-                profile_home_path,  // home
-                validators,         // validators
-            ));
+    fn create_with_name<P: AsRef<Path>, S: AsRef<str>>(
+        name: S,
+        profiles_dir: P,
+        validators: Option<ValidatorCollection>,
+    ) -> Result<Self> {
+        let name_str: &str = name.as_ref();
+        let profiles_path: &Path = profiles_dir.as_ref();
+        let profile_home_path = profiles_path.join(name_str);
+
+        // Create `profiles_dir/name` if it doesn't exist
+        if !profile_home_path.exists() {
+            fs::create_dir_all(&profile_home_path).with_context(|| format!(
+                "Failed to create profile directory: {:?}",
+                profile_home_path,
+            ))?;
         }
 
-        // Step 4: If both `name` and `home` are `None`, return an error
+        Ok(Self::create_profile(name, profile_home_path, validators))
+    }
+
+    fn create_with_home<P: AsRef<Path>>(
+        home: P,
+        profiles_dir: P,
+        validators: Option<ValidatorCollection>,
+    ) -> Result<Self> {
+        let home_path: &Path = home.as_ref();
+        let home_name = home_path.file_name()
+            .ok_or_else(|| eyre!("
+                Invalid home directory: unable to extract name"
+            ))?
+            .to_string_lossy()
+            .to_string();
+        let profiles_path: &Path = profiles_dir.as_ref();
+        let profile_home_path = profiles_path.join(&home_name);
+
+        Ok(Self::create_profile(home_name, profile_home_path, validators))
+    }
+
+//    fn copy_privkey_file<P: AsRef<Path>>(
+//        privkey_file: P,
+//        profile: &Profile,
+//    ) -> Result<()> {
+//        // Ensure the private key file exists
+//        if privkey_file.as_ref().exists() {
+//            let dest_path = profile.key_file()?;
+//
+//            // Copy the private key file to the destination
+//            fs::copy(&privkey_file, dest_path)
+//                .with_context(|| format!(
+//                    "Failed to copy private key file from {:?} to {:?}",
+//                    privkey_file.as_ref(),
+//                    dest_path
+//                ))?;
+//        } else {
+//            return Err(eyre!(
+//                "Private key file does not exist: {:?}",
+//                privkey_file.as_ref(),
+//            ));
+//        }
+//        Ok(())
+//    }
+
+    pub fn new<S: AsRef<str> + AsRef<Path>>(
+
+        name: Option<S>,
+        home: Option<S>,
+
+        // This could be either
+        //   1 a filename containing a binary representation of a private key
+        //   2 a filename containing a hex representation of a private key
+        //   3 a hex string representation of a private key
+        privkey: Option<S>,
+
+        // if previous files exist, should we overwrite them
+        overwrite: Option<bool>,
+
+        // ValidatorCollection, used to lookup Validator information
+        // Requires a network request. if previously fetched, and optionally provided,
+        // we might not have to do another network request
+        validators: Option<&ValidatorCollection>,
+
+    ) -> Result<Self> {
+        let profiles_dir: &Path = &*PROFILES_DIR;
+
+        // If both `name` and `home` are provided
+        if let (Some(name), Some(home)) = (name.as_ref(), home.as_ref()) {
+            // Convert `home_str` to a `PathBuf`
+            let name_str:  &str  = name.as_ref();
+            let home_path: &Path = home.as_ref();
+
+            let profile = Self::create_with_name_and_home(
+                name_str,
+                home_path,
+                profiles_dir,
+                overwrite,
+                validators.cloned(),
+            )?;
+
+            if let Some(privkey_val) = privkey.as_ref() {
+                let key = PrivKey::import(privkey_val)?;
+                key.save(profile.wallet_path()?, true)?;
+            }
+
+            return Ok(profile);
+        }
+
+        // If only `name` is provided
+        if let Some(name) = name.as_ref() {
+            let name_str: &str = name.as_ref();
+            let profile = Self::create_with_name(name_str.to_string(), profiles_dir, validators.cloned())?;
+
+            if let Some(privkey_val) = privkey.as_ref() {
+                let key = PrivKey::import(privkey_val)?;
+                key.save(profile.key_file()?, true)?;
+            }
+
+            return Ok(profile);
+        }
+
+        // If only `home` is provided
+        if let Some(home) = home.as_ref() {
+            let home_path: &Path = home.as_ref();
+            let profile = Self::create_with_home(home_path, profiles_dir, validators.cloned())?;
+
+            if let Some(privkey_val) = privkey.as_ref() {
+                let key = PrivKey::import(privkey_val)?;
+                key.save(profile.key_file()?, true)?;
+            }
+
+            return Ok(profile);
+        }
+
+        // If both `name` and `home` are `None`, return an error
         Err(eyre!("Both `name` and `home` cannot be `None`"))
     }
 
@@ -406,7 +535,7 @@ impl Profile {
     }
 
     /// import a new private key into profile
-    pub fn import(&self, hex_str: &str, force: bool) -> Result<()> {
+    pub fn import<S: AsRef<str>>(&self, data: S, force: bool) -> Result<()> {
         let key_file = self.key_file()?; // Get the key file path
 
         // Check if the key file already exists
@@ -414,11 +543,10 @@ impl Profile {
             return Err(eyre::eyre!("Key file already exists. Use 'force' to overwrite it."));
         }
 
+        println!("{:?}", &key_file);
+
         // Import the private key from the hex string
-        let key = PrivKey::import(
-            hex_str,  // hex string
-            None      // generate its own timestamp
-        )?;           // propagate errors
+        let key = PrivKey::import(data)?;
 
         // Save the key to the key file
         key.save(key_file, force)?;
@@ -427,8 +555,8 @@ impl Profile {
     }
 
     pub fn export_nonce(&self) -> Result<u64> {
-        let nonce_file = self.nonce_file()?;
-        nonce::export(Some(&nonce_file), None)
+        let nonce = Nonce::load(self.nonce_file()?.to_string_lossy())?;
+        Ok(nonce.value())
     }
 
     pub fn balance(&self) -> &u64 {
@@ -620,20 +748,50 @@ impl Profile {
         Ok(address)
     }
 
+    /// Returns the minimum balance required for the account based on the configured ratio and delegation status.
+    ///
+    /// # Description
+    /// This method calculates the minimum balance as a function of the `minimum_balance_ratio` from
+    /// the configuration and the total staked amount in the account's delegations. The result is adjusted
+    /// to meet certain conditions, including rounding down to a base unit (`10,000 unom`, or `0.01 nom`) 
+    /// and ensuring it is at least equal to the `minimum_balance` specified in the configuration.
+    ///
+    /// # Calculations
+    /// - `adjusted_ratio`: This is the `minimum_balance_ratio` from the config, clamped to a maximum of `1,000,000`
+    ///   to represent a value between `0` and `1` when scaled by a factor of `1,000,000`.
+    /// - Minimum balance is derived from the staked amount in the account:
+    ///   - `staked * adjusted_ratio / 1_000_000`: Scales the staked amount by the adjusted ratio.
+    ///   - `.saturating_div(10_000).saturating_mul(10_000)`: Rounds down the result to the nearest base unit of `10,000 unom`.
+    ///   - `.max(config.minimum_balance)`: Ensures the final result is not below the minimum balance specified in the config.
+    ///
+    /// # Returns
+    /// A reference to the computed minimum balance, caching the result for future calls.
+    ///
+    /// # Errors
+    /// If there is an error retrieving delegations, the function defaults to using `config.minimum_balance`.
+    ///
     pub fn minimum_balance(&self) -> &u64 {
         self.minimum_balance.get_or_init(|| {
-            let default = CONFIG.minimum_balance;
+            // Load configuration to retrieve minimum balance ratio and base minimum balance.
             let config = self.config();
 
-            // Ensure `minimum_balance_ratio` does not exceed 1,000,000
+            // Adjusted ratio is the minimum of the `minimum_balance_ratio` and 1_000_000
+            // This effectively scales the ratio between 0 and 1 when divided by 1,000,000.
             let adjusted_ratio = config.minimum_balance_ratio.min(1_000_000);
 
             match self.delegations() {
-                Ok(d) => d.total().staked
-                    .saturating_mul(adjusted_ratio)
-                    .saturating_div(1_000_000)
-                    .max(config.minimum_balance),
-                Err(_) => default,
+                Ok(d) => {
+                    // Calculate the minimum balance based on staked amount and adjusted ratio
+                    d.total()
+                        .staked
+                        .saturating_mul(adjusted_ratio)   // Apply ratio to staked amount
+                        .saturating_div(1_000_000)        // Scale down to the original ratio (0-1)
+                        .saturating_div(10_000)           // Round down to nearest 10_000 unom
+                        .saturating_mul(10_000)           // Ensure 10_000 unom increments
+                        .max(config.minimum_balance)      // Ensure result meets or exceeds config minimum
+                }
+                // If delegation information isn't available, default to config's minimum balance.
+                Err(_) => config.minimum_balance,
             }
         })
     }
@@ -837,53 +995,134 @@ impl Profile {
         })
     }
 
-    pub fn validator_staked_remainder(&self) -> u64 {
-        self.validator_staked() % *self.minimum_stake()
+    pub fn calc_quantity(&self, validator_address: Option<&str>, quantity: Option<u64>) -> Calc {
+        let staked = match validator_address {
+            Some(address) => {
+                self.delegations()
+                    .and_then(|delegations| delegations.find(address).map(|d| d.staked))
+                    .unwrap_or(0)  // Return 0 if any errors occur in the chain
+            },
+            None => *self.validator_staked(),
+        };
+
+        let remainder = staked % *self.minimum_stake();
+        let needed = quantity.unwrap_or_else(|| self.minimum_stake().saturating_sub(remainder));
+        let can_stake_without_claim = *self.available_without_claim() > needed;
+        let can_stake_after_claim = *self.available_after_claim() > needed;
+        let remaining = if can_stake_without_claim || can_stake_after_claim {
+            0
+        } else {
+            needed.saturating_sub(*self.available_after_claim())
+        };
+        let needs_claim = !can_stake_without_claim && can_stake_after_claim;
+
+        // Calculate available funds based on conditions
+        let available = if *self.can_stake_without_claim() {
+            *self.available_without_claim()
+        } else if *self.can_stake_after_claim() {
+            *self.available_after_claim()
+        } else {
+            0
+        };
+
+        let quantity = quantity.unwrap_or_else(||
+            available
+                .saturating_sub(needed)
+                .saturating_div(*self.minimum_stake())
+                .saturating_mul(*self.minimum_stake())
+                .saturating_add(needed)
+        );
+        Calc {
+            remainder,
+            needed,
+            can_stake_without_claim,
+            can_stake_after_claim,
+            remaining,
+            needs_claim,
+            quantity,
+        }
     }
 
+    pub fn calc(&self) -> &Calc {
+        self.calc.get_or_init(|| {
+            self.calc_quantity(None, None)
+        })
+    }
+
+    pub fn validator_staked_remainder(&self) -> &u64 {
+        self.validator_staked_remainder.get_or_init(|| {
+            self.validator_staked() % *self.minimum_stake()
+        })
+    }
+
+
+    // Quantity needed to trigger a staking action
     pub fn needed(&self) -> &u64 {
-        self.remaining.get_or_init(|| {
-            let validator_staked_remainder = self.validator_staked_remainder();
-            if validator_staked_remainder == 0 {
-                *self.minimum_stake()
-            } else {
-                validator_staked_remainder
-            }
+        self.needed.get_or_init(|| {
+            self.minimum_stake().saturating_sub(*self.validator_staked_remainder())
         })
     }
 
-    pub fn remaining(&self) -> &u64 {
-        self.remaining.get_or_init(|| {
-            self.needed().saturating_sub(*self.available_after_claim())
+    pub fn can_stake_without_claim(&self) -> &bool {
+        self.can_stake_without_claim.get_or_init(|| {
+            *self.available_without_claim() > *self.needed()
         })
     }
 
-    pub fn can_stake_without_claim(&self) -> bool {
-        *self.available_without_claim() > *self.needed()
-    }
-
-    pub fn can_stake_after_claim(&self) -> bool {
-        *self.available_after_claim() > *self.needed()
-    }
-
-    pub fn needs_claim(&self) -> bool {
-        !self.can_stake_without_claim() && self.can_stake_after_claim()
-    }
-
-    pub fn quantity(&self) -> &u64 {
-        self.quantity.get_or_init(|| {
-            let validator_staked_remainder = self.validator_staked_remainder();
-            let minimum_stake = *self.minimum_stake();
-            self.can_stake_without_claim()
-                .then(|| self.available_without_claim())
-                .or_else(|| self.can_stake_after_claim().then(|| self.available_after_claim()))
-                .unwrap_or(&0)
-                .saturating_sub(validator_staked_remainder)
-                .saturating_div(minimum_stake)
-                .saturating_mul(minimum_stake)
-                .saturating_add(validator_staked_remainder)
+    pub fn can_stake_after_claim(&self) -> &bool {
+        self.can_stake_after_claim.get_or_init(|| {
+            *self.available_after_claim() > *self.needed()
         })
     }
+
+//    pub fn remaining(&self) -> &u64 {
+//        self.remaining.get_or_init(|| {
+//            if *self.can_stake_without_claim() || *self.can_stake_after_claim() {
+//                0
+//            } else {
+//                self.needed().saturating_sub(*self.available_after_claim())
+//            }
+//        })
+//    }
+//
+//    pub fn needs_claim(&self) -> &bool {
+//        self.needs_claim.get_or_init(|| {
+//            !*self.can_stake_without_claim() && *self.can_stake_after_claim()
+//        })
+//    }
+//
+//    // Computes the total staking quantity, ensuring it's rounded to the nearest multiple
+//    pub fn quantity(&self) -> &u64 {
+//        self.quantity.get_or_init(|| {
+//
+//            // Calculate available funds based on conditions
+//            let available = if *self.can_stake_without_claim() {
+//                *self.available_without_claim()
+//            } else if *self.can_stake_after_claim() {
+//                *self.available_after_claim()
+//            } else {
+//                0
+//            };
+//
+//            available
+//                .saturating_sub(*self.needed())
+//                .saturating_div(*self.minimum_stake())
+//                .saturating_mul(*self.minimum_stake())
+//                .saturating_add(*self.needed())
+//        })
+//    }
+
+}
+
+#[derive(Clone, Debug)]
+pub struct Calc {
+    remainder:                u64,
+    needed:                   u64,
+    can_stake_without_claim:  bool,
+    can_stake_after_claim:    bool,
+    remaining:                u64,
+    needs_claim:              bool,
+    quantity:                 u64,
 }
 
 // Custom Display implementation for Profile
@@ -965,22 +1204,22 @@ impl Profile {
             }
         };
 
-        let quantity = match quantity {
-            Some(q) => ( q * 1_000_000.0 ) as u64,
-            None    => *self.quantity(),
-        };
+        let quantity_u64 = quantity.map(|n| (n * 1_000_000.0) as u64);
 
-        if quantity <= 0 {
+        let calc = self.calc_quantity(validator.as_deref(), quantity_u64);
+
+
+        if calc.quantity <= 0 {
             if log { self.journal().print(Some(OutputFormat::Json))? };
             return Err(eyre!("Quantity to stake must be greater than 0."));
         }
 
-        if quantity > *self.available_without_claim() && quantity > *self.available_after_claim() {
+        if !calc.can_stake_without_claim && !calc.can_stake_after_claim {
             if log { self.journal().print(Some(OutputFormat::Json))? };
             return Err(eyre!("Not enough balance to stake that quantity."));
         }
 
-        if quantity > *self.available_without_claim() {
+        if calc.needs_claim {
             if let Err(e) = self.nomic_claim() {
                 if log { self.journal().print(Some(OutputFormat::Json))? };
                 return Err(eyre!("Failed to claim: {:?}", e));
@@ -1009,7 +1248,7 @@ impl Profile {
         // Add the "delegate" argument, validator, and quantity
         cmd.arg("delegate");
         cmd.arg(validator_address.clone());
-        cmd.arg(quantity.to_string());
+        cmd.arg(calc.quantity.to_string());
 
         // Execute the command and collect the output
         let output = cmd.output()?;
@@ -1026,15 +1265,15 @@ impl Profile {
         }
         self.staked = true;
         let balance = self.balance()
-            .saturating_sub(quantity)
+            .saturating_sub(calc.quantity)
             .saturating_sub(self.stake_fee());
         self.balance = OnceCell::from(balance);
         let total_staked = self.total_staked()
-            .saturating_add(quantity);
+            .saturating_add(calc.quantity);
         self.total_staked = OnceCell::from(total_staked);
         if self.config().validator_address() == validator_address {
             let validator_staked = self.validator_staked()
-                .saturating_add(quantity);
+                .saturating_add(calc.quantity);
             self.validator_staked = OnceCell::from(validator_staked);
         }
 
@@ -1263,19 +1502,23 @@ impl Profile {
             );
             journal.insert(
                 "validator_staked_remainder".to_string(),
-                Value::Number(serde_json::Number::from(self.validator_staked_remainder()))
+                Value::Number(serde_json::Number::from(self.calc().remainder))
+            );
+            journal.insert(
+                "needed".to_string(),
+                Value::Number(serde_json::Number::from(self.calc().needed))
             );
             journal.insert(
                 "remaining".to_string(),
-                Value::Number(serde_json::Number::from(*self.remaining()))
+                Value::Number(serde_json::Number::from(self.calc().remaining))
             );
             journal.insert(
                 "can_stake_without_claim".to_string(),
-                Value::Bool(self.can_stake_without_claim())
+                Value::Bool(self.calc().can_stake_without_claim)
             );
             journal.insert(
                 "can_stake_after_claim".to_string(),
-                Value::Bool(self.can_stake_after_claim())
+                Value::Bool(self.calc().can_stake_after_claim)
             );
             journal.insert(
                 "daily_reward".to_string(),
@@ -1283,11 +1526,11 @@ impl Profile {
             );
             journal.insert(
                 "needs_claim".to_string(),
-                Value::Bool(self.needs_claim())
+                Value::Bool(self.calc().needs_claim)
             );
             journal.insert(
                 "quantity".to_string(),
-                Value::Number(serde_json::Number::from(*self.quantity()))
+                Value::Number(serde_json::Number::from(self.calc().quantity))
             );
             journal.insert(
                 "claimed".to_string(),
@@ -1331,19 +1574,19 @@ impl Profile {
             TableColumns::new(vec![ "Configuration:" ]),
             TableColumns::new(vec![
                 "Minimum Balance:",
-                &format_to_millions(config.minimum_balance, None),
+                &NumberDisplay::new(config.minimum_balance).scale(6).decimal_places(6).trim(true).format(),
                 "Minimum Balance Ratio:",
-                &format_to_millions(config.minimum_balance_ratio, None),
+                &NumberDisplay::new(config.minimum_balance_ratio).scale(6).decimal_places(6).trim(true).format(),
             ]),
             TableColumns::new(vec![
                 "Minimum Stake:",
-                &format_to_millions(config.minimum_stake, None),
+                &NumberDisplay::new(config.minimum_stake).scale(6).decimal_places(6).trim(true).format(),
             ]),
             TableColumns::new(vec![
                 "Adjust Minimum Stake:",
                 &config.adjust_minimum_stake.to_string(),
                 "Minimum Stake Rounding:",
-                &format_to_millions(config.minimum_stake_rounding, None),
+                &NumberDisplay::new(config.minimum_stake_rounding).scale(6).decimal_places(6).trim(true).format(),
             ]),
         ];
 
@@ -1460,14 +1703,14 @@ impl Profile {
                 &self.get_validator_rank(address),
                 address,
                 self.name_or_moniker(address),
-                &format_to_millions(delegation.staked, Some(0)),
-                &format_to_millions(delegation.liquid, Some(2)),
-                &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+                &NumberDisplay::new(delegation.staked).scale(6).decimal_places(6).trim(true).format(),
+                &NumberDisplay::new(delegation.liquid).scale(6).decimal_places(6).format(),
+                &NumberDisplay::new(delegation.nbtc).scale(8).decimal_places(8).trim(false).format(),
             ]));
         }
 
         // Add a new row only if no row with the target address exists
-        if data_rows.iter().find(|row| row.cell1 == address).is_none() {
+        if data_rows.iter().find(|row| row.cell1 == address).is_none() && address != "" {
             data_rows.push(TableColumns::new(vec![
                 &self.get_validator_rank(address),
                 address,
@@ -1491,19 +1734,23 @@ impl Profile {
             ),
             "",
             "",
-            &format_to_millions(delegations.total().staked, Some(0)),
-            &format_to_millions(delegations.total().liquid, Some(2)),
-            &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+            &NumberDisplay::new(delegations.total().staked).scale(6).decimal_places(6).trim(true).format(),
+            &NumberDisplay::new(delegations.total().liquid).scale(6).decimal_places(6).trim(false).format(),
+            &NumberDisplay::new(delegations.total().nbtc).scale(8).decimal_places(8).trim(false).format(),
         ]));
 
         // Create balances row
+        let nbtc_bal = match self.balances() {
+            Ok(b) => b.nbtc,
+            Err(_) => 0,
+        };
         rows.push(TableColumns::new(vec![
             "Balances",
             "",
             "",
             "",
-            &format_to_millions(*self.balance(), Some(2)),
-            &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+            &NumberDisplay::new(*self.balance()).scale(6).decimal_places(6).trim(false).format(),
+            &NumberDisplay::new(nbtc_bal).scale(8).decimal_places(8).trim(false).format(),
         ]));
 
         // Create totals row
@@ -1511,9 +1758,10 @@ impl Profile {
             "",
             "",
             "",
-            &format_to_millions(*self.balance() + delegations.total().liquid + delegations.total().staked, Some(0)),
-            &format_to_millions(*self.balance() + delegations.total().liquid, Some(2)),
-            &format!("{:8}", delegations.total().nbtc as f64 / 100_000_000.0),
+            &NumberDisplay::new(*self.balance() + delegations.total().liquid + delegations.total().staked)
+                .scale(6).decimal_places(6).trim(true).integer_threshold(1_000).format(),
+            &NumberDisplay::new(*self.balance() + delegations.total().liquid).scale(6).decimal_places(6).trim(false).format(),
+            &NumberDisplay::new(nbtc_bal + delegations.total().nbtc).scale(8).decimal_places(8).trim(false).format(),
         ]));
 
         // Initialize Builder without headers
@@ -1580,30 +1828,32 @@ impl Profile {
         let rows = vec![
             TableColumns::new(vec![
                 "Daily Reward",
-                &format_to_millions(self.daily_reward(), Some(2)),
+                &NumberDisplay::new(self.daily_reward()).scale(6).decimal_places(6).trim(true).format(),
                 "Rewards to earn before staking",
-                &format_to_millions(*self.remaining(), Some(2)),
+                &NumberDisplay::new(self.calc().remaining).scale(6).decimal_places(6).trim(true).format(),
             ]),
             TableColumns::new(vec![
                 "Minimum Stake",
-                &format_to_millions(*self.minimum_stake(), Some(2)),
+                &NumberDisplay::new(*self.minimum_stake()).scale(6).decimal_places(6).trim(true).format(),
                 "quantity to stake after claim",
-                &format_to_millions(self.minimum_stake().saturating_sub(self.validator_staked_remainder()), Some(2)),
+                &NumberDisplay::new(self.calc().needed).scale(6).decimal_places(6).trim(true).format(),
             ]),
             TableColumns::new(vec![
                 "Minimum Balance",
-                &format_to_millions(*self.minimum_balance(), Some(2)),
+                &NumberDisplay::new(*self.minimum_balance()).scale(6).decimal_places(2).trim(true).format(),
                 "Available to stake without claiming rewards",
-                &format_to_millions(*self.available_without_claim(), Some(2)),
+                &NumberDisplay::new(*self.available_without_claim()).scale(6).decimal_places(6).trim(false).format(),
             ]),
             TableColumns::new(vec![
                 "",
                 "",
                 "Available to stake after claiming rewards",
-                &format_to_millions(*self.available_after_claim(), Some(2)),
+                &NumberDisplay::new(*self.available_after_claim()).scale(6).decimal_places(6).trim(false).format(),
             ]),
             // Add other rows as needed
         ];
+
+
 
         // Initialize Builder without headers
         let mut builder = Builder::default();
@@ -1631,6 +1881,7 @@ impl Profile {
     pub fn report(&self) -> String {
         format!(
             "{}\n\n{}\n\n{}\n\n{}\n\n{}",
+            //"report_profile",
             self.report_profile(),
             self.report_config(),
             self.report_config_validators(),

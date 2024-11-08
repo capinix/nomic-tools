@@ -16,7 +16,11 @@ use std::iter::FromIterator;
 use std::path::Path;
 use std::process::Command;
 use std::str::FromStr;
-use tabled::{Table, settings::{Alignment, Border, Modify, Style, Width, object::{Columns, Cell}}};
+use tabled::builder::Builder;
+use tabled::{Table, settings::{Alignment, Border, Modify, Style, object::{Columns, Cell}}};
+use crate::functions::TableColumns;
+use crate::functions::NumberDisplay;
+use crate::functions::truncate_with_ellipsis;
 
 //// Helper function to initialize the ValidatorCollection
 // Helper function to initialize the ValidatorCollection
@@ -110,32 +114,87 @@ impl ValidatorCollection {
         self.validators.iter()
     }
 
-    /// Imports validators from a string input and returns a ValidatorCollection.
     pub fn import(input: String, timestamp: Option<DateTime<Utc>>) -> eyre::Result<Self> {
         let lines: Vec<&str> = input.lines().collect();
-        let mut rank = 1; // Start rank from 1
-        let mut validators = Vec::new(); // Initialize a vector to store validators
+        let mut rank = 1;
+        let mut validators = Vec::new();
 
         for chunk in lines.chunks(4) {
             if chunk.len() == 4 {
-                let address = chunk[0].trim().trim_start_matches('-').trim().to_string();
-                let voting_power_str = chunk[1].split(':').nth(1).unwrap_or("").trim().to_string();
-                let voting_power = voting_power_str.parse::<u64>().unwrap_or(0);
-                let moniker = chunk[2].split(':').nth(1).unwrap_or("").trim().to_string();
-                let details = chunk[3].split(':').nth(1).unwrap_or("").trim().to_string();
+                let mut address = String::new();
+                let mut voting_power = 0;
+                let mut moniker = String::new();
+                let mut details = String::new();
 
+                for line in chunk {
+                    let trimmed_line = line.trim();
+
+                    if trimmed_line.starts_with('-') {
+                        // Extract address (remove dash and any leading whitespace)
+                        address = trimmed_line.trim_start_matches('-').trim().to_string();
+                    } else if trimmed_line.starts_with("VOTING POWER:") {
+                        // Extract voting power
+                        let voting_power_str = trimmed_line.split("VOTING POWER:")
+                            .nth(1)
+                            .unwrap_or("")
+                            .trim();
+                        voting_power = voting_power_str.parse::<u64>().unwrap_or(0);
+                    } else if trimmed_line.starts_with("MONIKER:") {
+                        // Extract moniker
+                        moniker = trimmed_line.split("MONIKER:")
+                            .nth(1)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                    } else if trimmed_line.starts_with("DETAILS:") {
+                        // Extract details
+                        details = trimmed_line.split("DETAILS:")
+                            .nth(1)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                    }
+                }
+
+                // Create a Validator instance and add it to the list
                 let validator = Validator::new(rank, address, voting_power, moniker, details);
-                validators.push(validator); // Add validator to the vector
-
-                rank += 1; // Increment rank
+                validators.push(validator);
+                rank += 1;
             }
         }
 
-        // Set the timestamp, defaulting to the current time if none is provided
+        // Set timestamp to the current time if none is provided
         let timestamp = timestamp.unwrap_or_else(Utc::now);
 
-        Ok(Self{ timestamp, validators }) // Return the ValidatorCollection
+        Ok(Self { timestamp, validators })
     }
+
+//    /// Imports validators from a string input and returns a ValidatorCollection.
+//    pub fn import(input: String, timestamp: Option<DateTime<Utc>>) -> eyre::Result<Self> {
+//        let lines: Vec<&str> = input.lines().collect();
+//        let mut rank = 1; // Start rank from 1
+//        let mut validators = Vec::new(); // Initialize a vector to store validators
+//
+//        for chunk in lines.chunks(4) {
+//            if chunk.len() == 4 {
+//                let address = chunk[0].trim().trim_start_matches('-').trim().to_string();
+//                let voting_power_str = chunk[1].split(':').nth(1).unwrap_or("").trim().to_string();
+//                let voting_power = voting_power_str.parse::<u64>().unwrap_or(0);
+//                let moniker = chunk[2].split(':').nth(1).unwrap_or("").trim().to_string();
+//                let details = chunk[3].split(':').nth(1).unwrap_or("").trim().to_string();
+//
+//                let validator = Validator::new(rank, address, voting_power, moniker, details);
+//                validators.push(validator); // Add validator to the vector
+//
+//                rank += 1; // Increment rank
+//            }
+//        }
+//
+//        // Set the timestamp, defaulting to the current time if none is provided
+//        let timestamp = timestamp.unwrap_or_else(Utc::now);
+//
+//        Ok(Self{ timestamp, validators }) // Return the ValidatorCollection
+//    }
 
     /// Loads validators from a specified file and returns a ValidatorCollection.
     pub fn load<P: AsRef<Path>>(file: P) -> Result<Self> {
@@ -256,7 +315,7 @@ impl ValidatorCollection {
         // Filter the validators based on the address
         let filtered_validators: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.address().eq_ignore_ascii_case(search)) // Case-insensitive match
-            .cloned() // Cloning for new instances
+            .cloned()   // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
 
         // Check if the filtered collection is empty
@@ -299,7 +358,7 @@ impl ValidatorCollection {
         // Attempt to filter by exact address match first
         let address_filtered: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.address().eq_ignore_ascii_case(search)) // Case-insensitive match
-            .cloned() // Cloning for new instances
+            .cloned()   // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
 
         // If any validators were found by address, return them
@@ -314,7 +373,7 @@ impl ValidatorCollection {
         let search_lower = search.to_lowercase();
         let moniker_filtered: Vec<Validator> = self.validators.iter()
             .filter(|validator| validator.moniker().to_lowercase().contains(&search_lower))
-            .cloned() // Cloning for new instances
+            .cloned()   // Cloning for new instances
             .collect(); // Collecting into a Vec<Validator>
 
         // Check if any validators were found by moniker
@@ -581,6 +640,45 @@ impl ValidatorCollection {
         Ok(output.trim_end().to_string()) // Trim any trailing newlines
     }
 
+    pub fn table(&self) -> String {
+        let mut rows: Vec<TableColumns> = Vec::new();
+        rows.push(TableColumns::new(vec![
+            "Rank",
+            "Address",
+            "Power",
+            "Moniker",
+        ]));
+        for validator in self.iter() {
+            rows.push(TableColumns::new(vec![
+                &validator.rank().to_string(),
+                &validator.address(),
+                &NumberDisplay::new(validator.voting_power()).scale(6).decimal_places(0).format(),
+                &truncate_with_ellipsis(validator.moniker(), 24),
+            ]));
+        };
+
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([
+                row.cell0.clone(), row.cell1.clone(), row.cell2.clone(), row.cell3.clone()
+            ]);
+        }
+
+        let mut table = builder.build();
+        table.with(Style::blank())
+            .with(Modify::new(Columns::single(0)).with(Alignment::right()))
+            .with(Modify::new(Columns::single(2)).with(Alignment::right()))
+            // Set borders on the first row
+            .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')))
+            ;
+
+        table.to_string()
+
+    }
+
     /// Returns a formatted table representation of the validators, sorted by voting power in descending order.
     ///
     /// # Example
@@ -617,14 +715,15 @@ impl ValidatorCollection {
             .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
             .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
             .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')));
+            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')))
+            ;
 
         // If details are included, ensure the last column's width matches custom settings if any
-        if include_details {
-        table
-            .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Columns::single(4)).with(Width::truncate(60)));
-        }
+        //if include_details {
+        //table
+        //    .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
+        //    .with(Modify::new(Columns::single(4)).with(Width::truncate(60)));
+        //}
 
         // Format and return the table as a string
         Ok(table.to_string())
@@ -799,7 +898,7 @@ impl ValidatorCollection {
                     .map_err(|e| eyre::eyre!("Error serializing JSON: {}", e))?;
                 println!("{}", pretty_json);
             },
-            OutputFormat::Table => println!("{}", self.format_table(include_details)?),
+            OutputFormat::Table => println!("{}", self.table()),
             OutputFormat::Tuple => println!("{:?}", self.tuple(include_details)?),
             OutputFormat::Raw   => println!("{}",   self.raw(include_details)?),
         }

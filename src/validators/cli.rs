@@ -41,7 +41,7 @@ pub struct SkipOptions {
     pub format: Option<OutputFormat>,
 
     /// Whether to include the details field
-    #[arg(short = 'd', long, action = clap::ArgAction::SetTrue)]
+    #[arg(short = 'd', long, default_value_t = false, action = clap::ArgAction::SetTrue)]
     pub details: bool,
 }
 

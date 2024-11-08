@@ -87,9 +87,12 @@ impl Cli {
                         input_args.stdin_args.timeout,
                     )?
                 } else {
-                    Nonce::from_input(input_args.input.as_deref(), None)?
+                    match input_args.input.as_deref() {
+                        Some(input) => Nonce::load(input)?,
+                        None => Nonce::new(0),
+                    }
                 };
-                println!("{}", nonce.decimal());
+                println!("{}", nonce.value());
                 Ok(())
             },
             Some(CliCommand::Write { input, stdin_args, output, dont_overwrite }) => {
@@ -99,10 +102,16 @@ impl Cli {
                         stdin_args.timeout,
                     )?
                 } else {
-                    Nonce::from_input(input.as_deref(), None)?
+                    match input.as_deref() {
+                        Some(input) => Nonce::load(input)?,
+                        None => Nonce::new(0),
+                    }
                 };
+                match output.as_deref() {
+                    Some(output) => nonce.save(output, *dont_overwrite)?,
+                    None => println!("{}",nonce.value())
+                }
 
-                nonce.to_output(output.as_deref(), *dont_overwrite)?;
                 Ok(())
             },
             None => {
