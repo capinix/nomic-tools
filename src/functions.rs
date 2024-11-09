@@ -10,7 +10,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-
 pub fn format_date_offset(seconds: u64) -> String {
     let now = chrono::Local::now();
     let then = now + chrono::Duration::seconds(seconds as i64);

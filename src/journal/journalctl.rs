@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use crate::functions::NumberDisplay;
 use crate::functions::TableColumns;
 use crate::global::GroupBy;
@@ -105,7 +105,8 @@ impl Summary {
 
     pub fn add_day(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
         // Convert timestamp to MM-DD format
-        let day = timestamp.format("%Y-%m-%d %a").to_string();
+        let dt_local = timestamp.with_timezone(&Local);
+        let day = dt_local.format("%Y-%m-%d %a").to_string();
 
         // If the day does not match, flush and update to the new day
         if self.period != day {
@@ -119,7 +120,8 @@ impl Summary {
 
     pub fn add_week(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
         // Convert timestamp to MM-DD format
-        let week = timestamp.format("%G-W%V").to_string();
+        let dt_local = timestamp.with_timezone(&Local);
+        let week = dt_local.format("%G-W%V").to_string();
 
         // If the day does not match, flush and update to the new day
         if self.period != week {
@@ -133,7 +135,8 @@ impl Summary {
 
     pub fn add_month(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
         // Convert timestamp to MM-DD format
-        let month = timestamp.format("%Y %B").to_string();
+        let dt_local = timestamp.with_timezone(&Local);
+        let month = dt_local.format("%Y %B").to_string();
 
         // If the day does not match, flush and update to the new day
         if self.period != month {

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use clap::ValueEnum;
 use colored::Colorize;
 use crate::functions::NumberDisplay;
@@ -39,8 +39,8 @@ impl DisplayLogValue {
             Value::String(s) => {
                 // Try to parse the string as a datetime
                 if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-                    let dt_utc = dt.with_timezone(&Utc);
-                    write!(f, "{}", dt_utc.format("%m-%d %H:%M")) // Format the date
+                    let dt_local = dt.with_timezone(&Local);
+                    write!(f, "{}", dt_local.format("%m-%d %H:%M")) // Format the date
                 } else {
                     write!(f, "{}", s) // Return the original string if invalid
                 }
@@ -90,8 +90,8 @@ impl std::fmt::Display for DisplayJournalValue {
             Value::String(s) => {
                 // Try to parse the string as a datetime
                 if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
-                    let dt_utc = dt.with_timezone(&Utc);
-                    write!(f, "{}", dt_utc.format("%m-%d %H:%M"))
+                    let dt_local = dt.with_timezone(&Local);
+                    write!(f, "{}", dt_local.format("%m-%d %H:%M"))
                 } else {
                     write!(f, "{}", s) // Return the original string if invalid
                 }
@@ -113,11 +113,11 @@ struct DateDisplayFromOption(Option<DateTime<Utc>>);
 
 impl std::fmt::Display for DateDisplayFromOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.0 {
+        match &self.0 {
             Some(dt) => {
-                // Format the DateTime as "MM-DD_HH:MM"
-                let formatted = dt.format("%m-%d %H:%M").to_string();
-                write!(f, "{}", formatted)
+                // Convert to local timezone and format
+                let dt_local = dt.with_timezone(&Local);
+                write!(f, "{}", dt_local.format("%m-%d %H:%M"))
             }
             None => write!(f, "N/A"), // Default to "N/A" if None
         }
