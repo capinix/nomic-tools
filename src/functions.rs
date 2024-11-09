@@ -10,6 +10,46 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+
+pub fn format_date_offset(seconds: u64) -> String {
+    let now = chrono::Local::now();
+    let then = now + chrono::Duration::seconds(seconds as i64);
+
+    if now.date_naive() == then.date_naive() {
+        // Same day, show only the time
+        then.format("%H:%M").to_string()
+    } else {
+        // Different day, show full date and time
+        then.format("%A, %Y-%m-%d %H:%M").to_string()
+    }
+}
+
+pub fn format_duration(seconds: u64) -> String {
+    let days = seconds / 86_400;
+    let hours = (seconds % 86_400) / 3600;
+    let minutes = (seconds % 3600) / 60;
+
+    if days > 0 {
+        if hours > 0 && minutes > 0 {
+            format!("{} days, {} hours, {} minutes", days, hours, minutes)
+        } else if hours > 0 {
+            format!("{} days, {} hours", days, hours)
+        } else if minutes > 0 {
+            format!("{} days, {} minutes", days, minutes)
+        } else {
+            format!("{} days", days)
+        }
+    } else if hours > 0 {
+        if minutes > 0 {
+            format!("{} hours, {} minutes", hours, minutes)
+        } else {
+            format!("{} hours", hours)
+        }
+    } else {
+        format!("{} minutes", minutes)
+    }
+}
+
 pub fn truncate_with_ellipsis(input: &str, max_len: usize) -> String {
     if input.chars().count() > max_len {
         input.chars().take(max_len - 3).collect::<String>() + "..."

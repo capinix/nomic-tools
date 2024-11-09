@@ -1,6 +1,5 @@
 
-use chrono::{Utc, DateTime};
-use crate::functions::format_to_millions;
+use chrono::{Utc, DateTime, Local};
 use crate::global::CONFIG;
 use crate::validators::ValidatorCollection;
 use eyre::{eyre, Result};
@@ -9,7 +8,11 @@ use once_cell::sync::OnceCell;
 use std::fmt;
 use std::path::Path;
 use std::process::Command;
-use tabled::{Tabled, Table, settings::{Alignment, Border, Modify, Span, Style, object::{Columns, Rows, Cell}}};
+use tabled::builder::Builder;
+use tabled::settings::{Alignment, Border, Color, Modify, Span, Style, object::{Cell, Columns, Rows}};
+use crate::functions::TableColumns;
+use crate::functions::NumberDisplay;
+use log::warn;
 
 #[derive(Clone, Debug)]
 pub struct Delegation {
@@ -26,6 +29,7 @@ impl Delegation {
 }
 #[derive(Clone)]
 pub struct Delegations {
+    pub address:     String,
     pub timestamp:   DateTime<Utc>,
     pub delegations: IndexMap<String, Delegation>,
     pub total:       OnceCell<Delegation>,
@@ -44,17 +48,15 @@ impl fmt::Debug for Delegations {
 
 impl Delegations {
 
-    pub fn find(&self, address: &str) -> Result<&Delegation> {
-        self.delegations.get(address)
-            .ok_or_else(|| eyre!("Delegation not found for address: {}", address))
-    }
-
     /// Creates a new Delegations instance.
-    pub fn new(
+    pub fn new<S: AsRef<str>>(
+        address: S,
         timestamp: Option<DateTime<Utc>>,
         validators: Option<ValidatorCollection>,
     ) -> Self {
+        let address: String = address.as_ref().to_string();
         Delegations {
+            address,
             timestamp:   timestamp.unwrap_or(Utc::now()),
             delegations: IndexMap::new(),
             total:       OnceCell::new(),
@@ -63,7 +65,8 @@ impl Delegations {
     }
 
     /// Adds a delegation to the collection.
-    pub fn add_delegation(&mut self, id: String, delegation: Delegation) {
+    pub fn add_delegation<S: AsRef<str>>(&mut self, id: S, delegation: Delegation) {
+        let id: String = id.as_ref().to_string();
         self.delegations.insert(id, delegation);
     }
 
@@ -85,7 +88,7 @@ impl Delegations {
     }
 
     /// Fetches the delegations from the command output and returns a new Delegations instance.
-    pub fn fetch<P: AsRef<Path>>(home: Option<P>) -> Result<Self> {
+    pub fn fetch<P: AsRef<Path>, S: AsRef<str>>(address: S, home: Option<P>) -> Result<Self> {
 
         let timestamp = Some(Utc::now());
 
@@ -98,8 +101,11 @@ impl Delegations {
         }
 
         cmd.arg("delegations");
-        if let Some(home_str) = home.as_ref().map(|p| p.as_ref().to_str()).flatten() {
-            cmd.env("HOME", home_str);
+
+        if let Some(home_path) = home {
+            if let Some(home_str) = home_path.as_ref().to_str() {
+                cmd.env("HOME", home_str);
+            }
         }
 
         // Execute the command and collect the output
@@ -119,7 +125,8 @@ impl Delegations {
         let output_str = String::from_utf8_lossy(&output.stdout);
         let lines: Vec<&str> = output_str.lines().collect();
 
-        let mut delegations = Delegations::new(timestamp, None);
+        let address: &str = address.as_ref();
+        let mut delegations = Delegations::new(address, timestamp, None);
 
         // Iterate over the lines starting with "- nomic"
         for line in lines.iter().filter(|line| line.trim().starts_with("- nomic")) {
@@ -176,107 +183,124 @@ impl Delegations {
         })
     }
 
-    pub fn moniker(&self, address: &str) -> String {
-        match self.validators() {
-            Ok(validators) => {
-                // Attempt to get the moniker, and handle errors gracefully
-                validators.validator(address)
-                    .map(|validator| validator.moniker()) // Extract the moniker if successful
-                    .unwrap_or_else(|_| "N/A").to_string() // Handle the error
-            },
-            Err(_) => "N/A".to_string(), // Handle error from validators()
-        }
+    pub fn find<S: AsRef<str>>(&self, address: S) -> Result<&Delegation> {
+        let address: &str = address.as_ref();
+        self.delegations.get(address)
+            .ok_or_else(|| eyre!("Delegation not found for address: {}", address))
     }
 
-    pub fn format_table(&self) -> String {
-        // Prepare rows for the table
-        let mut rows: Vec<DelegationRow> = Vec::new();
+    pub fn moniker<S: AsRef<str>>(&self, address: S) -> Result<String> {
+        let address: &str = address.as_ref();
+        Ok(self.validators()?.validator(address)?.moniker().to_string())
+    }
 
-        // Add header row automatically handled by the Tabled derive
-        for (address, delegation) in &self.delegations {
-            let row = DelegationRow::from_data(
-                address.clone(),
-                self.moniker(address),
-                delegation.staked,
-                delegation.liquid,
-                delegation.nbtc,
-            );
-            rows.push(row);
+    pub fn rank<S: AsRef<str>>(&self, address: S) -> Result<String> {
+        let address: &str = address.as_ref();
+        Ok(self.validators()?.validator(address)?.rank().to_string())
+    }
+
+    pub fn table(&self) -> String {
+
+        let mut rows: Vec<TableColumns> = Vec::new();
+
+        // want to convert DateTime<Utc> to DateTime<Local>
+        let timestamp_local: DateTime<Local> = self.timestamp.with_timezone(&Local);
+
+        rows.push(TableColumns::new(vec![
+            &format!("Delegations for \x1b[32m{}\x1b[0m as at \x1b[32m{}\x1b[0m",
+                self.address,
+                timestamp_local.format("%Y-%m-%d %H:%M"),
+            ),
+        ]));
+
+        rows.push(TableColumns::new(vec![
+            "Rank",
+            "Validator Address",
+            "Moniker",
+            "Staked",
+            "Liquid",
+            "NBTC",
+        ]));
+
+        let mut data_rows: Vec<TableColumns> = Vec::new();
+        // Iterate over the `delegations` field in `Delegations`
+        for (address, delegation) in self.delegations.iter() {
+        // Attempt to retrieve validators and handle errors if they occur
+            data_rows.push(TableColumns::new(vec![
+                &self.rank(address).unwrap_or_else(|e| { warn!("Unable to get rank: {}", e); "N/A".to_string() }),
+                address,
+                &self.moniker(address).unwrap_or_else(|e| { warn!("Unable to get moniker: {}", e); "N/A".to_string() }),
+                &NumberDisplay::new(delegation.staked).scale(6).decimal_places(6).trim(true).format(),
+                &NumberDisplay::new(delegation.liquid).scale(6).decimal_places(6).format(),
+                &NumberDisplay::new(delegation.nbtc).scale(8).decimal_places(8).trim(false).format(),
+            ]));
         }
 
-        // Create totals row
-        let totals_row = DelegationRow::from_data(
-            format!("{} {}",
-             self.timestamp.format("%Y-%m-%d %H:%M").to_string(),
-             "Total"
-            ),
-            "".to_string(),
-            self.total().staked,
-            self.total().liquid,
-            self.total().nbtc,
-        );
-        rows.push(totals_row);
+        if data_rows.is_empty() {
+            warn!("No data.");
+            return String::new();
+        }
 
-        // Create the table and apply styles and modifications
-         let mut table = Table::new(rows.clone()); // Clone the rows here to pass ownership to the table
+        // Sort rows descending by `cell0`, converting each `cell0` to `usize`
+        data_rows.sort_by(|a, b| {
+            a.cell0.parse::<usize>().unwrap_or(0).cmp(&b.cell0.parse::<usize>().unwrap_or(0))
+        });
+
+        // Append `data_rows` to `rows`
+        rows.extend(data_rows);
+
+        // Create totals row
+        rows.push(TableColumns::new(vec![
+            "",
+            "",
+            "",
+            &NumberDisplay::new(self.total().staked).scale(6).decimal_places(6).trim(true).format(),
+            &NumberDisplay::new(self.total().liquid).scale(6).decimal_places(6).trim(false).format(),
+            &NumberDisplay::new(self.total().nbtc).scale(8).decimal_places(8).trim(false).format(),
+        ]));
+
+        rows.push(TableColumns::new(vec![
+            "Total staked and liquid",
+            "",
+            &NumberDisplay::new(self.total().staked.saturating_add(self.total().liquid)).scale(6).decimal_places(6).trim(true).format(),
+        ]));
+
+        // Initialize Builder without headers
+        let mut builder = Builder::default();
+        for row in &rows {
+            builder.push_record([
+                row.cell0.clone(),
+                row.cell1.clone(),
+                row.cell2.clone(),
+                row.cell3.clone(),
+                row.cell4.clone(),
+                row.cell5.clone(),
+            ]);
+        }
+
+        let mut table = builder.build();
 
         table
-            .with(Style::empty()) // Use an empty style
-            .with(Modify::new(Columns::new(2..)).with(Alignment::right())) // Staked, Liquid, NBTC columns align right
-            // Set borders on the first row
-            .with(Modify::new(Cell::new(0, 0)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 1)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 2)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 3)).with(Border::new().set_bottom('-')))
-            .with(Modify::new(Cell::new(0, 4)).with(Border::new().set_bottom('-')))
-            // Apply right alignment to the totals row (last row)
-            .with(Modify::new(Rows::single(rows.len())).with(Alignment::right()))
-            // Apply a distinct bottom border to the totals row
-            .with(Modify::new(Cell::new(rows.len(), 2)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len(), 3)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len(), 4)).with(Border::new().set_top('-')))
-            // Apply span to the first two cells in the last row
-            .with(Modify::new(Cell::new(rows.len(), 0)).with(Span::column(2)));
-
-        // Return the formatted table as a string
+            .with(Style::blank())
+            .with(Modify::new(Cell::new(0, 0)).with(Span::column(6)).with(Alignment::left()))
+            .with(Modify::new(Cell::new(rows.len() -1, 0)).with(Span::column(2)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() -2, 0)).with(Span::column(3)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() -1, 2)).with(Border::new()).with(Color::FG_YELLOW))
+            .with(Modify::new(Cell::new(rows.len() -2, 3)).with(Border::new().set_top('-')).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() -2, 4)).with(Border::new().set_top('-')).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() -2, 5)).with(Border::new().set_top('-')).with(Color::FG_GREEN))
+            .with(Modify::new(Columns::single(0)).with(Alignment::right()))
+            .with(Modify::new(Columns::new(3..)).with(Alignment::right()))
+            .with(Modify::new(Rows::single(1)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Rows::single(rows.len() - 2)).with(Alignment::right()))
+            ;
         table.to_string()
     }
 }
 
-#[derive(Clone, Tabled)]
-pub struct DelegationRow {
-    #[tabled(rename = "Address")]
-    pub address: String,
-
-    #[tabled(rename = "Moniker")]
-    pub moniker: String,
-
-    #[tabled(rename = "Staked")]
-    staked: String,
-
-    #[tabled(rename = "Liquid")]
-    liquid: String,
-
-    #[tabled(rename = "NBTC")]
-    nbtc: String,
-}
-
-impl DelegationRow {
-    pub fn from_data(address: String, moniker: String, staked: u64, liquid: u64, nbtc: u64) -> Self {
-        DelegationRow {
-            address,
-            moniker,
-            staked: format_to_millions(staked, Some(2)),
-            liquid: format_to_millions(liquid, Some(2)),
-            nbtc: format!("{:.8}", (nbtc as f64 / 100_000_000.0)),
-        }
-    }
-}
-
-
 impl fmt::Display for Delegations {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "\n{}", self.format_table())
+        writeln!(f, "\n{}", self.table())
     }
 }
 

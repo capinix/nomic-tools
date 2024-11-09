@@ -1,7 +1,9 @@
 
-use chrono::{DateTime, Utc};
-use crate::functions::NumberDisplay;
+use chrono::{DateTime, Utc, Local};
+use crate::functions::format_date_offset;
+use crate::functions::format_duration;
 use crate::functions::is_valid_nomic_address;
+use crate::functions::NumberDisplay;
 use crate::functions::prompt_user;
 use crate::functions::TableColumns;
 use crate::functions::TaskStatus;
@@ -442,7 +444,7 @@ impl Profile {
     /// blockchain operation, cache with oncecell
     pub fn delegations(&self) -> Result<&Delegations> {
         self.delegations.get_or_try_init(|| {
-            Delegations::fetch(Some(self.home()))
+            Delegations::fetch(self.key()?.address()?, Some(self.home()))
         })
     }
 
@@ -1022,6 +1024,7 @@ impl Profile {
                 .saturating_mul(*self.minimum_stake())
                 .saturating_add(needed)
         );
+
         Calc {
             remainder,
             needed,
@@ -1065,43 +1068,6 @@ impl Profile {
         })
     }
 
-//    pub fn remaining(&self) -> &u64 {
-//        self.remaining.get_or_init(|| {
-//            if *self.can_stake_without_claim() || *self.can_stake_after_claim() {
-//                0
-//            } else {
-//                self.needed().saturating_sub(*self.available_after_claim())
-//            }
-//        })
-//    }
-//
-//    pub fn needs_claim(&self) -> &bool {
-//        self.needs_claim.get_or_init(|| {
-//            !*self.can_stake_without_claim() && *self.can_stake_after_claim()
-//        })
-//    }
-//
-//    // Computes the total staking quantity, ensuring it's rounded to the nearest multiple
-//    pub fn quantity(&self) -> &u64 {
-//        self.quantity.get_or_init(|| {
-//
-//            // Calculate available funds based on conditions
-//            let available = if *self.can_stake_without_claim() {
-//                *self.available_without_claim()
-//            } else if *self.can_stake_after_claim() {
-//                *self.available_after_claim()
-//            } else {
-//                0
-//            };
-//
-//            available
-//                .saturating_sub(*self.needed())
-//                .saturating_div(*self.minimum_stake())
-//                .saturating_mul(*self.minimum_stake())
-//                .saturating_add(*self.needed())
-//        })
-//    }
-
 }
 
 #[derive(Clone, Debug)]
@@ -1113,6 +1079,7 @@ pub struct Calc {
     remaining:                u64,
     needs_claim:              bool,
     quantity:                 u64,
+
 }
 
 // Custom Display implementation for Profile
@@ -1553,7 +1520,11 @@ impl Profile {
         }
 
         let mut table = builder.build();
-        table.with(Style::blank());
+        table
+            .with(Style::empty())
+            .with(Modify::new(Columns::single(0)).with(Color::new("\x1b[1m", "\x1b[0m")))
+            .with(Modify::new(Columns::single(1)).with(Color::FG_GREEN))
+            ;
 
         table.to_string()
     }
@@ -1589,16 +1560,11 @@ impl Profile {
         let mut table = builder.build();
         table
             .with(Style::empty())
-            .with(Modify::new(Cell::new(1, 0)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(1, 1)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(1, 2)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(1, 3)).with(Border::new().set_top('-')))
+            .with(Modify::new(Columns::single(1)).with(Border::new().set_right('│')))
+            .with(Modify::new(Columns::single(1)).with(Alignment::right()).with(Color::FG_BLUE))
+            .with(Modify::new(Columns::single(3)).with(Alignment::right()).with(Color::FG_BLUE))
             .with(Modify::new(Cell::new(0, 0)).with(Span::column(4)))
-            .with(Modify::new(Cell::new(1, 1)).with(Border::new().set_right('│')))
-            .with(Modify::new(Cell::new(2, 1)).with(Border::new().set_right('│')))
-            .with(Modify::new(Cell::new(3, 1)).with(Border::new().set_right('│')))
-            .with(Modify::new(Columns::single(1)).with(Alignment::right()))
-            .with(Modify::new(Columns::single(3)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(0, 0)).with(Color::new("\x1b[1m", "\x1b[0m")))
             ;
 
         table.to_string()
@@ -1629,7 +1595,8 @@ impl Profile {
 
         let mut table = builder.build();
         table
-            .with(Style::blank())
+            .with(Style::empty())
+            .with(Modify::new(Rows::single(0)).with(Color::new("\x1b[1m", "\x1b[0m")))
             ;
         for (index, row) in rows.iter().enumerate() {
             if row.cell0 == config.validator_address()  {
@@ -1667,12 +1634,20 @@ impl Profile {
             }
         };
 
+        // want to convert DateTime<Utc> to DateTime<Local>
+        let timestamp_local: DateTime<Local> = delegations.timestamp.with_timezone(&Local);
+
         let address = self.config().validator_address();
 
         let mut rows: Vec<TableColumns> = Vec::new();
 
         rows.push(TableColumns::new(vec![
-            "Delegations:",
+            //&format!(" \x1b[1m{}\x1b[0m for \x1b[32m{}\x1b[0m as at \x1b[32m{}\x1b[0m",
+            &format!("{} for \x1b[32m{}\x1b[0m as at \x1b[32m{}\x1b[0m",
+                "Delegations",
+                delegations.address,
+                timestamp_local.format("%Y-%m-%d %H:%M"),
+            ),
         ]));
 
         rows.push(TableColumns::new(vec![
@@ -1699,15 +1674,7 @@ impl Profile {
             ]));
         }
 
-        // Add a new row only if no row with the target address exists
-        //if data_rows.iter().find(|row| row.cell1 == address).is_none() && address != "" {
-        //    data_rows.push(TableColumns::new(vec![
-        //        &self.get_validator_rank(address),
-        //        address,
-        //        self.name_or_moniker(address),
-        //    ]));
-        //}
-
+        // Add rows for config validators not yet delegated to
         for validator in self.config().validators.clone() {
             if data_rows.iter().find(|row| row.cell1 == validator.address).is_none() && validator.address != "" {
                 data_rows.push(TableColumns::new(vec![
@@ -1728,12 +1695,9 @@ impl Profile {
 
         // Create totals row
         rows.push(TableColumns::new(vec![
-            &format!("{} {}",
-             delegations.timestamp.format("%Y-%m-%d %H:%M"),
-             "Total Delegation",
-            ),
             "",
             "",
+            "Delegations",
             &NumberDisplay::new(delegations.total().staked).scale(6).decimal_places(6).trim(true).format(),
             &NumberDisplay::new(delegations.total().liquid).scale(6).decimal_places(6).trim(false).format(),
             &NumberDisplay::new(delegations.total().nbtc).scale(8).decimal_places(8).trim(false).format(),
@@ -1745,9 +1709,10 @@ impl Profile {
             Err(_) => 0,
         };
         rows.push(TableColumns::new(vec![
+            //&self.report_in(),
+            "",
+            "",
             "Balances",
-            "",
-            "",
             "",
             &NumberDisplay::new(*self.balance()).scale(6).decimal_places(6).trim(false).format(),
             &NumberDisplay::new(nbtc_bal).scale(8).decimal_places(8).trim(false).format(),
@@ -1756,12 +1721,34 @@ impl Profile {
         // Create totals row
         rows.push(TableColumns::new(vec![
             "",
+            //&format!(
+            //    "Daily Reward: \x1b[33m{}\x1b[0m", 
+            //    NumberDisplay::new(self.daily_reward()).scale(6).decimal_places(6).trim(true).format()
+            //),
             "",
             "",
             &NumberDisplay::new(*self.balance() + delegations.total().liquid + delegations.total().staked)
                 .scale(6).decimal_places(6).trim(true).integer_threshold(1_000).format(),
             &NumberDisplay::new(*self.balance() + delegations.total().liquid).scale(6).decimal_places(6).trim(false).format(),
             &NumberDisplay::new(nbtc_bal + delegations.total().nbtc).scale(8).decimal_places(8).trim(false).format(),
+        ]));
+
+        // Available without claim row
+        rows.push(TableColumns::new(vec![
+            "",
+            "Available without claiming rewards",
+            "",
+            "",
+            &NumberDisplay::new(*self.available_without_claim()).scale(6).decimal_places(6).trim(false).format(),
+        ]));
+
+        // Available after claim row
+        rows.push(TableColumns::new(vec![
+            "",
+            "Available after claiming rewards",
+            "",
+            "",
+            &NumberDisplay::new(*self.available_after_claim()).scale(6).decimal_places(6).trim(false).format(),
         ]));
 
         // Initialize Builder without headers
@@ -1792,27 +1779,37 @@ impl Profile {
             .with(Modify::new(Cell::new(1, 5)).with(Border::new().set_bottom('-')))
             // Apply right alignment to the totals row (last row)
             .with(Modify::new(Rows::single(rows.len() - 2)).with(Alignment::right()))
-            .with(Modify::new(Rows::single(rows.len() - 1)).with(Alignment::right()))
-            .with(Modify::new(Rows::single(rows.len() - 0)).with(Alignment::right()))
             // Apply a distinct bottom border to the totals row
-            .with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len() - 3, 4)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len() - 3, 5)).with(Border::new().set_top('-')))
-            .with(Modify::new(Cell::new(rows.len() - 1, 3)).with(Border::new().set_top('=')))
-            .with(Modify::new(Cell::new(rows.len() - 1, 4)).with(Border::new().set_top('=')))
-            .with(Modify::new(Cell::new(rows.len() - 1, 5)).with(Border::new().set_top('=')))
-            // Apply span to the first two cells in the last row
-            .with(Modify::new(Cell::new(0, 0)).with(Span::column(6)).with(Alignment::left()))
+            .with(Modify::new(Cell::new(rows.len() - 5, 3)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 5, 4)).with(Border::new().set_top('-')))
+            .with(Modify::new(Cell::new(rows.len() - 5, 5)).with(Border::new().set_top('-')))
+            //.with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Border::new().set_top('=')))
+            .with(Modify::new(Cell::new(rows.len() - 3, 4)).with(Border::new().set_top('=')).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Cell::new(rows.len() - 3, 5)).with(Border::new().set_top('=')))
             // Total delegation row
-            .with(Modify::new(Cell::new(rows.len() - 3, 0)).with(Span::column(3)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() - 5, 0)).with(Span::column(2)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() - 5, 2)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 5, 3)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 5, 4)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 5, 5)).with(Color::FG_GREEN))
+            // Balances row
+            //.with(Modify::new(Cell::new(rows.len() - 4, 3)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 4, 2)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 4, 3)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 4, 4)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 4, 5)).with(Color::FG_GREEN))
+            // Grand totals row
+            //.with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Color::new("\x1b[38;2;255;165;0m", "\x1b[0m")))
+            .with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Color::new("\x1b[38;2;255;165;0m", "\x1b[0m")))
             .with(Modify::new(Cell::new(rows.len() - 3, 3)).with(Color::FG_YELLOW))
             .with(Modify::new(Cell::new(rows.len() - 3, 4)).with(Color::FG_GREEN))
-            // Balances row
-            .with(Modify::new(Cell::new(rows.len() - 2, 0)).with(Span::column(3)).with(Alignment::right()))
-            .with(Modify::new(Cell::new(rows.len() - 2, 4)).with(Color::FG_GREEN))
-            // Grand totals row
-            .with(Modify::new(Cell::new(rows.len() - 1, 3)).with(Color::new("\x1b[38;2;255;165;0m", "\x1b[0m")))
+            .with(Modify::new(Cell::new(rows.len() - 3, 5)).with(Color::FG_GREEN))
+            // Apply span to the first two cells in the last row
+            .with(Modify::new(Cell::new(0, 0)).with(Span::column(6)).with(Alignment::left()))
+            .with(Modify::new(Cell::new(rows.len() - 1, 1)).with(Span::column(3)).with(Alignment::right()))
+            .with(Modify::new(Cell::new(rows.len() - 2, 1)).with(Span::column(3)).with(Alignment::right()))
             .with(Modify::new(Cell::new(rows.len() - 1, 4)).with(Color::FG_GREEN))
+            .with(Modify::new(Cell::new(rows.len() - 2, 4)).with(Color::FG_GREEN))
             ;
 
         for (index, row) in rows.iter().enumerate() {
@@ -1824,69 +1821,83 @@ impl Profile {
         table.to_string()
     }
 
-    fn report_calc(&self) -> String {
-        let rows = vec![
-            TableColumns::new(vec![
-                "Daily Reward",
-                &NumberDisplay::new(self.daily_reward()).scale(6).decimal_places(6).trim(true).format(),
-                "Rewards to earn before staking",
-                &NumberDisplay::new(self.calc().remaining).scale(6).decimal_places(6).trim(true).format(),
-            ]),
-            TableColumns::new(vec![
-                "Minimum Stake",
-                &NumberDisplay::new(*self.minimum_stake()).scale(6).decimal_places(6).trim(true).format(),
-                "quantity to stake after claim",
-                &NumberDisplay::new(self.calc().needed).scale(6).decimal_places(6).trim(true).format(),
-            ]),
-            TableColumns::new(vec![
-                "Minimum Balance",
-                &NumberDisplay::new(*self.minimum_balance()).scale(6).decimal_places(2).trim(true).format(),
-                "Available to stake without claiming rewards",
-                &NumberDisplay::new(*self.available_without_claim()).scale(6).decimal_places(6).trim(false).format(),
-            ]),
-            TableColumns::new(vec![
-                "",
-                "",
-                "Available to stake after claiming rewards",
-                &NumberDisplay::new(*self.available_after_claim()).scale(6).decimal_places(6).trim(false).format(),
-            ]),
-            // Add other rows as needed
-        ];
+    fn report_conclusion(&self) -> String {
+        // Format daily with yellow text
+        let daily_reward = format!(
+            "\x1b[33m{}\x1b[0m", 
+            NumberDisplay::new(self.daily_reward())
+                .scale(6)
+                .decimal_places(6)
+                .trim(true)
+                .format()
+        );
+
+        // Format minimum_stake with blue text
+        let minimum_stake = format!(
+            "\x1b[34m{}\x1b[0m", 
+            NumberDisplay::new(*self.minimum_stake())
+                .scale(6)
+                .decimal_places(6)
+                .trim(true)
+                .format()
+        );
+
+        // Format minimum_period with blue text
+        let minimum_period = format!(
+            "\x1b[34m{}\x1b[0m",
+            format_duration(self.minimum_stake().saturating_mul(86_400).saturating_div(self.daily_reward()))
+        );
+
+        let mut output = format!("With an estimated daily reward of {} NOM,", daily_reward);
+        output = format!("{}\nIt should take about {}, to earn {} NOM.", output, minimum_period, minimum_stake);
 
 
+        // Format quantity with blue text
+        let quantity = format!(
+            "\x1b[34m{}\x1b[0m", 
+            NumberDisplay::new(self.calc().quantity)
+                .scale(6)
+                .decimal_places(6)
+                .trim(true)
+                .format()
+        );
 
-        // Initialize Builder without headers
-        let mut builder = Builder::default();
-        for row in rows {
-            builder.push_record([row.cell0, row.cell1, row.cell3, row.cell2]);
-        }
+        // Format validator name with blue text
+        let validator = format!("\x1b[34m{}\x1b[0m", self.config().validator_name());
 
-        let mut table = builder.build();
-        table
-            .with(Style::blank()) // Suppress borders
-            .with(Modify::new(Columns::single(1)).with(Alignment::right()).with(Border::new().set_right('│')))
-            .with(Modify::new(Columns::single(2)).with(Alignment::right()))
-            .with(Modify::new(Cell::new(0, 1)).with(Color::FG_YELLOW))
-            .with(Modify::new(Cell::new(0, 2)).with(Color::FG_BLUE))
-            .with(Modify::new(Cell::new(1, 1)).with(Color::FG_BLUE))
-            .with(Modify::new(Cell::new(1, 2)).with(Color::FG_BLUE))
-            .with(Modify::new(Cell::new(2, 1)).with(Color::FG_GREEN))
-            .with(Modify::new(Cell::new(2, 2)).with(Color::FG_GREEN))
-            .with(Modify::new(Cell::new(3, 2)).with(Color::FG_GREEN))
-            ;
+        // Handle the case where no staking is needed
+        let more = if self.calc().remaining == 0 {
+            if self.calc().needs_claim {
+                format!("Ready to claim rewards and delegate {} NOM to {}", quantity, validator)
+            } else {
+                format!("Ready to delegate {} NOM to {}", quantity, validator)
+            }
+        } else {
+            let remaining_seconds = self.calc().remaining.saturating_mul(86_400).saturating_div(self.daily_reward());
+            let remaining_period = format!( "\x1b[34m{}\x1b[0m", format_duration(remaining_seconds));
+            let remaining_date = format!( "\x1b[34m{}\x1b[0m", format_date_offset(remaining_seconds));
+            // Return the formatted string for when staking is needed
+            format!(
+                "In {} on or about {},\nwe should be ready to claim rewards and delegate {} NOM to {}.",
+                remaining_period, remaining_date, quantity, validator
+            )
+        };
+        output = format!("{}\n{}", output, more);
+        output
 
-        table.to_string()
     }
 
     pub fn report(&self) -> String {
         format!(
-            "{}\n\n{}\n\n{}\n\n{}\n\n{}",
+            "{}\n\n{}\n\n{}\n\n{}\n{}",
+            //"{}\n\n{}\n\n{}\n\n{}\n\n{}",
             //"report_profile",
             self.report_profile(),
             self.report_config(),
             self.report_config_validators(),
             self.report_delegations(),
-            self.report_calc(),
+            //self.report_calc(),
+            self.report_conclusion(),
         )
     }
 }
