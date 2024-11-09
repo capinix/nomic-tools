@@ -25,6 +25,7 @@ use eyre::WrapErr;
 use log::warn;
 use once_cell::sync::OnceCell;
 use serde_json::Value;
+use std::cmp::max;
 use std::cmp::PartialEq;
 use std::env;
 use std::ffi::OsStr;
@@ -928,40 +929,29 @@ impl Profile {
 
     pub fn minimum_stake(&self) -> &u64 {
         self.minimum_stake.get_or_init(|| {
-            // Get the configured minimum stake
-            let config_min = self.config().minimum_stake;
-
-            let rounding = self.config().minimum_stake_rounding;
-
-            // Return the configured minimum stake if adjustment is not required
-            if !self.config().adjust_minimum_stake || rounding == 0 {
-                return config_min;
-            }
-
-            // Get daily reward and convert to u64 if necessary (assuming daily_reward() returns a compatible type)
-            let daily_reward = self.daily_reward() as u64;
-
-            // Calculate the adjusted minimum stake based on the rounding
-            let min = daily_reward - (daily_reward % rounding);
-
-            // If the adjusted minimum is less than the stake fee, return the configured minimum
-            if min < self.stake_fee() {
-                return config_min;
-            }
-
             let mut config = self.config().clone();
+            let config_min = config.minimum_stake;
+            let rounding   = config.minimum_stake_rounding;
+            let adjust     = config.adjust_minimum_stake;
 
-            config.minimum_balance = *self.minimum_balance();
-            config.minimum_stake = min;
-            config.daily_reward = self.daily_reward();
-            if let Err(_) = config.save(&self.config_file(), true) {
-                // Ignore the save error and return min
-                return min;
+            let min = if adjust && rounding > 0 {
+                let daily = self.daily_reward().saturating_add(rounding.saturating_div(2));
+                max(config_min, daily.saturating_sub(daily % rounding))
+            } else {
+                config_min
+            };
+
+            if min != config_min {
+                config.minimum_balance = *self.minimum_balance();
+                config.minimum_stake = min;
+                config.daily_reward = self.daily_reward();
+                if let Err(_) = config.save(&self.config_file(), true) {
+                    warn!("Could not save config file");
+                }
             }
 
             // Return the calculated minimum stake
             min
-
         })
     }
 
@@ -1710,13 +1700,23 @@ impl Profile {
         }
 
         // Add a new row only if no row with the target address exists
-        if data_rows.iter().find(|row| row.cell1 == address).is_none() && address != "" {
-            data_rows.push(TableColumns::new(vec![
-                &self.get_validator_rank(address),
-                address,
-                self.name_or_moniker(address),
-            ]));
-        }
+        //if data_rows.iter().find(|row| row.cell1 == address).is_none() && address != "" {
+        //    data_rows.push(TableColumns::new(vec![
+        //        &self.get_validator_rank(address),
+        //        address,
+        //        self.name_or_moniker(address),
+        //    ]));
+        //}
+
+        for validator in self.config().validators.clone() {
+            if data_rows.iter().find(|row| row.cell1 == validator.address).is_none() && validator.address != "" {
+                data_rows.push(TableColumns::new(vec![
+                    &self.get_validator_rank(&validator.address),
+                    &validator.address,
+                    &validator.name,
+                ]));
+            }
+        };
 
         // Sort rows descending by `cell0`, converting each `cell0` to `usize`
         data_rows.sort_by(|a, b| {

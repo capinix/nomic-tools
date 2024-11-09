@@ -1,5 +1,4 @@
-use chrono::DateTime;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use crate::functions::NumberDisplay;
 use crate::functions::TableColumns;
 use crate::global::GroupBy;
@@ -12,8 +11,8 @@ use std::env;
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tabled::builder::Builder;
-use tabled::settings::{Alignment, Color, Modify, Style, Padding};
-use tabled::settings::object::Columns;
+use tabled::settings::{Alignment, Color, Modify, Span, Style, Padding};
+use tabled::settings::object::{Cell, Columns, Rows};
 
 // Define ANSI color codes for a small palette of contrasting colors
 const COLORS: [&str; 5] = [
@@ -86,8 +85,8 @@ pub fn tail(staked_or_not: Option<bool>, follow: bool) -> Result<()> {
     })
 }
 
-pub struct DailyTotals {
-    pub day: String,
+pub struct Summary {
+    pub period: String,
     pub totals: HashMap<String, u64>,
     color_index: usize,
 }
@@ -95,28 +94,57 @@ pub struct DailyTotals {
 
 
 
-impl DailyTotals {
+impl Summary {
     pub fn new() -> Self {
         Self {
-            day: String::new(),
+            period: String::new(),
             totals: HashMap::new(),
             color_index: 0,
         }
     }
 
-    pub fn add(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
+    pub fn add_day(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
         // Convert timestamp to MM-DD format
-        let day_str = timestamp.format("%m-%d").to_string();
+        let day = timestamp.format("%Y-%m-%d %a").to_string();
 
         // If the day does not match, flush and update to the new day
-        if self.day != day_str {
+        if self.period != day {
             self.flush();
-            self.day = day_str.to_string();
+            self.period = day.to_string();
         }
 
         // Add quantity to the existing total for this name, or insert a new one if it doesn't exist
         *self.totals.entry(name).or_insert(0) += quantity;
     }
+
+    pub fn add_week(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
+        // Convert timestamp to MM-DD format
+        let week = timestamp.format("%G-W%V").to_string();
+
+        // If the day does not match, flush and update to the new day
+        if self.period != week {
+            self.flush();
+            self.period = week.to_string();
+        }
+
+        // Add quantity to the existing total for this name, or insert a new one if it doesn't exist
+        *self.totals.entry(name).or_insert(0) += quantity;
+    }
+
+    pub fn add_month(&mut self, timestamp: DateTime<Utc>, name: String, quantity: u64) {
+        // Convert timestamp to MM-DD format
+        let month = timestamp.format("%Y %B").to_string();
+
+        // If the day does not match, flush and update to the new day
+        if self.period != month {
+            self.flush();
+            self.period = month.to_string();
+        }
+
+        // Add quantity to the existing total for this name, or insert a new one if it doesn't exist
+        *self.totals.entry(name).or_insert(0) += quantity;
+    }
+
 
     fn flush(&mut self) {
 
@@ -126,7 +154,9 @@ impl DailyTotals {
 
         self.color_index = (self.color_index + 1) % COLORS.len(); // Increment and wrap around
 
-        println!("{}", self);
+        if self.totals.len() > 0 {
+            println!("\n{}", self);
+        };
 
         // Clear totals after printing
         self.totals.clear();
@@ -136,12 +166,29 @@ impl DailyTotals {
         let mut rows: Vec<TableColumns> = Vec::new();
         for (name, total) in self.totals.iter() {
             rows.push(TableColumns::new(vec![
-                &self.day,
                 name,
                 &NumberDisplay::new(*total).decimal_places(2).format(),
             ]));
         }
-        rows.sort_by_key(|row| row.cell1.clone());
+
+        if rows.len() == 0 {
+            return String::new()
+        };
+
+        // Sort the rows by the first column.
+        rows.sort_by_key(|row| row.cell0.clone());
+
+        // Insert the day row at the beginning.
+        rows.insert(0, TableColumns::new(vec![&self.period]));
+
+        // Calculate the grand total.
+        let grand_total = self.totals.values().sum();
+
+        // Add the totals row at the end.
+        rows.push(TableColumns::new(vec![
+            "",
+            &NumberDisplay::new(grand_total).decimal_places(2).format(),
+        ]));
 
         // Initialize Builder without headers
         let mut builder = Builder::default();
@@ -149,7 +196,6 @@ impl DailyTotals {
             builder.push_record([
                 row.cell0.clone(), 
                 row.cell1.clone(), 
-                row.cell2.clone(), 
             ]);
         }
 
@@ -161,18 +207,21 @@ impl DailyTotals {
             .with(Style::blank())
             .with(Modify::new(Columns::single(0)).with(Padding::new(0,0,0,0)))
             .with(Modify::new(Columns::single(1)).with(Padding::new(0,0,0,0)))
-            .with(Modify::new(Columns::single(2)).with(Padding::new(0,0,0,0)))
-            .with(Modify::new(Columns::single(2)).with(Alignment::right()))
+            .with(Modify::new(Columns::single(1)).with(Alignment::right()))
             .with(Modify::new(Columns::single(0)).with(Color::new(color, RESET)))
             .with(Modify::new(Columns::single(1)).with(Color::new(color, RESET)))
-            .with(Modify::new(Columns::single(2)).with(Color::new(color_q, RESET)))
+            .with(Modify::new(Cell::new(0, 0)).with(Span::column(2)).with(Alignment::left()))
+            //.with(Modify::new(Rows::single(0)).with(Border::new().set_bottom('-')))
+            .with(Modify::new(Rows::single(0)).with(Color::new(color_q, RESET)))
+            .with(Modify::new(Rows::single(rows.len() - 1)).with(Color::new(color_q, RESET)))
+            //.with(Modify::new(Cell::new(rows.len() - 1, 1)).with(Border::new().set_top('-')))
             ;
 
         table.to_string()
     }
 }
 
-impl std::fmt::Display for DailyTotals { // Fully qualified fmt
+impl std::fmt::Display for Summary { // Fully qualified fmt
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.print())
     }
@@ -182,7 +231,9 @@ pub fn summary(group_by: GroupBy, follow: bool) -> Result<()> {
     // Define the grep expression for staked status
     let grep_expr = r#"{[^}]*"staked"[[:space:]]*:[[:space:]]*"✅"[^}]*}"#;
 
-    let mut totals = DailyTotals::new();
+    let mut daily = Summary::new();
+    let mut weekly = Summary::new();
+    let mut monthly = Summary::new();
 
     // Call the common function with the grep expression and specific line processing
     process_journal_lines(grep_expr, follow, |line| {
@@ -199,8 +250,9 @@ pub fn summary(group_by: GroupBy, follow: bool) -> Result<()> {
 
         match (timestamp, group, quantity) {
             (Some(timestamp), Some(group), Some(quantity)) => {
-
-                totals.add(timestamp, group, quantity);
+                daily.add_day(timestamp, group.clone(), quantity);
+                weekly.add_week(timestamp, group.clone(), quantity);
+                monthly.add_month(timestamp, group.clone(), quantity);
             }
             _ => {
                 warn!("Skipping line due to missing data: {:?}", line);
