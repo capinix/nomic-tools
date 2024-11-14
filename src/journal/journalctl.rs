@@ -170,7 +170,12 @@ impl Summary {
         for (name, total) in self.totals.iter() {
             rows.push(TableColumns::new(vec![
                 name,
-                &NumberDisplay::new(*total).decimal_places(2).format(),
+                &NumberDisplay::new(*total)
+                    .scale(6)
+                    .decimal_places(2)
+                    .integer_threshold(100)
+                    .trim(true)
+                    .format(),
             ]));
         }
 
@@ -190,7 +195,12 @@ impl Summary {
         // Add the totals row at the end.
         rows.push(TableColumns::new(vec![
             "",
-            &NumberDisplay::new(grand_total).decimal_places(2).format(),
+            &NumberDisplay::new(grand_total)
+                .scale(6)
+                .decimal_places(2)
+                .integer_threshold(100)
+                .trim(true)
+                .format(),
         ]));
 
         // Initialize Builder without headers

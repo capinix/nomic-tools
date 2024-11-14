@@ -52,7 +52,7 @@ pub struct JournalctlConfig {
 impl Default for JournalctlTail {
     fn default() -> Self {
         Self {
-            column_widths: vec![11, 1, 8, 7, 7, 6, 6, 7, 8, 8, 9, 7],
+            column_widths: vec![11, 1, 8, 7, 6, 6, 6, 6, 6, 6, 8, 9, 6],
         }
     }
 }

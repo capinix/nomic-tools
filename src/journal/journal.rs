@@ -2,10 +2,10 @@ use chrono::{DateTime, Local, Utc};
 use clap::ValueEnum;
 use colored::Colorize;
 use crate::functions::NumberDisplay;
+use crate::functions::pad_or_truncate;
 use crate::global::CONFIG;
 use eyre::{Result, WrapErr};
 use indexmap::IndexMap;
-//use log::warn;
 use num_format::ToFormattedString;
 use serde_json::{Value, to_value};
 use std::str::FromStr;
@@ -109,20 +109,20 @@ impl std::fmt::Display for DisplayJournalValue {
     }
 }
 
-struct DateDisplayFromOption(Option<DateTime<Utc>>);
-
-impl std::fmt::Display for DateDisplayFromOption {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            Some(dt) => {
-                // Convert to local timezone and format
-                let dt_local = dt.with_timezone(&Local);
-                write!(f, "{}", dt_local.format("%m-%d %H:%M"))
-            }
-            None => write!(f, "N/A"), // Default to "N/A" if None
-        }
-    }
-}
+//struct DateDisplayFromOption(Option<DateTime<Utc>>);
+//
+//impl std::fmt::Display for DateDisplayFromOption {
+//    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//        match &self.0 {
+//            Some(dt) => {
+//                // Convert to local timezone and format
+//                let dt_local = dt.with_timezone(&Local);
+//                write!(f, "{}", dt_local.format("%m-%d %H:%M"))
+//            }
+//            None => write!(f, "N/A"), // Default to "N/A" if None
+//        }
+//    }
+//}
 
 /// Enum to represent output formats
 #[derive(Debug, Clone, ValueEnum)]
@@ -270,120 +270,146 @@ impl Journal {
 
         let col = CONFIG.journalctl.tail.column_widths.clone();
 
-        let mut output = String::new();
-
         // Extract values
-        let staked = self.get::<String>("staked").unwrap_or("❌".to_string());
-        let is_staked = staked == "✅";
-        let quantity = self.get::<u64>("quantity").unwrap_or(0);
-        let total_liquid = self.get::<u64>("total_liquid").unwrap_or(0);
-        let remaining = self.get::<u64>("remaining").unwrap_or(0);
-        let minimum_stake = self.get::<u64>("minimum_stake").unwrap_or(0);
-        let balance = self.get::<u64>("balance").unwrap_or(0);
+        let timestamp = self.get::<String>("timestamp")
+            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok()
+                .map(|dt| dt.with_timezone(&Local).format("%m-%d %H:%M").to_string())
+                .or(Some(s)))
+            .unwrap_or_else(|| "N/A".to_string());
+        let staked                  = self.get::<String>("staked").unwrap_or("❌".to_string());
+        let claimed                 = self.get::<String>("claimed").unwrap_or("❌".to_string());
+        let balance                 = self.get::<u64>("balance").unwrap_or(0);
+        let total_staked            = self.get::<u64>("total_staked").unwrap_or(0);
+        let total_liquid            = self.get::<u64>("total_liquid").unwrap_or(0);
+        let validator_staked        = self.get::<u64>("validator_staked").unwrap_or(0);
+        let validator_name          = self.get::<String>("config_validator_name").unwrap_or("N/A".to_string());
+        let voting_power            = self.get::<u64>("voting_power").unwrap_or(0);
+        let minimum_balance         = self.get::<u64>("minimum_balance").unwrap_or(0);
+        let minimum_stake           = self.get::<u64>("minimum_stake").unwrap_or(0);
+        let daily_reward            = self.get::<u64>("daily_reward").unwrap_or(0);
+        let available_without_claim = self.get::<u64>("available_without_claim").unwrap_or(0);
+        let available_after_claim   = self.get::<u64>("available_after_claim").unwrap_or(0);
+        let quantity                = self.get::<u64>("quantity").unwrap_or(0);
+        let remaining               = self.get::<u64>("remaining").unwrap_or(0);
+        let profile                 = self.get::<String>("profile").unwrap_or("N/A".to_string());
 
-        // Calculations
-//        let remaining_to_stake = balance
-//            .saturating_add(minimum_stake)
-//            .saturating_sub(validator_staked_remainder)
-//            .saturating_sub(total_liquid);
-        let minimum_stake_value = if is_staked { minimum_stake } else { remaining };
-//        let minimum_stake_value = minimum_stake;
-        let total_liquid_value = if is_staked { quantity } else { total_liquid };
+        let is_staked  = staked  == "✅";
+        let is_claimed = claimed == "✅";
 
-        // Formatting and color handling for each column
-        output = format!(
-            "{}{}│", 
-            output, 
-            pad_or_truncate(&format!("{}", DateDisplayFromOption(self.get("timestamp"))), col[0], false)
-        );
+        // Date
+        let col0 = pad_or_truncate(timestamp, col[0], false);
 
-        output = format!(
-            "{}{}│", 
-            output, 
-            pad_or_truncate(&staked, col[1], false)
-        );
+        // action
+        let col1 = pad_or_truncate(staked, col[1], false);
 
-        output = format!(
-            "{}{}", 
-            output, 
-            pad_or_truncate(&self.get::<String>("profile").unwrap_or("N/A".to_string()), col[2], false)
-        );
+        // profile
+        let col2 = pad_or_truncate(&profile, col[2], false);
 
-        // Apply color based on individual conditions for each cell
-        let total_staked_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(self.get::<u64>("total_staked").unwrap_or(0).into())), 
-            col[3], 
-            true
-        ).green();
-        output = format!("{}{}", output, total_staked_str);
+        // total staked
+        let col3 = if is_staked {
+            pad_or_truncate(&NumberDisplay::new(total_staked + quantity)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[3], true
+            ).yellow()
+        } else {
+            pad_or_truncate(&NumberDisplay::new(total_staked)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[3], true
+            ).green()
+        };
 
-        let daily_reward_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(self.get::<u64>("daily_reward").into())),
-            col[4],
-            true
+        // daily reward
+        let col4 = pad_or_truncate(&NumberDisplay::new(daily_reward)
+            .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+            col[4], true
+        ).magenta();
+
+        // minimum_stake
+        let col5 = pad_or_truncate(&NumberDisplay::new(minimum_stake)
+            .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+            col[5], true
         ).blue();
-        output = format!("{}{}", output, daily_reward_str);
 
-        let minimum_balance_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(self.get::<u64>("minimum_balance").into())),
-            col[5],
-            true
-        ).magenta();
-        output = format!("{}{}", output, minimum_balance_str);
+        // minimum_balance
+        let col6 = pad_or_truncate(&NumberDisplay::new(minimum_balance)
+            .scale(6).decimal_places(2).integer_threshold(100).format(),
+            col[6], true
+        ).blue();
 
-        let balance_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(balance.into())), 
-            col[6], 
-            true
-        ).green();
-        output = format!("{}{}", output, balance_str);
+        // balance
+        let col7 = if is_staked {
+            let adjusted_balance = if is_claimed {
+                minimum_balance.saturating_add(available_after_claim).saturating_sub(quantity)
 
-        let total_liquid_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(total_liquid_value.into())), 
-            col[7], 
-            true
-        );
-        let total_liquid_str_colored = if is_staked {
-            total_liquid_str.green()
+            } else {
+                minimum_balance.saturating_add(available_without_claim).saturating_sub(quantity)
+            };
+            pad_or_truncate(&NumberDisplay::new(adjusted_balance)
+                .scale(6).decimal_places(2).integer_threshold(100).format(),
+                col[7], true
+            ).yellow()
         } else {
-            total_liquid_str.yellow()
+            pad_or_truncate(&NumberDisplay::new(balance)
+                .scale(6).decimal_places(2).integer_threshold(100).format(),
+                col[7], true
+            ).green()
         };
-        output = format!("{}{}", output, total_liquid_str_colored);
 
-        let minimum_stake_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(minimum_stake_value.into())),
-            col[8],
-            true
-        );
-        let minimum_stake_str_colored = if is_staked {
-            minimum_stake_str.blue()
+        // total_liquid
+        let col8 = if is_staked {
+            pad_or_truncate("", col[8], false).green()
         } else {
-            minimum_stake_str.truecolor(255, 165, 0)  // Orange color for unstaked
+            pad_or_truncate(&NumberDisplay::new(total_liquid)
+                .scale(6).decimal_places(2).integer_threshold(100).format(),
+                col[8], true
+            ).green()
         };
-        output = format!("{}{}│", output, minimum_stake_str_colored);
 
-        let config_validator_name_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(self.get::<String>("config_validator_name").into())),
-            col[9],
-            false
-        );
-        output = format!("{}{}", output, config_validator_name_str);
+        // staked quantity / remaining to stake
+        let col9 = if is_staked {
+            // staked quantity
+            pad_or_truncate(&NumberDisplay::new(quantity)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[9], true
+            ).yellow()
+        } else {
+            // remining to stake
+            pad_or_truncate(&NumberDisplay::new(remaining)
+                .scale(6).decimal_places(2).integer_threshold(100).format(),
+                col[9], true
+            ).truecolor(255, 165, 0)
+        };
 
-        let voting_power_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(self.get::<u64>("voting_power").into())),
-            col[10],
-            true
-        ).magenta();
-        output = format!("{}{}", output, voting_power_str);
+        let col10 = pad_or_truncate(&validator_name, col[10], false);
 
-        let validator_staked_str = pad_or_truncate(
-            &format!("{}", DisplayLogValue(self.get::<u64>("validator_staked").unwrap_or(0).into())),
-            col[11],
-            true
-        ).green();
-        output = format!("{}{}", output, validator_staked_str);
+        let col11 = if is_staked {
+            pad_or_truncate(&NumberDisplay::new(voting_power + quantity)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[11], true
+            ).yellow()
+        } else {
+            pad_or_truncate(&NumberDisplay::new(voting_power)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[11], true
+            ).magenta()
+        };
 
-        output
+        let col12 = if is_staked {
+            pad_or_truncate(&NumberDisplay::new(validator_staked + quantity)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[12], true
+            ).yellow()
+        }  else {
+            pad_or_truncate(&NumberDisplay::new(validator_staked)
+                .scale(6).decimal_places(2).integer_threshold(100).trim(true).format(),
+                col[12], true
+            ).green()
+        };
+
+        format!(
+            "{}│{}│{}{}│{}{}│{}{}│{}{}│{}{}{}",
+            col0, col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11, col12
+        )
     }
 
     pub fn print(&self,
@@ -416,20 +442,75 @@ impl Journal {
         Ok(())
     }
 }
+//
+//fn pad_or_truncate<S: AsRef<str>>(s: S, width: usize, right_align: bool) -> String {
+//    let s: &str = s.as_ref();
+//    let ansi_regex = Regex::new(r"\x1b\[[0-9;]*m").unwrap();
+//    let plain_text = ansi_regex.replace_all(s, "").to_string();
+//    let display_width = UnicodeWidthStr::width(plain_text.as_str());
+//
+//    let truncated = if display_width > width {
+//        plain_text.chars().take(width).collect::<String>()
+//    } else {
+//        plain_text.clone()
+//    };
+//
+//    let padding = " ".repeat(width.saturating_sub(display_width));
+//    let padded_text = if right_align {
+//        format!("{}{}", padding, truncated)
+//    } else {
+//        format!("{}{}", truncated, padding)
+//    };
+//
+//    // Reapply ANSI codes to the padded/truncated text
+//    s.replace(&plain_text, &padded_text)
+//}
 
-fn pad_or_truncate(s: &str, width: usize, right_align: bool) -> String {
-    let len_without_ansi = s.chars().filter(|&c| !c.is_ascii_control()).count(); // Ignore ANSI escape codes
-
-    if len_without_ansi > width {
-        // Truncate if the string is too long
-        s.chars().take(width).collect()
-    } else {
-        // Add padding
-        let padding = " ".repeat(width - len_without_ansi);
-        if right_align {
-            format!("{}{}", padding, s) // Right-align
-        } else {
-            format!("{}{}", s, padding) // Left-align
-        }
-    }
-}
+//fn pad_or_truncate<S: AsRef<str>>(s: S, width: usize, right_align: bool) -> String {
+//    let s: &str = s.as_ref();
+//
+//    // This is where we’ll accumulate the truncated string with ANSI codes preserved
+//    let mut truncated = String::new();
+//    let mut visible_width = 0;
+//
+//    let mut iter = s.chars().peekable();
+//    while let Some(ch) = iter.next() {
+//        // Check if the character starts an ANSI sequence
+//        if ch == '\x1b' && iter.peek() == Some(&'[') {
+//            // Collect the entire ANSI sequence
+//            let mut ansi_sequence = String::from(ch);
+//            ansi_sequence.push(iter.next().unwrap()); // Consume '['
+//
+//            // Add the rest of the ANSI sequence characters
+//            while let Some(&next_ch) = iter.peek() {
+//                ansi_sequence.push(iter.next().unwrap());
+//                if next_ch == 'm' {
+//                    break;
+//                }
+//            }
+//
+//            // Push the entire ANSI sequence to the result
+//            truncated.push_str(&ansi_sequence);
+//        } else {
+//            // Calculate the width of this character
+//            let ch_width = UnicodeWidthStr::width(ch.to_string().as_str());
+//
+//            // Only add the character if it won't exceed the width limit
+//            if visible_width + ch_width > width {
+//                break;
+//            }
+//
+//            // Append the character and update visible width
+//            truncated.push(ch);
+//            visible_width += ch_width;
+//        }
+//    }
+//
+//    // Add padding if needed
+//    let padding = " ".repeat(width.saturating_sub(visible_width));
+//    if right_align {
+//        format!("{}{}", padding, truncated)
+//    } else {
+//        format!("{}{}", truncated, padding)
+//    }
+//}

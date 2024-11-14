@@ -66,22 +66,19 @@ pub struct Profile {
     validator_staked:              OnceCell<u64>,
     delegation:                    OnceCell<Delegation>,
     minimum_balance:               OnceCell<u64>,
-    daily_reward:                  OnceCell<u64>,
     minimum_stake:                 OnceCell<u64>,
-    available_without_claim:       OnceCell<u64>,
-    available_after_claim:         OnceCell<u64>,
-    calc:                          OnceCell<Calc>,
-    validator_staked_remainder:    OnceCell<u64>,
-    needed:                        OnceCell<u64>,
-    //remaining:                     OnceCell<u64>,
-    can_stake_without_claim:       OnceCell<bool>,
-    can_stake_after_claim:         OnceCell<bool>,
-    //needs_claim:                   OnceCell<bool>,
-    //quantity:                      OnceCell<u64>,
-    journal:                       OnceCell<Journal>,
+    daily_reward:                  OnceCell<u64>,
     last_journal:                  OnceCell<Journal>,
+    calc:                          OnceCell<Calc>,
+//    available_without_claim:       OnceCell<u64>,
+//    available_after_claim:         OnceCell<u64>,
+//    validator_staked_remainder:    OnceCell<u64>,
+//    needed:                        OnceCell<u64>,
+//    can_stake_without_claim:       OnceCell<bool>,
+//    can_stake_after_claim:         OnceCell<bool>,
     staked:                        bool,
     claimed:                       bool,
+    journal:                       OnceCell<Journal>,
 }
 
 impl Profile {
@@ -112,21 +109,18 @@ impl Profile {
             delegation:                    OnceCell::new(),
             minimum_balance:               OnceCell::new(),
             minimum_stake:                 OnceCell::new(),
-            available_without_claim:       OnceCell::new(),
-            available_after_claim:         OnceCell::new(),
-            calc:                          OnceCell::new(),
-            validator_staked_remainder:    OnceCell::new(),
-            can_stake_without_claim:       OnceCell::new(),
-            can_stake_after_claim:         OnceCell::new(),
-            //needs_claim:                   OnceCell::new(),
-            daily_reward:                  OnceCell::new(),
-            //quantity:                      OnceCell::new(),
-            needed:                        OnceCell::new(),
-            //remaining:                     OnceCell::new(),
             last_journal:                  OnceCell::new(),
-            journal:                       OnceCell::new(),
+            daily_reward:                  OnceCell::new(),
+            calc:                          OnceCell::new(),
+//            available_without_claim:       OnceCell::new(),
+//            available_after_claim:         OnceCell::new(),
+//            validator_staked_remainder:    OnceCell::new(),
+//            can_stake_without_claim:       OnceCell::new(),
+//            can_stake_after_claim:         OnceCell::new(),
+//            needed:                        OnceCell::new(),
             claimed:                       false,
             staked:                        false,
+            journal:                       OnceCell::new(),
         }
     }
 
@@ -854,6 +848,36 @@ impl Profile {
         })
     }
 
+    /// Estimates the daily staking reward based on recent journal entries and current staking data.
+    ///
+    /// This function retrieves the last recorded journal entry from the systemd logs to compare
+    /// previous staking and liquidity values against the current state. This comparison is used 
+    /// to determine the rate of reward accumulation.
+    ///
+    /// ### Process
+    /// - Retrieves the last journal entry, extracting data on `total_staked`, `total_liquid`,
+    ///   `quantity`, `timestamp`, `staked`, and `claimed`.
+    /// - Compares current and last recorded `total_staked` values to check for discrepancies.
+    ///   If the current `total_staked` differs from the expected amount (based on the last 
+    ///   journal entry's recorded quantity and staking status), the function returns an error.
+    /// - If the `claimed` field in the last journal entry is marked as true (indicating a recent
+    ///   reward claim), the expected `total_liquid` is set to zero. Otherwise, the prior liquid 
+    ///   amount is used.
+    /// - Verifies that the last recorded `timestamp` is earlier than the current timestamp. If not, 
+    ///   an error is returned, indicating timestamp inconsistency.
+    ///
+    /// ### Reward Calculation
+    /// - Calculates the difference in `total_liquid` since the last entry, confirming an increase 
+    ///   has occurred.
+    /// - Divides this difference by the elapsed time between the last and current timestamps to 
+    ///   determine the reward accumulation rate, scaled to a daily estimate.
+    ///
+    /// ### Result and Configuration
+    /// - Saves the calculated daily reward to a configuration file. If any failure occurs, a warning
+    ///   is logged.
+    ///
+    /// Returns a `Result<u64>` containing the estimated daily reward in staking units or an error if 
+    /// any inconsistency in staking or liquid balances prevents estimation.
     pub fn daily_reward_result(&self) -> Result<u64> {
         self.daily_reward.get_or_try_init(|| {
             // Fetch the last journal entry
@@ -866,32 +890,55 @@ impl Profile {
             let last_total_liquid = last_journal.get::<u64>("total_liquid")
                 .ok_or_else(|| eyre::eyre!("Missing or invalid 'total_liquid' in last journal"))?;
 
-            let last_timestamp = last_journal.get::<DateTime<Utc>>("timestamp")
-                .ok_or_else(|| eyre::eyre!("Missing or invalid 'timestamp' in last journal"))?;
+            let last_quantity = last_journal.get::<u64>("quantity")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'quantity' in last journal"))?;
 
-            // Parse the last timestamp from string to DateTime
-            let last_timestamp = last_timestamp.timestamp();
+            let last_timestamp = last_journal.get::<DateTime<Utc>>("timestamp")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'timestamp' in last journal"))?
+                .timestamp();
+
+            let last_staked = last_journal.get::<String>("staked")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'staked' in last journal"))?;
+
+            let last_claimed = last_journal.get::<String>("claimed")
+                .ok_or_else(|| eyre::eyre!("Missing or invalid 'claimed' in last journal"))?;
+
+            let is_last_staked   = last_staked   == "✅";
+            let is_last_claimed  = last_claimed  == "✅";
 
             // Extract current data
             let current_total_staked = self.delegations()?.total().staked;
             let current_total_liquid = self.delegations()?.total().liquid;
             let current_timestamp    = self.delegations()?.timestamp.timestamp();
 
-            // Check conditions and return descriptive errors if they fail
-            if last_total_staked != current_total_staked {
+            // Calculate expected total staked based on staking status
+            let expected_total_staked = if is_last_staked {
+                last_total_staked + last_quantity
+            } else {
+                last_total_staked
+            };
+
+            // Check for staked inconsistency
+            if current_total_staked != expected_total_staked {
                 return Err(eyre::eyre!(
                     "Cannot determine daily reward\nTotal staked mismatch: last={}, current={}",
-                    last_total_staked,
+                    expected_total_staked,
                     current_total_staked
                 ));
             }
-            if last_total_liquid >= current_total_liquid {
+
+            // Define the expected liquid balance, adjusting if the last claim has occurred
+            let expected_total_liquid = if is_last_claimed { 0 } else { last_total_liquid };
+
+            // Check for liquid inconsistency
+            if expected_total_liquid >= current_total_liquid {
                 return Err(eyre::eyre!(
                     "Cannot determine daily reward\nNo liquid increase: last={}, current={}",
-                    last_total_liquid,
+                    expected_total_liquid,
                     current_total_liquid
                 ));
             }
+
             if last_timestamp >= current_timestamp {
                 return Err(eyre::eyre!(
                     "Cannot determine daily reward\nInvalid timestamp: last={}, current={}",
@@ -901,12 +948,12 @@ impl Profile {
             }
 
             // Calculate the deltas
-            let reward_delta = current_total_liquid.saturating_sub(last_total_liquid);
+            let reward_delta = current_total_liquid.saturating_sub(expected_total_liquid);
             let time_delta = current_timestamp.saturating_sub(last_timestamp);
 
             // Calculate the daily reward
             let daily_reward = if time_delta > 0 {
-                (reward_delta as f64 / time_delta as f64 * 86400.0) as u64
+                ((reward_delta as f64 * 86_400.0) / time_delta as f64) as u64
             } else {
                 0 // or some default value
             };
@@ -925,8 +972,16 @@ impl Profile {
         }).cloned()
     }
 
+    /// Retrieves the last successfully calculated daily reward, or defaults to the stored configuration value.
+    /// Logs a warning if the calculation fails, before returning the configuration's stored reward value.
     pub fn daily_reward(&self) -> u64 {
-        self.daily_reward_result().unwrap_or(self.config().daily_reward)
+        match self.daily_reward_result() {
+            Ok(daily_reward) => daily_reward,
+            Err(e) => {
+                warn!("Failed to retrieve daily reward: {}. Using stored configuration value instead.", e);
+                self.config().daily_reward
+            }
+        }
     }
 
     pub fn minimum_stake(&self) -> &u64 {
@@ -957,35 +1012,35 @@ impl Profile {
         })
     }
 
-    pub fn available_without_claim(&self) -> &u64 {
-        self.available_without_claim.get_or_init(|| {
-            match self.balances() {
-                Ok(balances) => {
-                    balances.nom
-                        .saturating_sub(*self.minimum_balance())
-                        .saturating_sub(self.stake_fee())
-                        .max(0)
-                },
-                Err(_) => 0,
-            }
-        })
-    }
-
-    pub fn available_after_claim(&self) -> &u64 {
-        self.available_after_claim.get_or_init(|| {
-            match self.balances() {
-                Ok(balances) => {
-                    balances.nom
-                    .saturating_add(self.delegations().map_or(0, |d| d.total().liquid))
-                    .saturating_sub(*self.minimum_balance())
-                    .saturating_sub(self.claim_fee())
-                    .saturating_sub(self.stake_fee())
-                    .max(0)
-                },
-                Err(_) => 0,
-            }
-        })
-    }
+//    pub fn available_without_claim(&self) -> &u64 {
+//        self.available_without_claim.get_or_init(|| {
+//            match self.balances() {
+//                Ok(balances) => {
+//                    balances.nom
+//                        .saturating_sub(*self.minimum_balance())
+//                        .saturating_sub(self.stake_fee())
+//                        .max(0)
+//                },
+//                Err(_) => 0,
+//            }
+//        })
+//    }
+//
+//    pub fn available_after_claim(&self) -> &u64 {
+//        self.available_after_claim.get_or_init(|| {
+//            match self.balances() {
+//                Ok(balances) => {
+//                    balances.nom
+//                    .saturating_add(self.delegations().map_or(0, |d| d.total().liquid))
+//                    .saturating_sub(*self.minimum_balance())
+//                    .saturating_sub(self.claim_fee())
+//                    .saturating_sub(self.stake_fee())
+//                    .max(0)
+//                },
+//                Err(_) => 0,
+//            }
+//        })
+//    }
 
     pub fn calc_quantity(&self, validator_address: Option<&str>, quantity: Option<u64>) -> Calc {
         let staked = match validator_address {
@@ -997,22 +1052,40 @@ impl Profile {
             None => *self.validator_staked(),
         };
 
+        let available_without_claim = match self.balances() {
+            Ok(balances) => balances.nom
+                .saturating_sub(*self.minimum_balance())
+                .saturating_sub(self.stake_fee())
+                .max(0),
+            Err(_) => 0,
+        };
+
+        let available_after_claim = match self.balances() {
+            Ok(balances) => balances.nom
+                .saturating_add(self.delegations().map_or(0, |d| d.total().liquid))
+                .saturating_sub(*self.minimum_balance())
+                .saturating_sub(self.claim_fee())
+                .saturating_sub(self.stake_fee())
+                .max(0),
+            Err(_) => 0,
+        };
+
         let remainder = staked % *self.minimum_stake();
         let needed = quantity.unwrap_or_else(|| self.minimum_stake().saturating_sub(remainder));
-        let can_stake_without_claim = *self.available_without_claim() > needed;
-        let can_stake_after_claim = *self.available_after_claim() > needed;
+        let can_stake_without_claim = available_without_claim > needed;
+        let can_stake_after_claim = available_after_claim > needed;
         let remaining = if can_stake_without_claim || can_stake_after_claim {
             0
         } else {
-            needed.saturating_sub(*self.available_after_claim())
+            needed.saturating_sub(available_after_claim)
         };
         let needs_claim = !can_stake_without_claim && can_stake_after_claim;
 
         // Calculate available funds based on conditions
-        let available = if *self.can_stake_without_claim() {
-            *self.available_without_claim()
-        } else if *self.can_stake_after_claim() {
-            *self.available_after_claim()
+        let available = if can_stake_without_claim {
+            available_without_claim
+        } else if can_stake_after_claim {
+            available_after_claim
         } else {
             0
         };
@@ -1026,6 +1099,8 @@ impl Profile {
         );
 
         Calc {
+            available_without_claim,
+            available_after_claim,
             remainder,
             needed,
             can_stake_without_claim,
@@ -1042,36 +1117,38 @@ impl Profile {
         })
     }
 
-    pub fn validator_staked_remainder(&self) -> &u64 {
-        self.validator_staked_remainder.get_or_init(|| {
-            self.validator_staked() % *self.minimum_stake()
-        })
-    }
+//    pub fn validator_staked_remainder(&self) -> &u64 {
+//        self.validator_staked_remainder.get_or_init(|| {
+//            self.validator_staked() % *self.minimum_stake()
+//        })
+//    }
 
 
-    // Quantity needed to trigger a staking action
-    pub fn needed(&self) -> &u64 {
-        self.needed.get_or_init(|| {
-            self.minimum_stake().saturating_sub(*self.validator_staked_remainder())
-        })
-    }
+//    // Quantity needed to trigger a staking action
+//    pub fn needed(&self) -> &u64 {
+//        self.needed.get_or_init(|| {
+//            self.minimum_stake().saturating_sub(*self.validator_staked_remainder())
+//        })
+//    }
 
-    pub fn can_stake_without_claim(&self) -> &bool {
-        self.can_stake_without_claim.get_or_init(|| {
-            *self.available_without_claim() > *self.needed()
-        })
-    }
+//    pub fn can_stake_without_claim(&self) -> &bool {
+//        self.can_stake_without_claim.get_or_init(|| {
+//            *self.available_without_claim() > *self.needed()
+//        })
+//    }
 
-    pub fn can_stake_after_claim(&self) -> &bool {
-        self.can_stake_after_claim.get_or_init(|| {
-            *self.available_after_claim() > *self.needed()
-        })
-    }
+//    pub fn can_stake_after_claim(&self) -> &bool {
+//        self.can_stake_after_claim.get_or_init(|| {
+//            *self.available_after_claim() > *self.needed()
+//        })
+//    }
 
 }
 
 #[derive(Clone, Debug)]
 pub struct Calc {
+    available_without_claim:  u64,
+    available_after_claim:    u64,
     remainder:                u64,
     needed:                   u64,
     can_stake_without_claim:  bool,
@@ -1182,12 +1259,12 @@ impl Profile {
                 return Err(eyre!("Failed to claim: {:?}", e));
             }
             self.claimed = true;
-            let balance = self.balance()
-                .saturating_add(*self.total_liquid())
-                .saturating_sub(self.claim_fee());
-            let total_liquid = 0;
-            self.balance = OnceCell::from(balance);
-            self.total_liquid = OnceCell::from(total_liquid);
+//            let balance = self.balance()
+//                .saturating_add(*self.total_liquid())
+//                .saturating_sub(self.claim_fee());
+//            let total_liquid = 0;
+//            self.balance = OnceCell::from(balance);
+//            self.total_liquid = OnceCell::from(total_liquid);
         }
 
         // Create and configure the Command for running "nomic delegate"
@@ -1221,18 +1298,18 @@ impl Profile {
             return Err(eyre!(error_msg));
         }
         self.staked = true;
-        let balance = self.balance()
-            .saturating_sub(calc.quantity)
-            .saturating_sub(self.stake_fee());
-        self.balance = OnceCell::from(balance);
-        let total_staked = self.total_staked()
-            .saturating_add(calc.quantity);
-        self.total_staked = OnceCell::from(total_staked);
-        if self.config().validator_address() == validator_address {
-            let validator_staked = self.validator_staked()
-                .saturating_add(calc.quantity);
-            self.validator_staked = OnceCell::from(validator_staked);
-        }
+//        let balance = self.balance()
+//            .saturating_sub(calc.quantity)
+//            .saturating_sub(self.stake_fee());
+//        self.balance = OnceCell::from(balance);
+//        let total_staked = self.total_staked()
+//            .saturating_add(calc.quantity);
+//        self.total_staked = OnceCell::from(total_staked);
+//        if self.config().validator_address() == validator_address {
+//            let validator_staked = self.validator_staked()
+//                .saturating_add(calc.quantity);
+//            self.validator_staked = OnceCell::from(validator_staked);
+//        }
 
         // Clone the config
         let mut config = self.config().clone();
@@ -1451,11 +1528,11 @@ impl Profile {
             );
             journal.insert(
                 "available_without_claim".to_string(),
-                Value::Number(serde_json::Number::from(*self.available_without_claim()))
+                Value::Number(serde_json::Number::from(self.calc().available_without_claim))
             );
             journal.insert(
                 "available_after_claim".to_string(),
-                Value::Number(serde_json::Number::from(*self.available_after_claim()))
+                Value::Number(serde_json::Number::from(self.calc().available_after_claim))
             );
             journal.insert(
                 "validator_staked_remainder".to_string(),
@@ -1739,7 +1816,7 @@ impl Profile {
             "Available without claiming rewards",
             "",
             "",
-            &NumberDisplay::new(*self.available_without_claim()).scale(6).decimal_places(6).trim(false).format(),
+            &NumberDisplay::new(self.calc().available_without_claim).scale(6).decimal_places(6).trim(false).format(),
         ]));
 
         // Available after claim row
@@ -1748,7 +1825,7 @@ impl Profile {
             "Available after claiming rewards",
             "",
             "",
-            &NumberDisplay::new(*self.available_after_claim()).scale(6).decimal_places(6).trim(false).format(),
+            &NumberDisplay::new(self.calc().available_after_claim).scale(6).decimal_places(6).trim(false).format(),
         ]));
 
         // Initialize Builder without headers

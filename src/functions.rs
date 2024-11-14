@@ -4,11 +4,29 @@ use regex::Regex;
 use std::io::{self, Read, Write};
 use std::str::FromStr;
 use num_format::{Locale, ToFormattedString};
-use console::strip_ansi_codes;
+//use console::strip_ansi_codes;
 use tabled::Tabled;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use unicode_width::UnicodeWidthStr;
+
+fn pluralize<S: AsRef<str>>(word: S, count: u64) -> String {
+    let word: &str = word.as_ref();
+    if count == 1 {
+        word.to_string()
+    } else if word.ends_with("y") && matches!(word.chars().nth_back(1), Some(c) if !"aeiou".contains(c)) {
+        format!("{}ies", &word[..word.len() - 1])
+    } else if word.ends_with("ch") || word.ends_with("s") || word.ends_with("sh") || word.ends_with("x") || word.ends_with("z") {
+        format!("{}es", word)
+    } else if word.ends_with("f") {
+        format!("{}ves", &word[..word.len() - 1])
+    } else if word.ends_with("fe") {
+        format!("{}ves", &word[..word.len() - 2])
+    } else {
+        format!("{}s", word)
+    }
+}
 
 pub fn format_date_offset(seconds: u64) -> String {
     let now = chrono::Local::now();
@@ -23,6 +41,7 @@ pub fn format_date_offset(seconds: u64) -> String {
     }
 }
 
+
 pub fn format_duration(seconds: u64) -> String {
     let days = seconds / 86_400;
     let hours = (seconds % 86_400) / 3600;
@@ -30,26 +49,44 @@ pub fn format_duration(seconds: u64) -> String {
 
     if days > 0 {
         if hours > 0 && minutes > 0 {
-            format!("{} days, {} hours, {} minutes", days, hours, minutes)
+            format!(
+                "{} {}, {} {}, {} {}",
+                days, pluralize("day", days),
+                hours, pluralize("hour", hours),
+                minutes, pluralize("minute", minutes)
+            )
         } else if hours > 0 {
-            format!("{} days, {} hours", days, hours)
+            format!(
+                "{} {}, {} {}",
+                days, pluralize("day", days),
+                hours, pluralize("hour", hours)
+            )
         } else if minutes > 0 {
-            format!("{} days, {} minutes", days, minutes)
+            format!(
+                "{} {}, {} {}",
+                days, pluralize("day", days),
+                minutes, pluralize("minute", minutes)
+            )
         } else {
-            format!("{} days", days)
+            format!("{} {}", days, pluralize("day", days))
         }
     } else if hours > 0 {
         if minutes > 0 {
-            format!("{} hours, {} minutes", hours, minutes)
+            format!(
+                "{} {}, {} {}",
+                hours, pluralize("hour", hours),
+                minutes, pluralize("minute", minutes)
+            )
         } else {
-            format!("{} hours", hours)
+            format!("{} {}", hours, pluralize("hour", hours))
         }
     } else {
-        format!("{} minutes", minutes)
+        format!("{} {}", minutes, pluralize("minute", minutes))
     }
 }
 
-pub fn truncate_with_ellipsis(input: &str, max_len: usize) -> String {
+pub fn truncate_with_ellipsis<S: AsRef<str>>(input: S, max_len: usize) -> String {
+    let input: &str = input.as_ref();
     if input.chars().count() > max_len {
         input.chars().take(max_len - 3).collect::<String>() + "..."
     } else {
@@ -351,33 +388,85 @@ impl TableColumns {
     }
 }
 
-pub fn pad_or_truncate(s: &str, width: usize, right_align: bool) -> String {
-    // Calculate length without ANSI codes
-    let stripped_len = strip_ansi_codes(s).chars().count();
+pub fn pad_or_truncate<S: AsRef<str>>(s: S, width: usize, right_align: bool) -> String {
+    let s: &str = s.as_ref();
 
-    if stripped_len > width {
-        // Truncate while keeping ANSI codes intact
-        let mut visible_count = 0;
-        let truncated: String = s.chars()
-            .take_while(|&c| {
-                // Only count non-ANSI characters toward the width limit
-                if !c.is_ascii_control() {
-                    visible_count += 1;
+    // This is where we’ll accumulate the truncated string with ANSI codes preserved
+    let mut truncated = String::new();
+    let mut visible_width = 0;
+
+    let mut iter = s.chars().peekable();
+    while let Some(ch) = iter.next() {
+        // Check if the character starts an ANSI sequence
+        if ch == '\x1b' && iter.peek() == Some(&'[') {
+            // Collect the entire ANSI sequence
+            let mut ansi_sequence = String::from(ch);
+            ansi_sequence.push(iter.next().unwrap()); // Consume '['
+
+            // Add the rest of the ANSI sequence characters
+            while let Some(&next_ch) = iter.peek() {
+                ansi_sequence.push(iter.next().unwrap());
+                if next_ch == 'm' {
+                    break;
                 }
-                visible_count <= width
-            })
-            .collect();
-        truncated
-    } else {
-        // Add padding, keeping ANSI codes intact
-        let padding = " ".repeat(width - stripped_len);
-        if right_align {
-            format!("{}{}", padding, s) // Right-align
+            }
+
+            // Push the entire ANSI sequence to the result
+            truncated.push_str(&ansi_sequence);
         } else {
-            format!("{}{}", s, padding) // Left-align
+            // Calculate the width of this character using UnicodeWidthStr
+            let ch_width = UnicodeWidthStr::width(ch.to_string().as_str());
+
+            // If this character is an emoji or wide character, ensure its width is treated as 1
+            let adjusted_ch_width = if ch_width > 1 { 1 } else { ch_width };
+
+            // Only add the character if it won't exceed the width limit
+            if visible_width + adjusted_ch_width > width {
+                break;
+            }
+
+            // Append the character and update visible width
+            truncated.push(ch);
+            visible_width += adjusted_ch_width;
         }
     }
+
+    // Add padding if needed
+    let padding = " ".repeat(width.saturating_sub(visible_width));
+    if right_align {
+        format!("{}{}", padding, truncated)
+    } else {
+        format!("{}{}", truncated, padding)
+    }
 }
+
+//pub fn pad_or_truncate(s: &str, width: usize, right_align: bool) -> String {
+//    // Calculate length without ANSI codes
+//    let stripped_len = strip_ansi_codes(s).chars().count();
+//
+//    if stripped_len > width {
+//        // Truncate while keeping ANSI codes intact
+//        let mut visible_count = 0;
+//        let truncated: String = s.chars()
+//            .take_while(|&c| {
+//                // Only count non-ANSI characters toward the width limit
+//                if !c.is_ascii_control() {
+//                    visible_count += 1;
+//                }
+//                visible_count <= width
+//            })
+//            .collect();
+//        truncated
+//    } else {
+//        // Add padding, keeping ANSI codes intact
+//        let padding = " ".repeat(width - stripped_len);
+//        if right_align {
+//            format!("{}{}", padding, s) // Right-align
+//        } else {
+//            format!("{}{}", s, padding) // Left-align
+//        }
+//    }
+//}
 
 pub fn format_to_millions(value: u64, decimal_places: Option<usize>) -> String {
     let integer_part = value / 1_000_000;
@@ -404,43 +493,6 @@ pub fn format_to_millions(value: u64, decimal_places: Option<usize>) -> String {
         _ => formatted_integer, // No decimals needed
     }
 }
-
-//pub fn millionth(value: u64, decimal_places: Option<usize>) -> String {
-//    let integer_part = value / 1_000_000;
-//    let decimal_part = value % 1_000_000;
-//
-//    // Format the integer part with a thousands separator
-//    let formatted_integer = integer_part.to_formatted_string(&Locale::en);
-//
-//    let places = decimal_places.unwrap_or(0);
-//    let decimal_str = pad_or_truncate(&format!("{:06}", decimal_part), places, false);
-//    format!("{}.{}", formatted_integer, decimal_str)
-//        .trim_end_matches('.')
-//        .to_string()
-//}
-
-//pub fn format_to_millions(value: u64) -> String {
-//
-//    // determine the integer and decimal parts as u64
-//    let integer_part = value / 1_000_000;
-//    let decimal_part = value % 1_000_000;
-//
-//    // Add thousands separator to the integer part
-//    let formatted_integer = integer_part.to_formatted_string(&Locale::en);
-//
-//    // Construct the final formatted string
-//    if decimal_part > 0 {
-//        // pad with up to 6 leading zeros, since its already
-//        // multiplied by 1_000_000
-//        format!("{}.{:06}", formatted_integer, decimal_part)
-//            .trim_end_matches('0') // Remove trailing zeros
-//            .trim_end_matches('.') // Remove trailing dot if it exists
-//            .to_string()
-//    } else {
-//        // No decimals, just output the integer part
-//        formatted_integer
-//    }
-//}
 
 #[derive(Clone)]
 pub enum TaskStatus {
@@ -514,210 +566,11 @@ where
     }
 }
 
-///// Retrieves a full file path based on the provided options.
-/////
-///// This function checks if a specific file path is given. If so, it returns that path.
-///// If no file path is provided, it tries to determine a full path to the file by combining a 
-///// base_path with a sub_path. If the base_path is not provided, the user's home directory 
-///// is used as the base_path and combined with the sub_path to form the full file path.
-/////
-///// # Parameters
-/////
-///// * `file`: An optional path to a specific file. If provided, this path is returned directly.
-///// * `base_path`: An optional base path. If this is not provided, the function will use the user's home directory.
-///// * `sub_path`: An optional subpath that will be combined with the base path. This must be provided.
-/////
-///// # Returns
-/////
-///// * `Ok(PathBuf)` if a valid file path is successfully constructed.
-///// * `Err(eyre::Error)` if:
-/////   - A base path cannot be determined.
-/////   - The subpath is not provided.
-/////
-///// # Example
-/////
-///// ```
-///// let file_path = get_file(None, None, Some(Path::new("myfile.txt")))?
-///// ```
-//pub fn get_file(
-//    file: Option<&Path>,
-//    base_path: Option<&Path>,
-//    sub_path: Option<&Path>,
-//) -> Result<PathBuf> {
-//    match file {
-//        Some(file_path) => Ok(file_path.to_path_buf()), // Return the provided file path
-//        None => {
-//            // Determine base_path
-//            let base_path = base_path
-//                .map(PathBuf::from) // Convert Option<&Path> to Option<PathBuf>
-//                .or_else(|| {
-//                    // Use dirs::home_dir() directly since it returns a PathBuf
-//                    home_dir()
-//                })
-//                .wrap_err("Could not determine base path")?; // Use eyre for error context
-//
-//            // Ensure that sub_path is provided
-//            let p = sub_path.wrap_err("Subpath must be provided")?; // Use eyre for error context
-//
-//            // Combine base path with provided sub_path
-//            Ok(base_path.join(p))
-//        }
-//    }
-//}
-
-///// Resolves file and home options with mutual exclusivity.
-///// Prioritizes subcommand-level options over the top-level options.
-//pub fn resolve_file_home(
-//    cmd_file: Option<PathBuf>, cmd_home: Option<PathBuf>, 
-//    global_file: Option<PathBuf>, global_home: Option<PathBuf>
-//) -> Result<(Option<PathBuf>, Option<PathBuf>)> {
-//
-//    // Subcommand options take precedence over the top-level options.
-//    let file = cmd_file.or(global_file);
-//    let home = cmd_home.or(global_home);
-//
-//    // Check mutual exclusivity of the resolved options.
-//    if file.is_some() && home.is_some() {
-//        return Err(eyre!("You cannot provide both --file and --home at the same time."));
-//    }
-//
-//    Ok((file, home))
-//}
-
-///// Returns a path given an optional profile, home, or file, and an ending path.
-///// 
-///// The structure is assumed as follows:
-///// - `file` is prioritized if provided.
-///// - `home` or `profile` is used to construct the path if `file` is not provided.
-///// - `end` must be provided when using `profile` or `home`.
-/////
-///// Example:
-/////     - `Option<home> = Some("/home/user/Documents/profile_name")`
-/////     - `Option<profile> = Some("profile_name")`
-/////     - `Option<file> = Some("/home/user/Documents/profile_name/ending/path.file")`
-/////
-/////     `path_end = "ending/path.file"`
-//pub fn profile_home_file(
-//    profile: Option<&str>,
-//    home: Option<&Path>, 
-//    file: Option<&Path>,
-//    end: Option<&Path>,
-//) -> Result<PathBuf> {
-//    // If all are None, check end
-//    if profile.is_none() && home.is_none() && file.is_none() {
-//        if end.is_none() {
-//            return Err(eyre!("No arguments specified"));
-//        } else {
-//            // Attempt to get the home directory
-//            match home::home_dir() {
-//                Some(path) if !path.as_os_str().is_empty() => {
-//                    return Ok(path.join(end.unwrap())); // Join home with end
-//                }
-//                _ => return Err(eyre!("Unable to detect home directory")),
-//            }
-//        }
-//    }
-//
-//    // If file is provided, return it directly
-//    if let Some(file) = file {
-//        return Ok(file.to_path_buf());
-//    }
-//
-//    // If end is not provided, we need to check for home or profile
-//    let end = end.ok_or_else(|| eyre!("If no file is provided, an end path must be given."))?;
-//
-//    // Check for home directory
-//    if let Some(home) = home {
-//        return Ok(home.join(end)); // Join the home path with the end path
-//    }
-//
-//    // If profile is provided, construct the path using PROFILES_DIR
-//    if let Some(profile) = profile {
-//        return Ok(PROFILES_DIR.join(profile).join(end));
-//    }
-//
-//    // If none of the above conditions matched, return an error
-//    Err(eyre!("Insufficient arguments to construct a path."))
-//}
-
-///// Constructs a file path based on the provided input and relative path.
-/////
-///// This function first checks if the `input` string represents a valid file or directory.
-///// - If `input` is a valid file path, it returns the path as a `PathBuf`.
-///// - If `input` is a directory, it combines it with the `sub_path` to create the full path.
-///// - If `input` does not correspond to a file or directory, it treats it as a profile name
-/////   and combines it with the `PROFILES_DIR` and `sub_path`.
-///// - If no `input` is provided, it attempts to use the user's home directory,
-/////   combining it with the `sub_path`.
-/////
-///// # Arguments
-///// 
-///// * `input` - An optional string slice that represents the input path or profile name.
-///// * `sub_path` - An optional reference to a `Path` that is used to extend the input path.
-/////
-///// # Returns
-///// 
-///// * `Result<PathBuf>` - Returns the constructed path as a `PathBuf` if successful, or an error if any checks fail.
-/////
-///// # Errors
-///// 
-///// This function returns an error if:
-///// - The `input` string cannot be converted to a valid path.
-///// - The `sub_path` is required but not provided when dealing with directories or profiles.
-///// - The home directory cannot be detected.
-/////
-///// # Example
-/////
-///// ```
-///// let path = construct_path(Some("example_profile"), Some(Path::new("subdir/file.txt")));
-///// ```
-///// 
-//pub fn construct_path<S: AsRef<str>>(
-//    input:    Option<S>,
-//    sub_path: Option<S>,
-//) -> Result<PathBuf> {
-//    // Check if input is provided
-//    if let Some(input_ref) = input {
-//        // Create a Path from the input string
-//        let input_path = Path::new(input_ref.as_ref());
-//
-//        // Check if it's a file
-//        if input_path.is_file() {
-//            return Ok(input_path.to_path_buf());
-//        }
-//
-//        // Check if it's a directory
-//        if input_path.is_dir() {
-//            let end_path = sub_path.ok_or_else(|| eyre!(
-//                "Relative path must be provided if input is a directory."
-//            ))?;
-//            let sub_path = Path::new(end_path.as_ref());
-//            return Ok(input_path.join(sub_path));
-//        }
-//
-//        // Handle profile (assume it's a profile name)
-//        let end_path = sub_path.ok_or_else(|| eyre!(
-//            "Relative path must be provided if input is a profile."
-//        ))?;
-//        let sub_path = Path::new(end_path.as_ref());
-//        return Ok(PROFILES_DIR.join(input_path).join(sub_path));
-//
-//    } else {
-//        // If no input is provided, try to get home directory
-//        let home_dir = home::home_dir().ok_or_else(|| eyre!(
-//            "Unable to detect home directory."
-//        ))?;
-//        let end_path = sub_path.ok_or_else(|| eyre!(
-//            "Relative path must be provided when using home directory."
-//        ))?;
-//        let sub_path = Path::new(end_path.as_ref());
-//        return Ok(home_dir.join(sub_path));
-//    }
-//}
 
 
 #[allow(dead_code)]
-pub fn to_bool(val: String) -> Option<bool> {
+pub fn to_bool<S: AsRef<str>>(val: S) -> Option<bool> {
+    let val: &str = val.as_ref();
     match val.trim().to_lowercase().as_str() {
         "true" | "yes" | "y" | "1" => Some(true),
         "false" | "no" | "n" | "0" => Some(false),
@@ -737,6 +590,7 @@ pub fn to_bool(val: String) -> Option<bool> {
 
 /// for clap
 pub fn validate_ratio(value: &str) -> Result<f64, String> {
+    //let value: &str = value.as_ref();
     match value.parse::<f64>() {
         Ok(val) if val >= 0.0 && val <= 1.0 => Ok(val),
         Ok(_) => Err(String::from("The minimum balance ratio must be between 0 and 1")),
@@ -744,7 +598,8 @@ pub fn validate_ratio(value: &str) -> Result<f64, String> {
     }
 }
 
-pub fn prompt_user(question: &str) -> io::Result<String> {
+pub fn prompt_user<S: AsRef<str>>(question: S) -> io::Result<String> {
+    let question: &str = question.as_ref();
     print!("{} [y/N]: ", question);      // Print the question
     io::stdout().flush()?;               // Ensure the prompt is displayed immediately
     let mut input = String::new();
